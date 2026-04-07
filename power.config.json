@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "appId": "694f32ec-28a1-48d8-bca9-883ee6a9e3ba",
+  "appDisplayName": "reportingDcpoApp",
+  "region": "prod",
+  "environmentId": "79233379-6c09-ea1d-97f4-43e42bfc5b08",
+  "description": "",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {
+    "693297d8-d364-4ca2-b705-3ffbf1aecfca": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365users",
+      "displayName": "Office 365 Users",
+      "dataSources": [
+        "office365users"
+      ],
+      "dataSets": {}
+    },
+    "b662c018-82f3-4b13-ba63-27e85218d0fe": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint",
+      "dataSources": [
+        "dcpo_liste_anormalie"
+      ],
+      "dataSets": {
+        "https%253A%252F%252Fafrilandfirstbankcmr.sharepoint.com%252Fsites%252Fwork": {
+          "dataSources": {
+            "dcpo_liste_anormalie": {
+              "tableName": "bd91d7af-0c3b-4a2d-be22-42c94659cee0"
+            }
+          }
+        }
+      }
+    }
+  },
+  "databaseReferences": {}
+}

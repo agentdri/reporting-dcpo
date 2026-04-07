@@ -1,0 +1,16 @@
+date;declarant;auteur;unite;cause;classification;agence;reseau;montant;date_de_regularisation;statut
+01/05/2026;Dupont Marie;Kouassi Aman;UG-01;Erreur de caisse;Operationnel;Agence Plateau;Reseau Sud;125000;01/12/2026;Regularise
+01/08/2026;Traore Ibrahim;Bamba Sekou;UG-03;Fraude externe;Fraude;Agence Cocody;Reseau Est;3500000;02/01/2026;Regularise
+01/15/2026;Kone Fatou;Diallo Moussa;UG-02;Ecart de solde;Operationnel;Agence Adjame;Reseau Nord;75000;01/28/2026;En cours
+01/22/2026;Yao Kouadio;Mensah Afi;UG-01;Cheque impaye;Commercial;Agence Marcory;Reseau Sud;450000;02/10/2026;Regularise
+02/03/2026;N'Guessan Ahou;Toure Lamine;UG-04;Virement errone;Operationnel;Agence Treichville;Reseau Ouest;890000;02/15/2026;Regularise
+02/10/2026;Ouattara Drissa;Koffi Yves;UG-02;Detournement;Fraude;Agence Yopougon;Reseau Nord;12000000;03/25/2026;Non regularise
+02/18/2026;Brou Ange;Coulibaly Awa;UG-03;Erreur de saisie;Operationnel;Agence Bingerville;Reseau Est;30000;02/20/2026;Regularise
+03/01/2026;Esso Brigitte;Aka Jean;UG-01;Faux documents;Fraude;Agence Plateau;Reseau Sud;5600000;03/30/2026;En cours
+03/07/2026;Konate Salif;Dembele Oumou;UG-05;Erreur de caisse;Operationnel;Agence Abobo;Reseau Centre;195000;03/14/2026;Regularise
+03/12/2026;Diabate Aminata;Gnamba Paul;UG-02;Ecart de solde;Operationnel;Agence Koumassi;Reseau Nord;88000;03/20/2026;Regularise
+03/20/2026;Soro Mamadou;Kone Adama;UG-04;Vol interne;Fraude;Agence Riviera;Reseau Ouest;7200000;04/15/2026;Non regularise
+03/25/2026;Dosso Mariam;Sangare Ali;UG-01;Cheque impaye;Commercial;Agence Marcory;Reseau Sud;320000;04/02/2026;Regularise
+04/01/2026;Cisse Rokia;Fofana Issa;UG-03;Virement errone;Operationnel;Agence Cocody;Reseau Est;150000;04/10/2026;En cours
+04/03/2026;Zadi Gervais;Bleou Sandrine;UG-02;Erreur de saisie;Operationnel;Agence Adjame;Reseau Nord;42000;04/05/2026;Regularise
+04/06/2026;Tano Christelle;Assi Lucien;UG-05;Fraude externe;Fraude;Agence Abobo;Reseau Centre;2800000;04/20/2026;En cours

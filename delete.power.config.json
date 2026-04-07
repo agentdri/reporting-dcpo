@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "appId": "f927b951-c425-4547-a0dd-f940be003cd0",
+  "appDisplayName": "ReportingDCPO",
+  "region": "prod",
+  "environmentId": "Default-2bd82a68-2c7d-4c43-b080-9b064410f6cf",
+  "description": "",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {},
+  "databaseReferences": {}
+}
