@@ -23,11 +23,30 @@ export interface EditorValue {
   JobTitle: string;
 }
 
+export interface auteur_anormalieValue {
+  "@odata.type": string;
+  Claims: string;
+  DisplayName: string;
+  Email: string;
+  Picture: string;
+  Department: string;
+  JobTitle: string;
+}
+
+export interface declarant_anormalieValue {
+  "@odata.type": string;
+  Claims: string;
+  DisplayName: string;
+  Email: string;
+  Picture: string;
+  Department: string;
+  JobTitle: string;
+}
+
 export interface DCPO_LISTE_ANORMALIEBase {
   ID?: number;
   Title?: string;
   field_0?: string;
-  field_2?: string;
   field_3?: string;
   field_4?: string;
   field_5?: string;
@@ -38,12 +57,14 @@ export interface DCPO_LISTE_ANORMALIEBase {
   field_10?: string;
   dateOuvertureTicket?: string;
   date_cloture_ticket?: string;
-  OData__ColorTag?: string;
-  ComplianceAssetId?: string;
-  Modified?: string;
   Created?: string;
   "Author#Claims"?: string;
   "Editor#Claims"?: string;
+  "auteur_anormalie#Claims"?: string;
+  "declarant_anormalie#Claims"?: string;
+  OData__ColorTag?: string;
+  ComplianceAssetId?: string;
+  Modified?: string;
   "{Identifier}"?: string;
   "{IsFolder}"?: boolean;
   "{Thumbnail}"?: {
@@ -84,9 +105,13 @@ export interface DCPO_LISTE_ANORMALIEBase {
 export interface DCPO_LISTE_ANORMALIERead extends DCPO_LISTE_ANORMALIEBase {
   Author?: AuthorValue;
   Editor?: EditorValue;
+  auteur_anormalie?: auteur_anormalieValue;
+  declarant_anormalie?: declarant_anormalieValue;
 }
 
 export interface DCPO_LISTE_ANORMALIEWrite extends DCPO_LISTE_ANORMALIEBase {
   Author?: AuthorValue;
   Editor?: EditorValue;
+  auteur_anormalie?: auteur_anormalieValue;
+  declarant_anormalie?: declarant_anormalieValue;
 }

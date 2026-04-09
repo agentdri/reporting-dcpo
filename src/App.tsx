@@ -52,7 +52,7 @@ function App() {
       setPage('home')
       return null
     }
-    return <Dashboard onBack={() => setPage('home')} />
+    return <Dashboard onBack={() => setPage('home')} userName={user?.displayName} userJobTitle={user?.jobTitle} />
   }
 
   if (loading) {

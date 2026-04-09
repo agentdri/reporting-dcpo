@@ -794,6 +794,76 @@ export const dataSourcesInfo = {
           }
         }
       },
+      "Getauteur_anormalie": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/bd91d7af0c3b4a2dbe2242c94659cee0/entities/auteur_anormalie",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "Getdeclarant_anormalie": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/bd91d7af0c3b4a2dbe2242c94659cee0/entities/declarant_anormalie",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
       "Get4651e8f238c94ad08def41f743f76f30": {
         "path": "/{connectionId}/datasets/{dataset}/tables/bd91d7af0c3b4a2dbe2242c94659cee0/entities/4651e8f238c94ad08def41f743f76f30",
         "method": "GET",

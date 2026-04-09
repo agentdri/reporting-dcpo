@@ -1,18 +1,32 @@
 import { useState, useEffect } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
+import { Office365UsersService } from '../generated/services/Office365UsersService'
 import type { DCPO_LISTE_ANORMALIERead, DCPO_LISTE_ANORMALIEWrite } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
+import type { User } from '../generated/models/Office365UsersModel'
 import './Dashboard.css'
 
 interface DashboardProps {
   onBack: () => void
+  userName?: string
+  userJobTitle?: string
 }
 
 type Tab = 'anomalie' | 'reporting'
 
-const EMPTY_FORM: Omit<DCPO_LISTE_ANORMALIEWrite, 'ID'> = {
-  Title: '',
+interface FormState {
+  field_0: string
+  field_3: string
+  field_4: string
+  field_5: string
+  field_6: string
+  field_7: string
+  field_8: number
+  field_9: string
+  field_10: string
+}
+
+const EMPTY_FORM: FormState = {
   field_0: '',
-  field_2: '',
   field_3: '',
   field_4: '',
   field_5: '',
@@ -24,9 +38,7 @@ const EMPTY_FORM: Omit<DCPO_LISTE_ANORMALIEWrite, 'ID'> = {
 }
 
 const FIELD_LABELS: Record<string, string> = {
-  Title: 'Declarant',
   field_0: 'Date',
-  field_2: 'Auteur',
   field_3: 'Unite',
   field_4: 'Cause',
   field_5: 'Classification',
@@ -39,13 +51,79 @@ const FIELD_LABELS: Record<string, string> = {
 
 const DATE_FIELDS = ['field_0', 'field_9']
 
-export default function Dashboard({ onBack }: DashboardProps) {
+function toClaims(email: string) {
+  return `i:0#.f|membership|${email}`
+}
+
+export default function Dashboard({ onBack, userName, userJobTitle }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('anomalie')
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
+
+  // Auteur search
+  const [auteurSearch, setAuteurSearch] = useState('')
+  const [auteurEmail, setAuteurEmail] = useState('')
+  const [auteurResults, setAuteurResults] = useState<User[]>([])
+  const [showAuteurDropdown, setShowAuteurDropdown] = useState(false)
+
+  // Declarant search
+  const [declarantSearch, setDeclarantSearch] = useState('')
+  const [declarantEmail, setDeclarantEmail] = useState('')
+  const [declarantResults, setDeclarantResults] = useState<User[]>([])
+  const [showDeclarantDropdown, setShowDeclarantDropdown] = useState(false)
+
+  const searchAuteur = async (term: string) => {
+    setAuteurSearch(term)
+    if (term.length < 2) {
+      setAuteurResults([])
+      setShowAuteurDropdown(false)
+      return
+    }
+    try {
+      const result = await Office365UsersService.SearchUser(term, 10)
+      if (result.data) {
+        setAuteurResults(result.data)
+        setShowAuteurDropdown(true)
+      }
+    } catch (err) {
+      console.error('Erreur recherche auteur', err)
+    }
+  }
+
+  const selectAuteur = (u: User) => {
+    setAuteurEmail(u.Mail ?? '')
+    setAuteurSearch(u.DisplayName ?? u.Mail ?? '')
+    setShowAuteurDropdown(false)
+    setAuteurResults([])
+  }
+
+  const searchDeclarant = async (term: string) => {
+    setDeclarantSearch(term)
+    if (term.length < 2) {
+      setDeclarantResults([])
+      setShowDeclarantDropdown(false)
+      return
+    }
+    try {
+      const result = await Office365UsersService.SearchUser(term, 10)
+      if (result.data) {
+        setDeclarantResults(result.data)
+        setShowDeclarantDropdown(true)
+      }
+    } catch (err) {
+      console.error('Erreur recherche declarant', err)
+    }
+  }
+
+  const selectDeclarant = (u: User) => {
+    setDeclarantEmail(u.Mail ?? '')
+    setDeclarantSearch(u.DisplayName ?? u.Mail ?? '')
+    setShowDeclarantDropdown(false)
+    setDeclarantResults([])
+  }
 
   const fetchItems = async () => {
     setLoading(true)
@@ -69,14 +147,20 @@ export default function Dashboard({ onBack }: DashboardProps) {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
+  const resetForm = () => {
+    setForm(EMPTY_FORM)
+    setAuteurSearch('')
+    setAuteurEmail('')
+    setDeclarantSearch('')
+    setDeclarantEmail('')
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
     try {
       const payload: Record<string, unknown> = {}
-      if (form.Title) payload.Title = form.Title
       if (form.field_0) payload.field_0 = form.field_0 + 'T00:00:00Z'
-      if (form.field_2) payload.field_2 = form.field_2
       if (form.field_3) payload.field_3 = form.field_3
       if (form.field_4) payload.field_4 = form.field_4
       if (form.field_5) payload.field_5 = form.field_5
@@ -85,6 +169,20 @@ export default function Dashboard({ onBack }: DashboardProps) {
       if (form.field_8) payload.field_8 = form.field_8
       if (form.field_9) payload.field_9 = form.field_9 + 'T00:00:00Z'
       if (form.field_10) payload.field_10 = form.field_10
+
+      if (auteurEmail) {
+        payload['auteur_anormalie'] = {
+          '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+          Claims: toClaims(auteurEmail),
+        }
+      }
+
+      if (declarantEmail) {
+        payload['declarant_anormalie'] = {
+          '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+          Claims: toClaims(declarantEmail),
+        }
+      }
 
       console.log('Payload envoye:', JSON.stringify(payload))
       const result = await DCPO_LISTE_ANORMALIEService.create(payload as Omit<DCPO_LISTE_ANORMALIEWrite, 'ID'>)
@@ -95,7 +193,7 @@ export default function Dashboard({ onBack }: DashboardProps) {
         return
       }
 
-      setForm(EMPTY_FORM)
+      resetForm()
       setShowForm(false)
       await fetchItems()
     } catch (err) {
@@ -111,6 +209,10 @@ export default function Dashboard({ onBack }: DashboardProps) {
         <div className="topbar-left">
           <button className="btn-back" onClick={onBack}>Retour</button>
           <h1 className="topbar-title">ReportingDCPO</h1>
+        </div>
+        <div className="topbar-user">
+          <span className="topbar-user-name">{userName}</span>
+          <span className="topbar-user-job">{userJobTitle}</span>
         </div>
       </header>
 
@@ -144,28 +246,83 @@ export default function Dashboard({ onBack }: DashboardProps) {
               <form className="create-form" onSubmit={handleSubmit}>
                 <h2>Creer une anomalie</h2>
                 <div className="form-grid">
+                  {/* Declarant */}
+                  <div className="form-field">
+                    <label>Declarant</label>
+                    <div className="autocomplete-wrapper">
+                      <input
+                        type="text"
+                        value={declarantSearch}
+                        placeholder="Rechercher un declarant..."
+                        onChange={e => searchDeclarant(e.target.value)}
+                        onBlur={() => setTimeout(() => setShowDeclarantDropdown(false), 200)}
+                      />
+                      {declarantEmail && (
+                        <span className="selected-email">{declarantEmail}</span>
+                      )}
+                      {showDeclarantDropdown && declarantResults.length > 0 && (
+                        <ul className="autocomplete-dropdown">
+                          {declarantResults.map(u => (
+                            <li key={u.Id} onClick={() => selectDeclarant(u)}>
+                              <strong>{u.DisplayName}</strong>
+                              <span>{u.Mail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Auteur */}
+                  <div className="form-field">
+                    <label>Auteur</label>
+                    <div className="autocomplete-wrapper">
+                      <input
+                        type="text"
+                        value={auteurSearch}
+                        placeholder="Rechercher un auteur..."
+                        onChange={e => searchAuteur(e.target.value)}
+                        onBlur={() => setTimeout(() => setShowAuteurDropdown(false), 200)}
+                      />
+                      {auteurEmail && (
+                        <span className="selected-email">{auteurEmail}</span>
+                      )}
+                      {showAuteurDropdown && auteurResults.length > 0 && (
+                        <ul className="autocomplete-dropdown">
+                          {auteurResults.map(u => (
+                            <li key={u.Id} onClick={() => selectAuteur(u)}>
+                              <strong>{u.DisplayName}</strong>
+                              <span>{u.Mail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Other fields */}
                   {Object.keys(FIELD_LABELS).map(field => (
                     <div className="form-field" key={field}>
                       <label>{FIELD_LABELS[field]}</label>
                       {field === 'field_8' ? (
                         <input
                           type="number"
-                          value={form[field as keyof typeof form] as number}
+                          value={form[field as keyof FormState] as number}
                           onChange={e => handleChange(field, Number(e.target.value))}
                         />
                       ) : field === 'field_10' ? (
                         <select
-                          value={form[field as keyof typeof form] as string}
+                          value={form[field as keyof FormState] as string}
                           onChange={e => handleChange(field, e.target.value)}
                         >
                           <option value="">-- Choisir --</option>
-                          <option value="Regularise">Ouvert</option>
+                          <option value="Ouvert">Ouvert</option>
                           <option value="En cours">En cours</option>
-                          <option value="Non regularise">Clos</option>
+                          <option value="Clos">Clos</option>
                         </select>
                       ) : field === 'field_5' ? (
                         <select
-                          value={form[field as keyof typeof form] as string}
+                          value={form[field as keyof FormState] as string}
                           onChange={e => handleChange(field, e.target.value)}
                         >
                           <option value="">-- Choisir --</option>
@@ -176,13 +333,13 @@ export default function Dashboard({ onBack }: DashboardProps) {
                       ) : DATE_FIELDS.includes(field) ? (
                         <input
                           type="date"
-                          value={form[field as keyof typeof form] as string}
+                          value={form[field as keyof FormState] as string}
                           onChange={e => handleChange(field, e.target.value)}
                         />
                       ) : (
                         <input
                           type="text"
-                          value={form[field as keyof typeof form] as string}
+                          value={form[field as keyof FormState] as string}
                           onChange={e => handleChange(field, e.target.value)}
                         />
                       )}
@@ -204,6 +361,8 @@ export default function Dashboard({ onBack }: DashboardProps) {
                 <table className="data-table">
                   <thead>
                     <tr>
+                      <th>Declarant</th>
+                      <th>Auteur</th>
                       {Object.values(FIELD_LABELS).map(label => (
                         <th key={label}>{label}</th>
                       ))}
@@ -212,9 +371,9 @@ export default function Dashboard({ onBack }: DashboardProps) {
                   <tbody>
                     {items.map(item => (
                       <tr key={item.ID}>
-                        <td>{item.Title ?? '-'}</td>
+                        <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
+                        <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
                         <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
-                        <td>{item.field_2 ?? '-'}</td>
                         <td>{item.field_3 ?? '-'}</td>
                         <td>{item.field_4 ?? '-'}</td>
                         <td>{item.field_5 ?? '-'}</td>
