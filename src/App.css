@@ -1,7 +1,7 @@
 .btn-dashboard {
   margin-top: 20px;
   padding: 12px 24px;
-  background: #0078d4;
+  background: #002855;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -12,7 +12,17 @@
 }
 
 .btn-dashboard:hover {
-  background: #005a9e;
+  background: #001d3d;
+}
+
+.no-access {
+  margin-top: 20px;
+  padding: 12px 20px;
+  background: #fde7e9;
+  color: #d13438;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .welcome-title {

@@ -7,6 +7,8 @@ interface DashboardProps {
   onBack: () => void
 }
 
+type Tab = 'anomalie' | 'reporting'
+
 const EMPTY_FORM: Omit<DCPO_LISTE_ANORMALIEWrite, 'ID'> = {
   Title: '',
   field_0: '',
@@ -38,6 +40,7 @@ const FIELD_LABELS: Record<string, string> = {
 const DATE_FIELDS = ['field_0', 'field_9']
 
 export default function Dashboard({ onBack }: DashboardProps) {
+  const [activeTab, setActiveTab] = useState<Tab>('anomalie')
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -104,107 +107,139 @@ export default function Dashboard({ onBack }: DashboardProps) {
 
   return (
     <div className="dashboard">
-      <header className="dashboard-header">
-        <button className="btn-back" onClick={onBack}>Retour</button>
-        <h1>Dashboard - Liste des anomalies du dashboard</h1>
-        <button className="btn-add" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Annuler' : '+ Nouvelle anomalie'}
-        </button>
+      <header className="dashboard-topbar">
+        <div className="topbar-left">
+          <button className="btn-back" onClick={onBack}>Retour</button>
+          <h1 className="topbar-title">ReportingDCPO</h1>
+        </div>
       </header>
 
-      {showForm && (
-        <form className="create-form" onSubmit={handleSubmit}>
-          <h2>Creer une anomalie</h2>
-          <div className="form-grid">
-            {Object.keys(FIELD_LABELS).map(field => (
-              <div className="form-field" key={field}>
-                <label>{FIELD_LABELS[field]}</label>
-                {field === 'field_8' ? (
-                  <input
-                    type="number"
-                    value={form[field as keyof typeof form] as number}
-                    onChange={e => handleChange(field, Number(e.target.value))}
-                  />
-                ) : field === 'field_10' ? (
-                  <select
-                    value={form[field as keyof typeof form] as string}
-                    onChange={e => handleChange(field, e.target.value)}
-                  >
-                    <option value="">-- Choisir --</option>
-                    <option value="Regularise">Regularise</option>
-                    <option value="En cours">En cours</option>
-                    <option value="Non regularise">Non regularise</option>
-                  </select>
-                ) : field === 'field_5' ? (
-                  <select
-                    value={form[field as keyof typeof form] as string}
-                    onChange={e => handleChange(field, e.target.value)}
-                  >
-                    <option value="">-- Choisir --</option>
-                    <option value="Operationnel">Operationnel</option>
-                    <option value="Fraude">Fraude</option>
-                    <option value="Commercial">Commercial</option>
-                  </select>
-                ) : DATE_FIELDS.includes(field) ? (
-                  <input
-                    type="date"
-                    value={form[field as keyof typeof form] as string}
-                    onChange={e => handleChange(field, e.target.value)}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={form[field as keyof typeof form] as string}
-                    onChange={e => handleChange(field, e.target.value)}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-          <button className="btn-submit" type="submit" disabled={submitting}>
-            {submitting ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
-        </form>
-      )}
+      <div className="dashboard-body">
+      <nav className="dashboard-nav">
+        <button
+          className={`nav-item ${activeTab === 'anomalie' ? 'active' : ''}`}
+          onClick={() => setActiveTab('anomalie')}
+        >
+          Anomalies
+        </button>
+        <button
+          className={`nav-item ${activeTab === 'reporting' ? 'active' : ''}`}
+          onClick={() => setActiveTab('reporting')}
+        >
+          Reporting
+        </button>
+      </nav>
 
-      {loading ? (
-        <p className="loading-text">Chargement des anomalies...</p>
-      ) : items.length === 0 ? (
-        <p className="loading-text">Aucune anomalie trouvee.</p>
-      ) : (
-        <div className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                {Object.values(FIELD_LABELS).map(label => (
-                  <th key={label}>{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(item => (
-                <tr key={item.ID}>
-                  <td>{item.Title ?? '-'}</td>
-                  <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
-                  <td>{item.field_2 ?? '-'}</td>
-                  <td>{item.field_3 ?? '-'}</td>
-                  <td>{item.field_4 ?? '-'}</td>
-                  <td>{item.field_5 ?? '-'}</td>
-                  <td>{item.field_6 ?? '-'}</td>
-                  <td>{item.field_7 ?? '-'}</td>
-                  <td>{item.field_8 ?? '-'}</td>
-                  <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString() : '-'}</td>
-                  <td>
-                    <span className={`status-badge ${(item.field_10 ?? '').replace(/\s/g, '-').toLowerCase()}`}>
-                      {item.field_10 ?? '-'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="dashboard-content">
+        {activeTab === 'anomalie' && (
+          <>
+            <div className="content-header">
+              <h2>Liste des anomalies</h2>
+              <button className="btn-add" onClick={() => setShowForm(!showForm)}>
+                {showForm ? 'Annuler' : '+ Nouvelle anomalie'}
+              </button>
+            </div>
+
+            {showForm && (
+              <form className="create-form" onSubmit={handleSubmit}>
+                <h2>Creer une anomalie</h2>
+                <div className="form-grid">
+                  {Object.keys(FIELD_LABELS).map(field => (
+                    <div className="form-field" key={field}>
+                      <label>{FIELD_LABELS[field]}</label>
+                      {field === 'field_8' ? (
+                        <input
+                          type="number"
+                          value={form[field as keyof typeof form] as number}
+                          onChange={e => handleChange(field, Number(e.target.value))}
+                        />
+                      ) : field === 'field_10' ? (
+                        <select
+                          value={form[field as keyof typeof form] as string}
+                          onChange={e => handleChange(field, e.target.value)}
+                        >
+                          <option value="">-- Choisir --</option>
+                          <option value="Regularise">Ouvert</option>
+                          <option value="En cours">En cours</option>
+                          <option value="Non regularise">Clos</option>
+                        </select>
+                      ) : field === 'field_5' ? (
+                        <select
+                          value={form[field as keyof typeof form] as string}
+                          onChange={e => handleChange(field, e.target.value)}
+                        >
+                          <option value="">-- Choisir --</option>
+                          <option value="Operationnel">Operationnel</option>
+                          <option value="Fraude">Fraude</option>
+                          <option value="Commercial">Commercial</option>
+                        </select>
+                      ) : DATE_FIELDS.includes(field) ? (
+                        <input
+                          type="date"
+                          value={form[field as keyof typeof form] as string}
+                          onChange={e => handleChange(field, e.target.value)}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={form[field as keyof typeof form] as string}
+                          onChange={e => handleChange(field, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button className="btn-submit" type="submit" disabled={submitting}>
+                  {submitting ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+              </form>
+            )}
+
+            {loading ? (
+              <p className="loading-text">Chargement des anomalies...</p>
+            ) : items.length === 0 ? (
+              <p className="loading-text">Aucune anomalie trouvee.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      {Object.values(FIELD_LABELS).map(label => (
+                        <th key={label}>{label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map(item => (
+                      <tr key={item.ID}>
+                        <td>{item.Title ?? '-'}</td>
+                        <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
+                        <td>{item.field_2 ?? '-'}</td>
+                        <td>{item.field_3 ?? '-'}</td>
+                        <td>{item.field_4 ?? '-'}</td>
+                        <td>{item.field_5 ?? '-'}</td>
+                        <td>{item.field_6 ?? '-'}</td>
+                        <td>{item.field_7 ?? '-'}</td>
+                        <td>{item.field_8 ?? '-'}</td>
+                        <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString() : '-'}</td>
+                        <td>{item.field_10 ?? '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'reporting' && (
+          <div className="reporting-placeholder">
+            <h2>Reporting</h2>
+            <p>Section reporting en cours de construction.</p>
+          </div>
+        )}
+      </div>
+      </div>
     </div>
   )
 }

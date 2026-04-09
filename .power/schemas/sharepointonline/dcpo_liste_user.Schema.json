@@ -1,6 +1,6 @@
 {
-  "name": "bd91d7af-0c3b-4a2d-be22-42c94659cee0",
-  "title": "DCPO_LISTE_ANORMALIE",
+  "name": "7be1433f-976c-45db-9098-880a61a6a640",
+  "title": "DCPO_LISTE_USER",
   "x-ms-permission": "read-write",
   "x-ms-capabilities": {
     "sortRestrictions": {
@@ -85,7 +85,7 @@
           }
         },
         "Title": {
-          "title": "Title",
+          "title": "Titre",
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc",
@@ -97,25 +97,9 @@
           },
           "maxLength": 255
         },
-        "field_0": {
-          "title": "date",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "field_2": {
-          "title": "auteur",
+        "nom": {
+          "title": "nom",
+          "description": "colonne nom de l'utilisateur",
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc",
@@ -127,8 +111,8 @@
           },
           "maxLength": 255
         },
-        "field_3": {
-          "title": "unite",
+        "Email": {
+          "title": "Email",
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc",
@@ -140,139 +124,62 @@
           },
           "maxLength": 255
         },
-        "field_4": {
-          "title": "cause",
-          "type": "string",
+        "fonction#Id": {
+          "title": "fonction Id",
+          "type": "integer",
+          "format": "int64",
+          "x-ms-permission": "read-only",
+          "x-ms-visibility": "internal"
+        },
+        "fonction": {
+          "title": "fonction",
+          "type": "object",
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc",
           "x-ms-capabilities": {
+            "x-ms-sp": {
+              "IsChoice": true
+            },
             "filterFunctions": [
-              "eq",
-              "startswith"
+              "eq"
             ]
           },
-          "maxLength": 255
-        },
-        "field_5": {
-          "title": "classification",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
+          "properties": {
+            "@odata.type": {
+              "title": "@odata.type",
+              "x-ms-visibility": "internal",
+              "type": "string",
+              "x-ms-permission": "read-write"
+            },
+            "Value": {
+              "title": "Value",
+              "type": "string",
+              "x-ms-dynamic-values": {
+                "operationId": "GetEntityValues",
+                "parameters": {
+                  "dataset": {
+                    "parameter": "dataset"
+                  },
+                  "table": {
+                    "parameter": "table"
+                  },
+                  "id": "3749a062-fe9f-41e9-b1d3-1d0e26485753"
+                },
+                "value-path": "Value",
+                "value-title": "Value",
+                "value-collection": "value"
+              }
+            },
+            "Id": {
+              "title": "Id",
+              "type": "integer",
+              "format": "int64",
+              "x-ms-visibility": "internal",
+              "x-ms-permission": "read-only"
+            }
           },
-          "maxLength": 255
-        },
-        "field_6": {
-          "title": "agence",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_7": {
-          "title": "reseau",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_8": {
-          "title": "montant",
-          "type": "number",
-          "format": "double",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          },
-          "maximum": 1.7976931348623157e+308,
-          "minimum": -1.7976931348623157e+308
-        },
-        "field_9": {
-          "title": "date_de_regularisation",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "field_10": {
-          "title": "statut",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "dateOuvertureTicket": {
-          "title": "date_ouverture_ticket",
-          "type": "string",
-          "format": "date",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "date_cloture_ticket": {
-          "title": "date_cloture_ticket",
-          "type": "string",
-          "format": "date",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
+          "x-ms-displayFormat": {
+            "titleProperty": "Value"
           }
         },
         "OData__ColorTag": {
@@ -770,6 +677,14 @@
         }
       },
       "x-ms-relationships": {
+        "fonction": {
+          "targetEntity": "fonction",
+          "referentialConstraints": {
+            "fonction#Id": {
+              "referencedProperty": "Id"
+            }
+          }
+        },
         "Author": {
           "targetEntity": "Author",
           "referentialConstraints": {
@@ -797,58 +712,40 @@
       },
       "x-ms-displayFormat": {
         "propertiesDisplayOrder": [
-          "field_0",
           "Title",
-          "field_2",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_10",
-          "dateOuvertureTicket",
-          "date_cloture_ticket",
+          "nom",
+          "Email",
+          "fonction",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
           "Title",
-          "field_0",
-          "field_2",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_10",
-          "dateOuvertureTicket",
-          "date_cloture_ticket"
+          "nom",
+          "Email",
+          "fonction"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
-          "field_0",
-          "field_2",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_10",
-          "dateOuvertureTicket",
-          "date_cloture_ticket"
+          "nom",
+          "Email",
+          "fonction"
         ]
       }
     }
   },
   "referencedEntities": {
+    "fonction": {
+      "lookupEndpoint": {
+        "path": "/tables/7be1433f-976c-45db-9098-880a61a6a640/entities/fonction",
+        "capabilities": {
+          "searchable": true,
+          "requiresSearch": false
+        }
+      }
+    },
     "Author": {
       "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/Author",
+        "path": "/tables/7be1433f-976c-45db-9098-880a61a6a640/entities/Author",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -857,7 +754,7 @@
     },
     "Editor": {
       "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/Editor",
+        "path": "/tables/7be1433f-976c-45db-9098-880a61a6a640/entities/Editor",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -866,7 +763,7 @@
     },
     "4651e8f2-38c9-4ad0-8def-41f743f76f30": {
       "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/%257bContentType%257d",
+        "path": "/tables/7be1433f-976c-45db-9098-880a61a6a640/entities/%257bContentType%257d",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -874,5 +771,5 @@
       }
     }
   },
-  "webUrl": "https://afrilandfirstbankcmr.sharepoint.com/sites/work/Lists/DCPO_LISTE_ANORMALIE/AllItems.aspx"
+  "webUrl": "https://afrilandfirstbankcmr.sharepoint.com/sites/work/Lists/DCPO_LISTE_USER/AllItems.aspx"
 }

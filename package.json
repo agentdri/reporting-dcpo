@@ -7,7 +7,8 @@
     "dev": "start pac code run && vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fix-services": "bash scripts/fix-services.sh"
   },
   "dependencies": {
     "@pa-client/power-code-sdk": "https://github.com/microsoft/PowerAppsCodeApps/releases/download/v0.0.4/7-31-pa-client-power-code-sdk-0.0.1.tgz",

@@ -830,5 +830,153 @@ export const dataSourcesInfo = {
         }
       }
     }
+  },
+  "dcpo_liste_user": {
+    "tableId": "7be1433f-976c-45db-9098-880a61a6a640",
+    "version": "",
+    "primaryKey": "ID",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Getfonction": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/7be1433f976c45db9098880a61a6a640/entities/fonction",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "GetAuthor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/7be1433f976c45db9098880a61a6a640/entities/Author",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "GetEditor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/7be1433f976c45db9098880a61a6a640/entities/Editor",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "Get4651e8f238c94ad08def41f743f76f30": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/7be1433f976c45db9098880a61a6a640/entities/4651e8f238c94ad08def41f743f76f30",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      }
+    }
   }
 };

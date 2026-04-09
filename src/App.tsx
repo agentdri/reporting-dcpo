@@ -1,21 +1,41 @@
 import { useState, useEffect } from 'react'
 import { Office365UsersService } from './generated/services/Office365UsersService'
+import { DCPO_LISTE_USERService } from './generated/services/DCPO_LISTE_USERService'
 import type { GraphUser_V1 } from './generated/models/Office365UsersModel'
+import type { DCPO_LISTE_USERRead } from './generated/models/DCPO_LISTE_USERModel'
 import Dashboard from './pages/Dashboard'
 import './App.css'
+
+const ALLOWED_ROLES = ['Chef_Departement', 'Directeur', 'Controleur']
 
 function App() {
   const [page, setPage] = useState<'home' | 'dashboard'>('home')
   const [user, setUser] = useState<GraphUser_V1 | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [authorized, setAuthorized] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const init = async () => {
       try {
-        const result = await Office365UsersService.MyProfile_V2()
-        if (result.data) {
-          setUser(result.data)
+        const profileResult = await Office365UsersService.MyProfile_V2()
+        if (!profileResult.data) {
+          setError('Impossible de charger le profil utilisateur.')
+          return
+        }
+        setUser(profileResult.data)
+        const userEmail = profileResult.data.mail?.toLowerCase()
+
+        const usersResult = await DCPO_LISTE_USERService.getAll()
+        if (usersResult.data) {
+          const match = usersResult.data.find(
+            (u: DCPO_LISTE_USERRead) => u.Email?.toLowerCase() === userEmail
+          )
+          if (match?.fonction?.Value && ALLOWED_ROLES.includes(match.fonction.Value)) {
+            setAuthorized(true)
+            setUserRole(match.fonction.Value)
+          }
         }
       } catch (err) {
         setError('Impossible de charger le profil utilisateur.')
@@ -24,10 +44,14 @@ function App() {
         setLoading(false)
       }
     }
-    fetchProfile()
+    init()
   }, [])
 
   if (page === 'dashboard') {
+    if (!authorized) {
+      setPage('home')
+      return null
+    }
     return <Dashboard onBack={() => setPage('home')} />
   }
 
@@ -82,12 +106,22 @@ function App() {
                 <td className="label">Pays</td>
                 <td>{user.country ?? '-'}</td>
               </tr>
+              {userRole && (
+                <tr>
+                  <td className="label">Role</td>
+                  <td>{userRole}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-        <button className="btn-dashboard" onClick={() => setPage('dashboard')}>
-          Voir le dashboard
-        </button>
+        {authorized ? (
+          <button className="btn-dashboard" onClick={() => setPage('dashboard')}>
+            Voir le dashboard
+          </button>
+        ) : (
+          <p className="no-access">Vous n'avez pas les droits pour acceder au dashboard.</p>
+        )}
       </section>
     </>
   )
