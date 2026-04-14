@@ -5,11 +5,15 @@
 
 // Models
 export * as CommonModels from './models/CommonModels';
+export * as DCPO_LISTE_AGENCESModel from './models/DCPO_LISTE_AGENCESModel';
 export * as DCPO_LISTE_ANORMALIEModel from './models/DCPO_LISTE_ANORMALIEModel';
+export * as DCPO_LISTE_RESEAUXModel from './models/DCPO_LISTE_RESEAUXModel';
 export * as DCPO_LISTE_USERModel from './models/DCPO_LISTE_USERModel';
 export * as Office365UsersModel from './models/Office365UsersModel';
 
 // Services
+export * from './services/DCPO_LISTE_AGENCESService';
 export * from './services/DCPO_LISTE_ANORMALIEService';
+export * from './services/DCPO_LISTE_RESEAUXService';
 export * from './services/DCPO_LISTE_USERService';
 export * from './services/Office365UsersService';

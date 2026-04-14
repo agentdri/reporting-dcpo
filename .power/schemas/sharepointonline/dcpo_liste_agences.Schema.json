@@ -1,12 +1,11 @@
 {
-  "name": "bd91d7af-0c3b-4a2d-be22-42c94659cee0",
-  "title": "DCPO_LISTE_ANORMALIE",
+  "name": "8cf95a36-74a4-45cf-892d-51b5306ee36c",
+  "title": "DCPO_LISTE_AGENCES",
   "x-ms-permission": "read-write",
   "x-ms-capabilities": {
     "sortRestrictions": {
       "sortable": true,
       "unsortableProperties": [
-        "field_4",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -28,7 +27,6 @@
     "filterRestrictions": {
       "filterable": true,
       "nonFilterableProperties": [
-        "field_4",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -99,84 +97,8 @@
           },
           "maxLength": 255
         },
-        "field_0": {
-          "title": "date",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "field_3": {
-          "title": "unite",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_4": {
-          "title": "cause",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "none",
-          "format": "html"
-        },
-        "field_5": {
-          "title": "classification",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_6": {
-          "title": "agence",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_7": {
-          "title": "reseau",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_8": {
-          "title": "montant",
+        "field_1": {
+          "title": "reseau_id",
           "type": "number",
           "format": "double",
           "x-ms-permission": "read-write",
@@ -194,27 +116,10 @@
           "maximum": 1.7976931348623157e+308,
           "minimum": -1.7976931348623157e+308
         },
-        "field_9": {
-          "title": "date_de_regularisation",
+        "OData__ColorTag": {
+          "title": "Balise de couleur",
           "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "field_10": {
-          "title": "statut",
-          "type": "string",
-          "x-ms-permission": "read-write",
+          "x-ms-permission": "read-only",
           "x-ms-sort": "asc,desc",
           "x-ms-capabilities": {
             "filterFunctions": [
@@ -224,28 +129,25 @@
           },
           "maxLength": 255
         },
-        "dateOuvertureTicket": {
-          "title": "date_ouverture_ticket",
+        "ComplianceAssetId": {
+          "title": "ID de ressource de conformité",
           "type": "string",
-          "format": "date",
-          "x-ms-permission": "read-write",
+          "x-ms-permission": "read-only",
           "x-ms-sort": "asc,desc",
           "x-ms-capabilities": {
             "filterFunctions": [
               "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
+              "startswith"
             ]
-          }
+          },
+          "maxLength": 255
         },
-        "date_cloture_ticket": {
-          "title": "date_cloture_ticket",
+        "Modified": {
+          "title": "Modifié",
+          "description": "Date de dernière modification de cet élément.",
           "type": "string",
-          "format": "date",
-          "x-ms-permission": "read-write",
+          "format": "date-time",
+          "x-ms-permission": "read-only",
           "x-ms-sort": "asc,desc",
           "x-ms-capabilities": {
             "filterFunctions": [
@@ -488,344 +390,6 @@
             "thumbnailProperty": "Picture"
           }
         },
-        "personneAffecter#Claims": {
-          "title": "personneAffecter Claims",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "personneAffecter": {
-          "title": "personneAffecter",
-          "description": "le controlleur a qui l'anormalie est assigné ",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "Claims": {
-              "title": "Claims",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "5a1cf8df-f07d-474e-ac4b-b093a8595147"
-                },
-                "value-path": "Claims",
-                "value-title": "DisplayName",
-                "value-collection": "value"
-              }
-            },
-            "DisplayName": {
-              "title": "DisplayName",
-              "type": "string",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "Title"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Email": {
-              "title": "Email",
-              "type": "string",
-              "format": "email",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "EMail"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Picture": {
-              "title": "Picture",
-              "type": "string",
-              "format": "uri",
-              "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/work",
-              "x-ms-media-base-url": "https://afrilandfirstbankcmr.sharepoint.com/sites/work",
-              "x-ms-permission": "read-only"
-            },
-            "Department": {
-              "title": "Department",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "JobTitle": {
-              "title": "JobTitle",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "DisplayName",
-            "subtitleProperty": "Email",
-            "thumbnailProperty": "Picture"
-          }
-        },
-        "auteur_anormalie#Claims": {
-          "title": "auteur_anormalie Claims",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "auteur_anormalie": {
-          "title": "auteur_anormalie",
-          "description": "L'auteur de l'anormalie",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "Claims": {
-              "title": "Claims",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "05795870-1960-4d9e-825a-6235cf5a6a65"
-                },
-                "value-path": "Claims",
-                "value-title": "DisplayName",
-                "value-collection": "value"
-              }
-            },
-            "DisplayName": {
-              "title": "DisplayName",
-              "type": "string",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "Title"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Email": {
-              "title": "Email",
-              "type": "string",
-              "format": "email",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "EMail"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Picture": {
-              "title": "Picture",
-              "type": "string",
-              "format": "uri",
-              "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/work",
-              "x-ms-media-base-url": "https://afrilandfirstbankcmr.sharepoint.com/sites/work",
-              "x-ms-permission": "read-only"
-            },
-            "Department": {
-              "title": "Department",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "JobTitle": {
-              "title": "JobTitle",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "DisplayName",
-            "subtitleProperty": "Email",
-            "thumbnailProperty": "Picture"
-          }
-        },
-        "declarant_anormalie#Claims": {
-          "title": "declarant_anormalie Claims",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "declarant_anormalie": {
-          "title": "declarant_anormalie",
-          "description": "celui qui déclare l'anormalie",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "Claims": {
-              "title": "Claims",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "077cd7ef-304c-4768-8902-0640e9baf011"
-                },
-                "value-path": "Claims",
-                "value-title": "DisplayName",
-                "value-collection": "value"
-              }
-            },
-            "DisplayName": {
-              "title": "DisplayName",
-              "type": "string",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "Title"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Email": {
-              "title": "Email",
-              "type": "string",
-              "format": "email",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "EMail"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Picture": {
-              "title": "Picture",
-              "type": "string",
-              "format": "uri",
-              "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/work",
-              "x-ms-media-base-url": "https://afrilandfirstbankcmr.sharepoint.com/sites/work",
-              "x-ms-permission": "read-only"
-            },
-            "Department": {
-              "title": "Department",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "JobTitle": {
-              "title": "JobTitle",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "DisplayName",
-            "subtitleProperty": "Email",
-            "thumbnailProperty": "Picture"
-          }
-        },
-        "OData__ColorTag": {
-          "title": "Balise de couleur",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "ComplianceAssetId": {
-          "title": "ID de ressource de conformité",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "Modified": {
-          "title": "Modifié",
-          "description": "Date de dernière modification de cet élément.",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-only",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
         "{Identifier}": {
           "title": "Identificateur",
           "description": "Valeur qui peut être utilisée dans des actions liées au fichier dans le cadre de la sélection d’un fichier.",
@@ -1063,30 +627,6 @@
             }
           }
         },
-        "personneAffecter": {
-          "targetEntity": "personneAffecter",
-          "referentialConstraints": {
-            "personneAffecter#Claims": {
-              "referencedProperty": "Claims"
-            }
-          }
-        },
-        "auteur_anormalie": {
-          "targetEntity": "auteur_anormalie",
-          "referentialConstraints": {
-            "auteur_anormalie#Claims": {
-              "referencedProperty": "Claims"
-            }
-          }
-        },
-        "declarant_anormalie": {
-          "targetEntity": "declarant_anormalie",
-          "referentialConstraints": {
-            "declarant_anormalie#Claims": {
-              "referencedProperty": "Claims"
-            }
-          }
-        },
         "{ContentType}": {
           "targetEntity": "4651e8f2-38c9-4ad0-8def-41f743f76f30",
           "referentialConstraints": {
@@ -1098,62 +638,17 @@
       },
       "x-ms-displayFormat": {
         "propertiesDisplayOrder": [
-          "field_0",
           "Title",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_10",
-          "dateOuvertureTicket",
-          "date_cloture_ticket",
-          "auteur_anormalie",
-          "declarant_anormalie",
-          "personneAffecter",
+          "field_1",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
           "Title",
-          "field_0",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_10",
-          "dateOuvertureTicket",
-          "date_cloture_ticket",
-          "Created",
-          "Author",
-          "Editor",
-          "personneAffecter",
-          "auteur_anormalie",
-          "declarant_anormalie"
+          "field_1"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
-          "field_0",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_10",
-          "dateOuvertureTicket",
-          "date_cloture_ticket",
-          "Created",
-          "Author",
-          "Editor",
-          "personneAffecter",
-          "auteur_anormalie",
-          "declarant_anormalie"
+          "field_1"
         ]
       }
     }
@@ -1161,7 +656,7 @@
   "referencedEntities": {
     "Author": {
       "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/Author",
+        "path": "/tables/8cf95a36-74a4-45cf-892d-51b5306ee36c/entities/Author",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1170,34 +665,7 @@
     },
     "Editor": {
       "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/Editor",
-        "capabilities": {
-          "searchable": true,
-          "requiresSearch": false
-        }
-      }
-    },
-    "personneAffecter": {
-      "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/personneAffecter",
-        "capabilities": {
-          "searchable": true,
-          "requiresSearch": false
-        }
-      }
-    },
-    "auteur_anormalie": {
-      "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/auteur_anormalie",
-        "capabilities": {
-          "searchable": true,
-          "requiresSearch": false
-        }
-      }
-    },
-    "declarant_anormalie": {
-      "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/declarant_anormalie",
+        "path": "/tables/8cf95a36-74a4-45cf-892d-51b5306ee36c/entities/Editor",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1206,7 +674,7 @@
     },
     "4651e8f2-38c9-4ad0-8def-41f743f76f30": {
       "lookupEndpoint": {
-        "path": "/tables/bd91d7af-0c3b-4a2d-be22-42c94659cee0/entities/%257bContentType%257d",
+        "path": "/tables/8cf95a36-74a4-45cf-892d-51b5306ee36c/entities/%257bContentType%257d",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1214,5 +682,5 @@
       }
     }
   },
-  "webUrl": "https://afrilandfirstbankcmr.sharepoint.com/sites/work/Lists/DCPO_LISTE_ANORMALIE/AllItems.aspx"
+  "webUrl": "https://afrilandfirstbankcmr.sharepoint.com/sites/work/Lists/DCPO_LISTE_AGENCES/AllItems.aspx"
 }

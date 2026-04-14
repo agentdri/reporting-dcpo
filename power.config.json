@@ -23,7 +23,9 @@
       "displayName": "SharePoint",
       "dataSources": [
         "dcpo_liste_anormalie",
-        "dcpo_liste_user"
+        "dcpo_liste_user",
+        "dcpo_liste_agences",
+        "dcpo_liste_reseaux"
       ],
       "dataSets": {
         "https%253A%252F%252Fafrilandfirstbankcmr.sharepoint.com%252Fsites%252Fwork": {
@@ -33,6 +35,12 @@
             },
             "dcpo_liste_user": {
               "tableName": "7be1433f-976c-45db-9098-880a61a6a640"
+            },
+            "dcpo_liste_agences": {
+              "tableName": "8cf95a36-74a4-45cf-892d-51b5306ee36c"
+            },
+            "dcpo_liste_reseaux": {
+              "tableName": "8ca3ef06-1beb-4b1e-9709-f80c44c3f41f"
             }
           }
         }

@@ -50,6 +50,11 @@ const FIELD_LABELS: Record<string, string> = {
 
 const DATE_FIELDS = ['field_0', 'field_9']
 
+function stripHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  return doc.body.textContent?.trim() ?? ''
+}
+
 function toClaims(email: string) {
   return `i:0#.f|membership|${email}`
 }
@@ -328,6 +333,12 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                           <option value="Fraude">Fraude</option>
                           <option value="Commercial">Commercial</option>
                         </select>
+                      ) : field === 'field_4' ? (
+                        <textarea
+                          value={form[field as keyof FormState] as string}
+                          onChange={e => handleChange(field, e.target.value)}
+                          rows={3}
+                        />
                       ) : DATE_FIELDS.includes(field) ? (
                         <input
                           type="date"
@@ -373,7 +384,7 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                         <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
                         <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
                         <td>{item.field_3 ?? '-'}</td>
-                        <td>{item.field_4 ?? '-'}</td>
+                        <td>{item.field_4 ? stripHtml(item.field_4) : '-'}</td>
                         <td>{item.field_5 ?? '-'}</td>
                         <td>{item.field_6 ?? '-'}</td>
                         <td>{item.field_7 ?? '-'}</td>
