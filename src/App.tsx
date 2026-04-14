@@ -9,7 +9,7 @@ import './App.css'
 const ALLOWED_ROLES = ['Chef_Departement', 'Directeur', 'Controleur']
 
 function App() {
-  const [page, setPage] = useState<'home' | 'dashboard'>('home')
+  const [page, setPage] = useState<'home' | 'dashboard' | 'loading'>('loading')
   const [user, setUser] = useState<GraphUser_V1 | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState(false)
@@ -47,12 +47,18 @@ function App() {
     init()
   }, [])
 
+  useEffect(() => {
+    if (!loading) {
+      setPage(authorized ? 'dashboard' : 'home')
+    }
+  }, [loading, authorized])
+
   if (page === 'dashboard') {
     if (!authorized) {
       setPage('home')
       return null
     }
-    return <Dashboard onBack={() => setPage('home')} userName={user?.displayName} userJobTitle={user?.jobTitle} />
+    return <Dashboard userName={user?.displayName} userRole={userRole ?? undefined} />
   }
 
   if (loading) {

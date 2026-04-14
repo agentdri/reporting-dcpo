@@ -6,9 +6,8 @@ import type { User } from '../generated/models/Office365UsersModel'
 import './Dashboard.css'
 
 interface DashboardProps {
-  onBack: () => void
   userName?: string
-  userJobTitle?: string
+  userRole?: string
 }
 
 type Tab = 'anomalie' | 'reporting'
@@ -55,7 +54,7 @@ function toClaims(email: string) {
   return `i:0#.f|membership|${email}`
 }
 
-export default function Dashboard({ onBack, userName, userJobTitle }: DashboardProps) {
+export default function Dashboard({ userName, userRole }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('anomalie')
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [loading, setLoading] = useState(true)
@@ -207,12 +206,11 @@ export default function Dashboard({ onBack, userName, userJobTitle }: DashboardP
     <div className="dashboard">
       <header className="dashboard-topbar">
         <div className="topbar-left">
-          <button className="btn-back" onClick={onBack}>Retour</button>
           <h1 className="topbar-title">ReportingDCPO</h1>
         </div>
         <div className="topbar-user">
           <span className="topbar-user-name">{userName}</span>
-          <span className="topbar-user-job">{userJobTitle}</span>
+          <span className="topbar-user-job">{userRole}</span>
         </div>
       </header>
 
