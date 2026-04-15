@@ -341,6 +341,7 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                           <option value="">-- Choisir --</option>
                           <option value="Ouvert">Ouvert</option>
                           <option value="En cours">En cours</option>
+                          <option value="Resolu">Resolu</option>
                           <option value="Clos">Clos</option>
                         </select>
                       ) : field === 'field_5' ? (
