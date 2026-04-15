@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
+import { DCPO_LISTE_AGENCESService } from '../generated/services/DCPO_LISTE_AGENCESService'
+import { DCPO_LISTE_RESEAUXService } from '../generated/services/DCPO_LISTE_RESEAUXService'
 import { Office365UsersService } from '../generated/services/Office365UsersService'
 import type { DCPO_LISTE_ANORMALIERead, DCPO_LISTE_ANORMALIEWrite } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
+import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
+import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import type { User } from '../generated/models/Office365UsersModel'
 import './Dashboard.css'
 
@@ -14,7 +18,6 @@ type Tab = 'anomalie' | 'reporting'
 
 interface FormState {
   field_0: string
-  field_3: string
   field_4: string
   field_5: string
   field_6: string
@@ -26,7 +29,6 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   field_0: '',
-  field_3: '',
   field_4: '',
   field_5: '',
   field_6: '',
@@ -38,7 +40,6 @@ const EMPTY_FORM: FormState = {
 
 const FIELD_LABELS: Record<string, string> = {
   field_0: 'Date',
-  field_3: 'Unite',
   field_4: 'Cause',
   field_5: 'Classification',
   field_6: 'Agence',
@@ -66,6 +67,13 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
+
+  // Context menu
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null)
+
+  // Agences & Reseaux
+  const [agences, setAgences] = useState<DCPO_LISTE_AGENCESRead[]>([])
+  const [reseaux, setReseaux] = useState<DCPO_LISTE_RESEAUXRead[]>([])
 
   // Auteur search
   const [auteurSearch, setAuteurSearch] = useState('')
@@ -145,6 +153,19 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
 
   useEffect(() => {
     fetchItems()
+    const loadLists = async () => {
+      try {
+        const [agencesRes, reseauxRes] = await Promise.all([
+          DCPO_LISTE_AGENCESService.getAll(),
+          DCPO_LISTE_RESEAUXService.getAll(),
+        ])
+        if (agencesRes.data) setAgences(agencesRes.data)
+        if (reseauxRes.data) setReseaux(reseauxRes.data)
+      } catch (err) {
+        console.error('Erreur chargement agences/reseaux', err)
+      }
+    }
+    loadLists()
   }, [])
 
   const handleChange = (field: string, value: string | number) => {
@@ -165,7 +186,6 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
     try {
       const payload: Record<string, unknown> = {}
       if (form.field_0) payload.field_0 = form.field_0 + 'T00:00:00Z'
-      if (form.field_3) payload.field_3 = form.field_3
       if (form.field_4) payload.field_4 = form.field_4
       if (form.field_5) payload.field_5 = form.field_5
       if (form.field_6) payload.field_6 = form.field_6
@@ -333,6 +353,28 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                           <option value="Fraude">Fraude</option>
                           <option value="Commercial">Commercial</option>
                         </select>
+                      ) : field === 'field_6' ? (
+                        <select
+                          value={form[field as keyof FormState] as string}
+                          onChange={e => {
+                            const agenceId = e.target.value
+                            handleChange('field_6', agenceId)
+                            const agence = agences.find(a => String(a.ID) === agenceId)
+                            handleChange('field_7', agence?.field_1 ? String(agence.field_1) : '')
+                          }}
+                        >
+                          <option value="">-- Choisir une agence --</option>
+                          {agences.map(a => (
+                            <option key={a.ID} value={String(a.ID)}>{a.Title}</option>
+                          ))}
+                        </select>
+                      ) : field === 'field_7' ? (
+                        <input
+                          type="text"
+                          readOnly
+                          value={reseaux.find(r => String(r.ID) === (form[field as keyof FormState] as string))?.field_1 ?? ''}
+                          placeholder="Selectionner une agence"
+                        />
                       ) : field === 'field_4' ? (
                         <textarea
                           value={form[field as keyof FormState] as string}
@@ -375,6 +417,7 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                       {Object.values(FIELD_LABELS).map(label => (
                         <th key={label}>{label}</th>
                       ))}
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -383,14 +426,25 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                         <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
                         <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
                         <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
-                        <td>{item.field_3 ?? '-'}</td>
                         <td>{item.field_4 ? stripHtml(item.field_4) : '-'}</td>
                         <td>{item.field_5 ?? '-'}</td>
-                        <td>{item.field_6 ?? '-'}</td>
-                        <td>{item.field_7 ?? '-'}</td>
+                        <td>{agences.find(a => String(a.ID) === item.field_6)?.Title ?? item.field_6 ?? '-'}</td>
+                        <td>{reseaux.find(r => String(r.ID) === item.field_7)?.field_1 ?? item.field_7 ?? '-'}</td>
                         <td>{item.field_8 ?? '-'}</td>
                         <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString() : '-'}</td>
                         <td>{item.field_10 ?? '-'}</td>
+                        <td className="action-cell">
+                          <button className="btn-dots" onClick={() => setMenuOpenId(menuOpenId === item.ID ? null : (item.ID ?? null))}>
+                            &#8942;
+                          </button>
+                          {menuOpenId === item.ID && (
+                            <div className="context-menu" onMouseLeave={() => setMenuOpenId(null)}>
+                              <button onClick={() => { console.log('Voir', item.ID); setMenuOpenId(null) }}>Voir</button>
+                              <button onClick={() => { console.log('Modifier', item.ID); setMenuOpenId(null) }}>Modifier</button>
+                              <button className="danger" onClick={() => { console.log('Supprimer', item.ID); setMenuOpenId(null) }}>Supprimer</button>
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
