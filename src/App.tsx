@@ -58,7 +58,7 @@ function App() {
       setPage('home')
       return null
     }
-    return <Dashboard userName={user?.displayName} userRole={userRole ?? undefined} />
+    return <Dashboard userName={user?.displayName} userRole={userRole ?? undefined} userEmail={user?.mail ?? undefined} />
   }
 
   if (loading) {

@@ -12,6 +12,7 @@ import './Dashboard.css'
 interface DashboardProps {
   userName?: string
   userRole?: string
+  userEmail?: string
 }
 
 type Tab = 'anomalie' | 'reporting'
@@ -60,7 +61,7 @@ function toClaims(email: string) {
   return `i:0#.f|membership|${email}`
 }
 
-export default function Dashboard({ userName, userRole }: DashboardProps) {
+export default function Dashboard({ userName, userRole, userEmail }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('anomalie')
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [loading, setLoading] = useState(true)
@@ -81,11 +82,13 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
   const [auteurResults, setAuteurResults] = useState<User[]>([])
   const [showAuteurDropdown, setShowAuteurDropdown] = useState(false)
 
-  // Declarant search
-  const [declarantSearch, setDeclarantSearch] = useState('')
-  const [declarantEmail, setDeclarantEmail] = useState('')
-  const [declarantResults, setDeclarantResults] = useState<User[]>([])
-  const [showDeclarantDropdown, setShowDeclarantDropdown] = useState(false)
+  // Personne affectee search
+  const [affecteSearch, setAffecteSearch] = useState('')
+  const [affecteEmail, setAffecteEmail] = useState('')
+  const [affecteResults, setAffecteResults] = useState<User[]>([])
+  const [showAffecteDropdown, setShowAffecteDropdown] = useState(false)
+
+  // Declarant = utilisateur connecte
 
   const searchAuteur = async (term: string) => {
     setAuteurSearch(term)
@@ -112,30 +115,32 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
     setAuteurResults([])
   }
 
-  const searchDeclarant = async (term: string) => {
-    setDeclarantSearch(term)
+  const searchAffecte = async (term: string) => {
+    setAffecteSearch(term)
     if (term.length < 2) {
-      setDeclarantResults([])
-      setShowDeclarantDropdown(false)
+      setAffecteResults([])
+      setShowAffecteDropdown(false)
       return
     }
     try {
       const result = await Office365UsersService.SearchUser(term, 10)
       if (result.data) {
-        setDeclarantResults(result.data)
-        setShowDeclarantDropdown(true)
+        setAffecteResults(result.data)
+        setShowAffecteDropdown(true)
       }
     } catch (err) {
-      console.error('Erreur recherche declarant', err)
+      console.error('Erreur recherche personne affectee', err)
     }
   }
 
-  const selectDeclarant = (u: User) => {
-    setDeclarantEmail(u.Mail ?? '')
-    setDeclarantSearch(u.DisplayName ?? u.Mail ?? '')
-    setShowDeclarantDropdown(false)
-    setDeclarantResults([])
+  const selectAffecte = (u: User) => {
+    setAffecteEmail(u.Mail ?? '')
+    setAffecteSearch(u.DisplayName ?? u.Mail ?? '')
+    setShowAffecteDropdown(false)
+    setAffecteResults([])
   }
+
+
 
   const fetchItems = async () => {
     setLoading(true)
@@ -176,8 +181,8 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
     setForm(EMPTY_FORM)
     setAuteurSearch('')
     setAuteurEmail('')
-    setDeclarantSearch('')
-    setDeclarantEmail('')
+    setAffecteSearch('')
+    setAffecteEmail('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -201,10 +206,17 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
         }
       }
 
-      if (declarantEmail) {
+      if (userEmail) {
         payload['declarant_anormalie'] = {
           '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
-          Claims: toClaims(declarantEmail),
+          Claims: toClaims(userEmail),
+        }
+      }
+
+      if (affecteEmail) {
+        payload['personneAffecter'] = {
+          '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+          Claims: toClaims(affecteEmail),
         }
       }
 
@@ -265,6 +277,29 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
               </button>
             </div>
 
+            <div className="stats-cards">
+              <div className="stat-card total">
+                <span className="stat-value">{items.length}</span>
+                <span className="stat-label">Total</span>
+              </div>
+              <div className="stat-card ouvert">
+                <span className="stat-value">{items.filter(i => i.field_10 === 'Ouvert').length}</span>
+                <span className="stat-label">Ouvert</span>
+              </div>
+              <div className="stat-card en-cours">
+                <span className="stat-value">{items.filter(i => i.field_10 === 'En cours').length}</span>
+                <span className="stat-label">En cours</span>
+              </div>
+              <div className="stat-card resolu">
+                <span className="stat-value">{items.filter(i => i.field_10 === 'Resolu').length}</span>
+                <span className="stat-label">Resolu</span>
+              </div>
+              <div className="stat-card clos">
+                <span className="stat-value">{items.filter(i => i.field_10 === 'Clos').length}</span>
+                <span className="stat-label">Clos</span>
+              </div>
+            </div>
+
             {showForm && (
               <form className="create-form" onSubmit={handleSubmit}>
                 <h2>Creer une anomalie</h2>
@@ -272,28 +307,8 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                   {/* Declarant */}
                   <div className="form-field">
                     <label>Declarant</label>
-                    <div className="autocomplete-wrapper">
-                      <input
-                        type="text"
-                        value={declarantSearch}
-                        placeholder="Rechercher un declarant..."
-                        onChange={e => searchDeclarant(e.target.value)}
-                        onBlur={() => setTimeout(() => setShowDeclarantDropdown(false), 200)}
-                      />
-                      {declarantEmail && (
-                        <span className="selected-email">{declarantEmail}</span>
-                      )}
-                      {showDeclarantDropdown && declarantResults.length > 0 && (
-                        <ul className="autocomplete-dropdown">
-                          {declarantResults.map(u => (
-                            <li key={u.Id} onClick={() => selectDeclarant(u)}>
-                              <strong>{u.DisplayName}</strong>
-                              <span>{u.Mail}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                    <input type="text" readOnly value={userName ?? ''} />
+                    <span className="selected-email">{userEmail}</span>
                   </div>
 
                   {/* Auteur */}
@@ -314,6 +329,33 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                         <ul className="autocomplete-dropdown">
                           {auteurResults.map(u => (
                             <li key={u.Id} onClick={() => selectAuteur(u)}>
+                              <strong>{u.DisplayName}</strong>
+                              <span>{u.Mail}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Personne affectee */}
+                  <div className="form-field">
+                    <label>Personne affectee</label>
+                    <div className="autocomplete-wrapper">
+                      <input
+                        type="text"
+                        value={affecteSearch}
+                        placeholder="Rechercher une personne..."
+                        onChange={e => searchAffecte(e.target.value)}
+                        onBlur={() => setTimeout(() => setShowAffecteDropdown(false), 200)}
+                      />
+                      {affecteEmail && (
+                        <span className="selected-email">{affecteEmail}</span>
+                      )}
+                      {showAffecteDropdown && affecteResults.length > 0 && (
+                        <ul className="autocomplete-dropdown">
+                          {affecteResults.map(u => (
+                            <li key={u.Id} onClick={() => selectAffecte(u)}>
                               <strong>{u.DisplayName}</strong>
                               <span>{u.Mail}</span>
                             </li>
@@ -386,6 +428,7 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                         <input
                           type="date"
                           value={form[field as keyof FormState] as string}
+                          max={field === 'field_0' ? new Date().toISOString().split('T')[0] : undefined}
                           onChange={e => handleChange(field, e.target.value)}
                         />
                       ) : (
@@ -415,6 +458,7 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                     <tr>
                       <th>Declarant</th>
                       <th>Auteur</th>
+                      <th>Personne affectee</th>
                       {Object.values(FIELD_LABELS).map(label => (
                         <th key={label}>{label}</th>
                       ))}
@@ -426,6 +470,7 @@ export default function Dashboard({ userName, userRole }: DashboardProps) {
                       <tr key={item.ID}>
                         <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
                         <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
+                        <td>{item.personneAffecter?.DisplayName ?? '-'}</td>
                         <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
                         <td>{item.field_4 ? stripHtml(item.field_4) : '-'}</td>
                         <td>{item.field_5 ?? '-'}</td>
