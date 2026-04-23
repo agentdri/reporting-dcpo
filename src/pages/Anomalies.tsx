@@ -64,6 +64,9 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
 
+  // Detail modale
+  const [detailItem, setDetailItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
+
   // Affectation modale
   const [affectItemId, setAffectItemId] = useState<number | null>(null)
   const [affectSearch, setAffectSearch] = useState('')
@@ -403,14 +406,45 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                   <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString() : '-'}</td>
                   <td>{item.field_10 ?? '-'}</td>
                   <td>
-                    <button className="btn-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
-                      Affecter
-                    </button>
+                    <div className="actions-col">
+                      <button className="btn-detail" onClick={() => setDetailItem(item)}>
+                        Detail
+                      </button>
+                      <button className="btn-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
+                        Affecter
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {detailItem && (
+        <div className="modal-overlay" onClick={() => setDetailItem(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 560 }}>
+            <div className="modal-header">
+              <h2>Detail de l'anomalie</h2>
+              <button className="modal-close" onClick={() => setDetailItem(null)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <dl className="detail-grid">
+                <dt>Declarant</dt><dd>{detailItem.declarant_anormalie?.DisplayName ?? '-'}</dd>
+                <dt>Auteur</dt><dd>{detailItem.auteur_anormalie?.DisplayName ?? '-'}</dd>
+                <dt>Personne affectee</dt><dd>{detailItem.personneAffecter?.DisplayName ?? '-'}</dd>
+                <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
+                <dt>Cause</dt><dd>{detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}</dd>
+                <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
+                <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
+                <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
+                <dt>Montant</dt><dd>{detailItem.field_8?.toLocaleString() ?? '-'}</dd>
+                <dt>Date regularisation</dt><dd>{detailItem.field_9 ? new Date(detailItem.field_9).toLocaleDateString() : '-'}</dd>
+                <dt>Statut</dt><dd>{detailItem.field_10 ?? '-'}</dd>
+              </dl>
+            </div>
+          </div>
         </div>
       )}
 
