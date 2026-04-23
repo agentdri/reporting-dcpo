@@ -48,6 +48,19 @@ const FIELD_LABELS: Record<string, string> = {
 
 const DATE_FIELDS = ['field_0', 'field_9']
 
+const ATTACHMENT_API_URL = 'https://e78a17afcaf0e888989bbeca000173.f8.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/19d148d0144041f49ec16f59e318d7db/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=0Yeg1G81xgXL1XUkBAyoHpqdtpFq1PbZrJJPLmixw1M'
+
+// TODO: remplacer par l'URL du flow Power Automate qui renvoie les pieces jointes
+// Reponse attendue: [{ fileName, fileContent?: string (base64), url?: string, contentType?: string }]
+const ATTACHMENTS_GET_API_URL = ''
+
+interface AttachmentInfo {
+  fileName: string
+  fileContent?: string
+  url?: string
+  contentType?: string
+}
+
 function stripHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   return doc.body.textContent?.trim() ?? ''
@@ -57,15 +70,32 @@ function toClaims(email: string) {
   return `i:0#.f|membership|${email}`
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      const base64 = result.includes(',') ? result.split(',')[1] : result
+      resolve(base64)
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
+  const [attachment, setAttachment] = useState<File | null>(null)
 
   // Detail modale
   const [detailItem, setDetailItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
+  const [detailAttachments, setDetailAttachments] = useState<AttachmentInfo[]>([])
+  const [detailAttachmentsLoading, setDetailAttachmentsLoading] = useState(false)
+  const [detailAttachmentsError, setDetailAttachmentsError] = useState<string | null>(null)
 
   // Affectation modale
   const [affectItemId, setAffectItemId] = useState<number | null>(null)
@@ -184,6 +214,88 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     setForm(EMPTY_FORM)
     setAuteurSearch(''); setAuteurEmail('')
     setAffecteFormSearch(''); setAffecteFormEmail('')
+    setAttachment(null)
+  }
+
+  const fetchAttachments = async (itemId: string) => {
+    if (!ATTACHMENTS_GET_API_URL) {
+      setDetailAttachmentsError('URL API pour recuperer les pieces jointes non configuree')
+      return
+    }
+    setDetailAttachmentsLoading(true)
+    setDetailAttachmentsError(null)
+    try {
+      const response = await fetch(ATTACHMENTS_GET_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idItem: itemId, Choise: 'Visite' }),
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = await response.json()
+      const list: AttachmentInfo[] = Array.isArray(data) ? data : (data.attachments ?? data.value ?? [])
+      setDetailAttachments(list)
+    } catch (err) {
+      console.error('Erreur chargement pieces jointes', err)
+      setDetailAttachmentsError('Impossible de charger les pieces jointes')
+      setDetailAttachments([])
+    } finally {
+      setDetailAttachmentsLoading(false)
+    }
+  }
+
+  const openDetail = (item: DCPO_LISTE_ANORMALIERead) => {
+    setDetailItem(item)
+    setDetailAttachments([])
+    setDetailAttachmentsError(null)
+    if (item.ID != null) fetchAttachments(String(item.ID))
+  }
+
+  const closeDetail = () => {
+    setDetailItem(null)
+    setDetailAttachments([])
+    setDetailAttachmentsError(null)
+  }
+
+  const guessContentType = (fileName: string, fallback?: string) => {
+    if (fallback) return fallback
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
+    const map: Record<string, string> = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+      bmp: 'image/bmp', webp: 'image/webp', pdf: 'application/pdf',
+    }
+    return map[ext] ?? 'application/octet-stream'
+  }
+
+  const buildAttachmentHref = (att: AttachmentInfo) => {
+    if (att.url) return att.url
+    if (att.fileContent) {
+      const ct = guessContentType(att.fileName, att.contentType)
+      return `data:${ct};base64,${att.fileContent}`
+    }
+    return ''
+  }
+
+  const isImageAttachment = (att: AttachmentInfo) => {
+    const ct = guessContentType(att.fileName, att.contentType)
+    return ct.startsWith('image/')
+  }
+
+  const uploadAttachment = async (itemId: string, file: File) => {
+    const fileContent = await fileToBase64(file)
+    const response = await fetch(ATTACHMENT_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileContent,
+        Choise: 'Visite',
+        idItem: itemId,
+      }),
+    })
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Echec upload piece jointe (${response.status}): ${errorText}`)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -221,6 +333,14 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
 
       const result = await DCPO_LISTE_ANORMALIEService.create(payload as Omit<DCPO_LISTE_ANORMALIEWrite, 'ID'>)
       if (!result.success) { console.error('Erreur SharePoint:', result.error); return }
+
+      if (attachment && result.data?.ID) {
+        try {
+          await uploadAttachment(String(result.data.ID), attachment)
+        } catch (err) {
+          console.error('Erreur upload piece jointe:', err)
+        }
+      }
 
       resetForm()
       setShowForm(false)
@@ -366,6 +486,13 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                 )}
               </div>
             ))}
+
+            <div className="form-field">
+              <label>Piece jointe</label>
+              <input type="file"
+                onChange={e => setAttachment(e.target.files?.[0] ?? null)} />
+              {attachment && <span className="selected-email">{attachment.name}</span>}
+            </div>
           </div>
           <button className="btn-submit" type="submit" disabled={submitting}>
             {submitting ? 'Enregistrement...' : 'Enregistrer'}
@@ -407,7 +534,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                   <td>{item.field_10 ?? '-'}</td>
                   <td>
                     <div className="actions-col">
-                      <button className="btn-detail" onClick={() => setDetailItem(item)}>
+                      <button className="btn-detail" onClick={() => openDetail(item)}>
                         Detail
                       </button>
                       <button className="btn-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
@@ -423,11 +550,11 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
       )}
 
       {detailItem && (
-        <div className="modal-overlay" onClick={() => setDetailItem(null)}>
+        <div className="modal-overlay" onClick={closeDetail}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 560 }}>
             <div className="modal-header">
               <h2>Detail de l'anomalie</h2>
-              <button className="modal-close" onClick={() => setDetailItem(null)}>&times;</button>
+              <button className="modal-close" onClick={closeDetail}>&times;</button>
             </div>
             <div className="modal-body">
               <dl className="detail-grid">
@@ -443,6 +570,38 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                 <dt>Date regularisation</dt><dd>{detailItem.field_9 ? new Date(detailItem.field_9).toLocaleDateString() : '-'}</dd>
                 <dt>Statut</dt><dd>{detailItem.field_10 ?? '-'}</dd>
               </dl>
+
+              <div className="detail-attachments" style={{ marginTop: 16 }}>
+                <h3 style={{ marginBottom: 8 }}>Pieces jointes</h3>
+                {detailAttachmentsLoading ? (
+                  <p className="loading-text">Chargement...</p>
+                ) : detailAttachmentsError ? (
+                  <p className="loading-text">{detailAttachmentsError}</p>
+                ) : detailAttachments.length === 0 ? (
+                  <p className="loading-text">Aucune piece jointe.</p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {detailAttachments.map((att, idx) => {
+                      const href = buildAttachmentHref(att)
+                      return (
+                        <li key={idx} style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+                          {isImageAttachment(att) && href && (
+                            <img src={href} alt={att.fileName}
+                              style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }} />
+                          )}
+                          {href ? (
+                            <a href={href} download={att.fileName} target="_blank" rel="noreferrer">
+                              {att.fileName}
+                            </a>
+                          ) : (
+                            <span>{att.fileName}</span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
         </div>
