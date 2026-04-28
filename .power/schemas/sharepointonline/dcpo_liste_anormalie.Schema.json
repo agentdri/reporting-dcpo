@@ -29,6 +29,7 @@
       "filterable": true,
       "nonFilterableProperties": [
         "field_4",
+        "urlPieceJointe",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -782,6 +783,28 @@
             "thumbnailProperty": "Picture"
           }
         },
+        "urlPieceJointe": {
+          "title": "urlPieceJointe",
+          "description": "le champ pour l'url de la pièce jointe",
+          "type": "string",
+          "format": "uri",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc"
+        },
+        "criticiteAnomalie": {
+          "title": "criticiteAnomalie",
+          "description": "le champ pour la criticité de l'anomalie",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
         "OData__ColorTag": {
           "title": "Balise de couleur",
           "type": "string",
@@ -1113,6 +1136,8 @@
           "auteur_anormalie",
           "declarant_anormalie",
           "personneAffecter",
+          "urlPieceJointe",
+          "criticiteAnomalie",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -1133,7 +1158,10 @@
           "Editor",
           "personneAffecter",
           "auteur_anormalie",
-          "declarant_anormalie"
+          "declarant_anormalie",
+          "urlPieceJointe",
+          "criticiteAnomalie",
+          "ID"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -1153,7 +1181,10 @@
           "Editor",
           "personneAffecter",
           "auteur_anormalie",
-          "declarant_anormalie"
+          "declarant_anormalie",
+          "urlPieceJointe",
+          "criticiteAnomalie",
+          "ID"
         ]
       }
     }

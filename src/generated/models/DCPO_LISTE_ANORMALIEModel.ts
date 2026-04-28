@@ -73,6 +73,8 @@ export interface DCPO_LISTE_ANORMALIEBase {
   "personneAffecter#Claims"?: string;
   "auteur_anormalie#Claims"?: string;
   "declarant_anormalie#Claims"?: string;
+  urlPieceJointe?: string;
+  criticiteAnomalie?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   Modified?: string;
