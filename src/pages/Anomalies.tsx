@@ -53,8 +53,8 @@ const DATE_FIELDS = ['field_0', 'field_9']
 
 const CRITICITE_OPTIONS = ['Faible', 'Moyenne', 'Haute', 'Critique']
 
-const ATTACHMENT_API_URL = 'https://e78a17afcaf0e888989bbeca000173.f8.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/19d148d0144041f49ec16f59e318d7db/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=0Yeg1G81xgXL1XUkBAyoHpqdtpFq1PbZrJJPLmixw1M'
-
+//const ATTACHMENT_API_URL = 'https://e78a17afcaf0e888989bbeca000173.f8.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/19d148d0144041f49ec16f59e318d7db/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=0Yeg1G81xgXL1XUkBAyoHpqdtpFq1PbZrJJPLmixw1M'
+const ATTACHMENT_API_URL = 'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/a8ced63bd1314a7897003b97eebd85e9/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=EdDW19nkBl6pWigNfp0OQPaiSIjBwyhAuWeTO3s8b8E'
 interface UploadResponse {
   success: boolean
   sharePointId?: number
@@ -183,7 +183,9 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const result = await DCPO_LISTE_ANORMALIEService.getAll()
+      const result = await DCPO_LISTE_ANORMALIEService.getAll({
+        orderBy: ['Created desc'],
+      })
       if (result.data) setItems(result.data)
     } catch (err) { console.error('Erreur chargement anomalies', err) }
     finally { setLoading(false) }
