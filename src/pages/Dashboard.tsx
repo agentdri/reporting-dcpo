@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import Anomalies from './Anomalies'
 import ReportingAgent from './ReportingAgent'
+import ActiviteControleur from './ActiviteControleur'
+import PlanControle from './PlanControle'
+import PlanActionCorrectif from './PlanActionCorrectif'
 import './Dashboard.css'
 
 interface DashboardProps {
@@ -9,7 +12,12 @@ interface DashboardProps {
   userEmail?: string
 }
 
-type Tab = 'anomalie' | 'reporting-agent'
+type Tab =
+  | 'anomalie'
+  | 'reporting-agent'
+  | 'activite-controleur'
+  | 'plan-controle'
+  | 'plan-action-correctif'
 
 export default function Dashboard({ userName, userRole, userEmail }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('anomalie')
@@ -40,15 +48,34 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
           >
             Reporting par Agent
           </button>
+          <button
+            className={`nav-item ${activeTab === 'activite-controleur' ? 'active' : ''}`}
+            onClick={() => setActiveTab('activite-controleur')}
+          >
+            Activite Controleur
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'plan-controle' ? 'active' : ''}`}
+            onClick={() => setActiveTab('plan-controle')}
+          >
+            Plan de Controle
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'plan-action-correctif' ? 'active' : ''}`}
+            onClick={() => setActiveTab('plan-action-correctif')}
+          >
+            Plan d'Action Correctif
+          </button>
         </nav>
 
         <div className="dashboard-content">
           {activeTab === 'anomalie' && (
             <Anomalies userName={userName} userEmail={userEmail} />
           )}
-          {activeTab === 'reporting-agent' && (
-            <ReportingAgent />
-          )}
+          {activeTab === 'reporting-agent' && <ReportingAgent />}
+          {activeTab === 'activite-controleur' && <ActiviteControleur />}
+          {activeTab === 'plan-controle' && <PlanControle />}
+          {activeTab === 'plan-action-correctif' && <PlanActionCorrectif />}
         </div>
       </div>
     </div>

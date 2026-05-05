@@ -92,6 +92,14 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   const [submitting, setSubmitting] = useState(false)
   const [attachment, setAttachment] = useState<File | null>(null)
 
+  // Filtres
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterAgence, setFilterAgence] = useState('')
+  const [filterReseau, setFilterReseau] = useState('')
+  const [filterClassification, setFilterClassification] = useState('')
+  const [filterCriticite, setFilterCriticite] = useState('')
+
   // Detail modale
   const [detailItem, setDetailItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
 
@@ -180,19 +188,46 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     setAffectResults([])
   }
 
+  const buildFilter = () => {
+    const clauses: string[] = []
+    if (filterDateFrom) {
+      clauses.push(`Created ge '${filterDateFrom}T00:00:00Z'`)
+    }
+    if (filterDateTo) {
+      clauses.push(`Created le '${filterDateTo}T23:59:59Z'`)
+    }
+    if (filterAgence) clauses.push(`field_6 eq '${filterAgence}'`)
+    if (filterReseau) clauses.push(`field_7 eq '${filterReseau}'`)
+    if (filterClassification) clauses.push(`field_5 eq '${filterClassification}'`)
+    if (filterCriticite) clauses.push(`criticiteAnomalie eq '${filterCriticite}'`)
+    return clauses.join(' and ')
+  }
+
   const fetchItems = async () => {
     setLoading(true)
     try {
-      const result = await DCPO_LISTE_ANORMALIEService.getAll({
+      const filter = buildFilter()
+      const options: { orderBy: string[]; filter?: string } = {
         orderBy: ['Created desc'],
-      })
+      }
+      if (filter) options.filter = filter
+
+      const result = await DCPO_LISTE_ANORMALIEService.getAll(options)
       if (result.data) setItems(result.data)
     } catch (err) { console.error('Erreur chargement anomalies', err) }
     finally { setLoading(false) }
   }
 
+  const resetFilters = () => {
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterAgence('')
+    setFilterReseau('')
+    setFilterClassification('')
+    setFilterCriticite('')
+  }
+
   useEffect(() => {
-    fetchItems()
     const loadLists = async () => {
       try {
         const [agencesRes, reseauxRes] = await Promise.all([
@@ -205,6 +240,11 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     }
     loadLists()
   }, [])
+
+  useEffect(() => {
+    fetchItems()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterDateFrom, filterDateTo, filterAgence, filterReseau, filterClassification, filterCriticite])
 
   const handleChange = (field: string, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -339,6 +379,54 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
           <span className="stat-value">{items.reduce((s, i) => s + (i.field_8 ?? 0), 0).toLocaleString()}</span>
           <span className="stat-label">Montant total</span>
         </div>
+      </div>
+
+      <div className="filters-bar">
+        <div className="filter-field">
+          <label>Date du</label>
+          <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Date au</label>
+          <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+        </div>
+        <div className="filter-field">
+          <label>Agence</label>
+          <select value={filterAgence} onChange={e => setFilterAgence(e.target.value)}>
+            <option value="">Toutes</option>
+            {agences.map(a => (
+              <option key={a.ID} value={String(a.ID)}>{a.Title}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Reseau</label>
+          <select value={filterReseau} onChange={e => setFilterReseau(e.target.value)}>
+            <option value="">Tous</option>
+            {reseaux.map(r => (
+              <option key={r.ID} value={String(r.ID)}>{r.field_1 ?? r.Title}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Classification</label>
+          <select value={filterClassification} onChange={e => setFilterClassification(e.target.value)}>
+            <option value="">Toutes</option>
+            <option value="Operationnel">Operationnel</option>
+            <option value="Fraude">Fraude</option>
+            <option value="Commercial">Commercial</option>
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Criticite</label>
+          <select value={filterCriticite} onChange={e => setFilterCriticite(e.target.value)}>
+            <option value="">Toutes</option>
+            {CRITICITE_OPTIONS.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <button className="btn-reset-filters" onClick={resetFilters}>Reinitialiser</button>
       </div>
 
       {showForm && (

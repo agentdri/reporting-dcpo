@@ -162,6 +162,67 @@
   cursor: not-allowed;
 }
 
+/* Filters */
+.filters-bar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  background: #fff;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.filter-field label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.filter-field input,
+.filter-field select {
+  padding: 7px 9px;
+  border: 1px solid #d0d0d0;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.filter-field input:focus,
+.filter-field select:focus {
+  outline: none;
+  border-color: #e63946;
+  box-shadow: 0 0 0 2px rgba(230, 57, 70, 0.15);
+}
+
+.btn-reset-filters {
+  padding: 8px 14px;
+  border: 1px solid #1a1a2e;
+  background: transparent;
+  color: #1a1a2e;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  height: 33px;
+}
+
+.btn-reset-filters:hover {
+  background: #1a1a2e;
+  color: #fff;
+}
+
 /* Stats cards */
 .stats-cards {
   display: flex;
