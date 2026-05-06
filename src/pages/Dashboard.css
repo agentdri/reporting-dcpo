@@ -206,16 +206,35 @@
   box-shadow: 0 0 0 2px rgba(230, 57, 70, 0.15);
 }
 
-.btn-reset-filters {
+.btn-reset-filters,
+.btn-search-filters {
   padding: 8px 14px;
-  border: 1px solid #1a1a2e;
-  background: transparent;
-  color: #1a1a2e;
   border-radius: 5px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   height: 33px;
+}
+
+.btn-search-filters {
+  border: none;
+  background: #e63946;
+  color: #fff;
+}
+
+.btn-search-filters:hover:not(:disabled) {
+  background: #c62828;
+}
+
+.btn-search-filters:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-reset-filters {
+  border: 1px solid #1a1a2e;
+  background: transparent;
+  color: #1a1a2e;
 }
 
 .btn-reset-filters:hover {

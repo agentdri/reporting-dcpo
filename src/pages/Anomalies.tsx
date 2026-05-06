@@ -218,15 +218,6 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     finally { setLoading(false) }
   }
 
-  const resetFilters = () => {
-    setFilterDateFrom('')
-    setFilterDateTo('')
-    setFilterAgence('')
-    setFilterReseau('')
-    setFilterClassification('')
-    setFilterCriticite('')
-  }
-
   useEffect(() => {
     const loadLists = async () => {
       try {
@@ -239,12 +230,23 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
       } catch (err) { console.error('Erreur chargement agences/reseaux', err) }
     }
     loadLists()
-  }, [])
-
-  useEffect(() => {
     fetchItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterDateFrom, filterDateTo, filterAgence, filterReseau, filterClassification, filterCriticite])
+  }, [])
+
+  const handleSearch = () => {
+    fetchItems()
+  }
+
+  const handleResetFilters = () => {
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterAgence('')
+    setFilterReseau('')
+    setFilterClassification('')
+    setFilterCriticite('')
+    setTimeout(() => fetchItems(), 0)
+  }
 
   const handleChange = (field: string, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -426,7 +428,10 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
             ))}
           </select>
         </div>
-        <button className="btn-reset-filters" onClick={resetFilters}>Reinitialiser</button>
+        <button className="btn-search-filters" onClick={handleSearch} disabled={loading}>
+          {loading ? 'Recherche...' : 'Rechercher'}
+        </button>
+        <button className="btn-reset-filters" onClick={handleResetFilters}>Reinitialiser</button>
       </div>
 
       {showForm && (
