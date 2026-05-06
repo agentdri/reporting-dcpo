@@ -1,16 +1,16 @@
 {
   "version": "1.0",
-  "appId": "694f32ec-28a1-48d8-bca9-883ee6a9e3ba",
-  "appDisplayName": "reportingDcpoApp",
+  "appId": "ff799986-b8e9-4be4-a734-8fc177901e0a",
+  "appDisplayName": "Reporting-Version-DCPO",
   "region": "prod",
-  "environmentId": "79233379-6c09-ea1d-97f4-43e42bfc5b08",
+  "environmentId": "e78a17af-caf0-e888-989b-beca000173f8",
   "description": "",
   "buildPath": "./dist",
   "buildEntryPoint": "index.html",
   "localAppUrl": "http://localhost:3000",
   "logoPath": "Default",
   "connectionReferences": {
-    "693297d8-d364-4ca2-b705-3ffbf1aecfca": {
+    "3b4399fa-8613-4963-8167-47c0938e9511": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_office365users",
       "displayName": "Office 365 Users",
       "dataSources": [
@@ -18,14 +18,14 @@
       ],
       "dataSets": {}
     },
-    "b662c018-82f3-4b13-ba63-27e85218d0fe": {
+    "d8cfb451-0bc3-4a34-b1c2-7b59436fbae8": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
       "displayName": "SharePoint",
       "dataSources": [
         "dcpo_liste_anormalie",
-        "dcpo_liste_user",
         "dcpo_liste_agences",
-        "dcpo_liste_reseaux"
+        "dcpo_liste_reseaux",
+        "dcpo_liste_user"
       ],
       "dataSets": {
         "https%253A%252F%252Fafrilandfirstbankcmr.sharepoint.com%252Fsites%252Fwork": {
@@ -33,14 +33,14 @@
             "dcpo_liste_anormalie": {
               "tableName": "bd91d7af-0c3b-4a2d-be22-42c94659cee0"
             },
-            "dcpo_liste_user": {
-              "tableName": "7be1433f-976c-45db-9098-880a61a6a640"
-            },
             "dcpo_liste_agences": {
               "tableName": "8cf95a36-74a4-45cf-892d-51b5306ee36c"
             },
             "dcpo_liste_reseaux": {
               "tableName": "8ca3ef06-1beb-4b1e-9709-f80c44c3f41f"
+            },
+            "dcpo_liste_user": {
+              "tableName": "7be1433f-976c-45db-9098-880a61a6a640"
             }
           }
         }

@@ -4,7 +4,7 @@
   "type": "Microsoft.PowerApps/apis",
   "properties": {
     "displayName": "Office 365 Users",
-    "iconUri": "https://conn-afd-prod-endpoint-bmc9bqahasf3grgk.b01.azurefd.net/releases/v1.0.1788/1.0.1788.4544/office365users/icon.png",
+    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1807/1.0.1807.4725/office365users/icon.png",
     "iconBrandColor": "#FFFFFF",
     "apiEnvironment": "Shared",
     "isCustomApi": false,
@@ -73,7 +73,7 @@
           "email": "idcknowledgeeco@microsoft.com"
         }
       },
-      "host": "usa002-004.azure-apihub.net",
+      "host": "e78a17af-caf0-e888-989b-beca000173f8.03.common.france.azure-apihub.net",
       "basePath": "/apim/office365users",
       "schemes": [
         "https"
@@ -2056,17 +2056,17 @@
       }
     },
     "runtimeUrls": [
-      "https://usa002-004.azure-apihub.net/apim/office365users"
+      "https://e78a17af-caf0-e888-989b-beca000173f8.03.common.france.azure-apihub.net/apim/office365users"
     ],
-    "primaryRuntimeUrl": "https://usa002-004.azure-apihub.net/apim/office365users",
-    "doNotUseApiHubNetRuntimeUrl": "https://usa002-004.azure-apihub.net/apim/office365users",
+    "primaryRuntimeUrl": "https://e78a17af-caf0-e888-989b-beca000173f8.03.common.france.azure-apihub.net/apim/office365users",
+    "doNotUseApiHubNetRuntimeUrl": "https://e78a17af-caf0-e888-989b-beca000173f8.03.common.france.azure-apihub.net/apim/office365users",
     "metadata": {
       "source": "marketplace",
       "brandColor": "#FFFFFF",
       "useNewApimVersion": "true",
       "version": {
-        "previous": "releases/v1.0.1788\\1.0.1788.4524",
-        "current": "releases/v1.0.1788\\1.0.1788.4544"
+        "previous": "releases/v1.0.1788\\1.0.1788.4544",
+        "current": "releases/v1.0.1807\\1.0.1807.4725"
       }
     },
     "capabilities": [
@@ -2074,8 +2074,8 @@
     ],
     "interfaces": {},
     "description": "Office 365 Users Connection provider lets you access user profiles in your organization using your Office 365 account. You can perform various actions such as get your profile, a user's profile, a user's manager or direct reports and also update a user profile.",
-    "createdTime": "2024-03-26T19:22:24.6319451Z",
-    "changedTime": "2026-03-01T04:05:18.9390002Z",
+    "createdTime": "2019-06-10T17:45:01.1501648Z",
+    "changedTime": "2026-04-20T17:00:44.5498031Z",
     "releaseTag": "Production",
     "tier": "Standard",
     "publisher": "Microsoft",

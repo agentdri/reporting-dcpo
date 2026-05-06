@@ -10,8 +10,6 @@ import { dataSourcesInfo } from '../../../.power/schemas/appschemas/dataSourcesI
 import { getPowerSdkInstance } from '@pa-client/power-code-sdk';
 
 
-
-
 export class DCPO_LISTE_ANORMALIEService {
   private static readonly dataSourceName = 'dcpo_liste_anormalie';
 
