@@ -863,7 +863,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
           <table className={`data-table anomalies-table ${expandedColumns ? 'is-expanded' : 'is-compact'}`}>
             <thead>
               <tr>
-                <th className="col-ticket">Ticket</th>
+                <th className="col-ticket">Numéro</th>
                 <th className="col-status">Statut</th>
                 <th className="col-date">Date</th>
                 <th className="col-criticite">Criticité</th>
@@ -896,18 +896,16 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
               </tr>
             </thead>
             <tbody>
-              {items.map(item => (
+              {items.map((item, index) => (
                 <tr key={item.ID}>
                   <td className="col-ticket">
-                    <button
-                      type="button"
+                    <span
                       className={`ticket-badge ${statusBadgeClass(item.field_10)}`}
-                      onClick={() => setTicketItem(item)}
-                      aria-label={`Ouvrir le ticket T-${item.ID}, statut ${item.field_10 ?? 'inconnu'}`}
+                      aria-label={`Ticket #${index + 1}, statut ${item.field_10 ?? 'inconnu'}`}
                     >
                       <span className="ticket-badge-icon" aria-hidden="true">{statusIcon(item.field_10)}</span>
-                      <span className="ticket-badge-num">T-{item.ID}</span>
-                    </button>
+                      <span className="ticket-badge-num">T-{index + 1}</span>
+                    </span>
                   </td>
                   <td className="col-status">
                     <span className={`status-chip ${statusBadgeClass(item.field_10)}`}>
@@ -942,8 +940,8 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                       <button type="button" className="btn-cta btn-cta-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
                         Affecter
                       </button>
-                      <button type="button" className="btn-cta btn-cta-status" onClick={() => openStatusModal(item)}>
-                        Statut
+                      <button type="button" className="btn-cta btn-cta-status" onClick={() => setTicketItem(item)}>
+                        Ticket
                       </button>
                     </div>
                   </td>
@@ -1089,6 +1087,13 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                   onClick={() => { setTicketItem(null); setDetailItem(ticketItem) }}
                 >
                   Voir le détail complet
+                </button>
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-status"
+                  onClick={() => { const t = ticketItem; setTicketItem(null); openStatusModal(t) }}
+                >
+                  Changer le statut
                 </button>
                 {ticketItem.field_10 !== 'Clos' && (
                   <button
