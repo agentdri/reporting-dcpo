@@ -404,19 +404,37 @@
 
 /* Modale détail manager */
 .manager-modal {
-  width: 720px;
-  max-width: 95vw;
-  max-height: calc(100vh - 48px);
-  display: flex;
-  flex-direction: column;
+  width: min(740px, 100%);
 }
 
 .manager-modal-body {
-  padding: 18px 22px;
+  padding: clamp(14px, 3vw, 22px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 540px) {
+  .manager-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .manager-decision-actions {
+    flex-direction: column-reverse;
+  }
+  .manager-decision-actions .btn-validate,
+  .manager-decision-actions .btn-invalidate {
+    width: 100%;
+  }
+  .manager-table {
+    font-size: 12px;
+  }
+  .manager-table th,
+  .manager-table td {
+    padding: 6px 8px;
+  }
 }
 
 .manager-summary-grid {

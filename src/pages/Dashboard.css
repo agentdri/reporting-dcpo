@@ -590,8 +590,21 @@
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: minmax(120px, 140px) 1fr;
   gap: 10px 16px;
+}
+
+@media (max-width: 480px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 4px 0;
+  }
+  .detail-grid dt {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: 6px;
+  }
 }
 
 .detail-grid dt {
@@ -607,56 +620,102 @@
   word-break: break-word;
 }
 
-/* Modal */
+/* =====================================================================
+   Modal — base responsive
+   ===================================================================== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: clamp(12px, 3vw, 32px);
   z-index: 100;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: modal-fade-in 0.18s ease-out;
+}
+
+@keyframes modal-fade-in {
+  from { background: rgba(0, 0, 0, 0); }
+  to { background: rgba(0, 0, 0, 0.45); }
 }
 
 .modal {
   background: #fff;
-  border-radius: 10px;
-  width: 420px;
-  max-width: 90vw;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  width: min(420px, 100%);
+  max-width: 100%;
+  max-height: calc(100dvh - clamp(24px, 6vw, 64px));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  animation: modal-pop-in 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+@keyframes modal-pop-in {
+  from { transform: translateY(8px) scale(0.985); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  gap: 10px;
+  padding: clamp(12px, 2vw, 18px) clamp(14px, 3vw, 22px);
   border-bottom: 1px solid #eee;
+  background: #fff;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: clamp(0.95rem, 2.4vw, 1.05rem);
   color: #1a1a2e;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .modal-close {
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: 26px;
   cursor: pointer;
   color: #888;
-  padding: 0 4px;
+  padding: 0 6px;
   line-height: 1;
+  flex-shrink: 0;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-close:hover {
   color: #e63946;
+  background: rgba(230, 57, 70, 0.08);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid #e63946;
+  outline-offset: 2px;
 }
 
 .modal-body {
-  padding: 20px;
+  padding: clamp(14px, 3vw, 22px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .modal-body input {
@@ -1097,8 +1156,7 @@
    ===================================================================== */
 
 .ticket-modal {
-  width: 600px;
-  max-width: 95vw;
+  width: min(620px, 100%);
 }
 
 .ticket-modal-title {
@@ -1175,15 +1233,10 @@
    ===================================================================== */
 
 .resolution-modal {
-  width: 640px;
-  max-width: 95vw;
-  max-height: 92vh;
-  display: flex;
-  flex-direction: column;
+  width: min(680px, 100%);
 }
 
 .resolution-modal .modal-body {
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1377,4 +1430,98 @@
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+/* =====================================================================
+   Modals — responsive breakpoints
+   ===================================================================== */
+
+@media (max-width: 768px) {
+  .modal {
+    width: 100%;
+    border-radius: 10px;
+  }
+
+  .ticket-modal-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ticket-modal-title h2 {
+    font-size: 0.95rem;
+  }
+
+  .ticket-modal-actions,
+  .resolution-actions,
+  .modern-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .ticket-modal-actions .btn-cta,
+  .resolution-actions .btn-cta,
+  .modern-form-actions .btn-cta {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .modal-results li {
+    padding: 12px 14px;
+  }
+}
+
+/* Téléphone : modal en plein écran (mais avec overlay padding 0) */
+@media (max-width: 540px) {
+  .modal-overlay {
+    padding: 0;
+  }
+
+  .modal {
+    border-radius: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 100dvh;
+    height: 100dvh;
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+  }
+
+  .modal-body {
+    padding: 14px 16px;
+  }
+
+  .resolution-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modern-form-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .modern-form-header .btn-cta-ghost {
+    align-self: flex-start;
+  }
+
+  .form-section {
+    padding: 14px 16px;
+  }
+
+  .modern-form .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mode paysage sur écran très court (téléphone à plat) */
+@media (max-height: 480px) and (orientation: landscape) {
+  .modal {
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .modal-overlay {
+    padding: 0;
+  }
 }
