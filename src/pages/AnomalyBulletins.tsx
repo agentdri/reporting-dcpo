@@ -291,28 +291,30 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
             )}
           </section>
 
-          <section className="bulletin-section">
-            <h3>Identification</h3>
-            <dl className="bulletin-detail-grid">
-              <div><dt>Déclarant</dt><dd>{bulletin.declarantName}</dd></div>
-              <div><dt>Auteur</dt><dd>{bulletin.auteurName}</dd></div>
-              <div><dt>Personne affectée</dt><dd>{bulletin.affecteName}</dd></div>
-              <div><dt>Agence</dt><dd>{bulletin.agenceLabel || '—'}</dd></div>
-              <div><dt>Réseau</dt><dd>{bulletin.reseauLabel || '—'}</dd></div>
-              <div><dt>Domaine</dt><dd>{bulletin.domaine || '—'}</dd></div>
-            </dl>
-          </section>
+          <div className="bulletin-section-row">
+            <section className="bulletin-section">
+              <h3>Identification</h3>
+              <dl className="bulletin-detail-grid bulletin-detail-grid-2">
+                <div><dt>Déclarant</dt><dd>{bulletin.declarantName}</dd></div>
+                <div><dt>Auteur</dt><dd>{bulletin.auteurName}</dd></div>
+                <div><dt>Personne affectée</dt><dd>{bulletin.affecteName}</dd></div>
+                <div><dt>Agence</dt><dd>{bulletin.agenceLabel || '—'}</dd></div>
+                <div><dt>Réseau</dt><dd>{bulletin.reseauLabel || '—'}</dd></div>
+                <div><dt>Domaine</dt><dd>{bulletin.domaine || '—'}</dd></div>
+              </dl>
+            </section>
 
-          <section className="bulletin-section">
-            <h3>Dates clés</h3>
-            <dl className="bulletin-detail-grid">
-              <div><dt>Déclaration</dt><dd>{formatDate(bulletin.declarationDate)}</dd></div>
-              <div><dt>Ouverture ticket</dt><dd>{formatDate(bulletin.openingDate)}</dd></div>
-              <div><dt>Régularisation</dt><dd>{formatDate(bulletin.regularizationDate)}</dd></div>
-              <div><dt>Clôture</dt><dd>{formatDate(bulletin.closureDate)}</dd></div>
-              <div><dt>Délai</dt><dd>{bulletin.delayDays !== undefined ? `${bulletin.delayDays} j` : '—'}</dd></div>
-            </dl>
-          </section>
+            <section className="bulletin-section">
+              <h3>Dates clés</h3>
+              <dl className="bulletin-detail-grid bulletin-detail-grid-2">
+                <div><dt>Déclaration</dt><dd>{formatDate(bulletin.declarationDate)}</dd></div>
+                <div><dt>Ouverture ticket</dt><dd>{formatDate(bulletin.openingDate)}</dd></div>
+                <div><dt>Régularisation</dt><dd>{formatDate(bulletin.regularizationDate)}</dd></div>
+                <div><dt>Clôture</dt><dd>{formatDate(bulletin.closureDate)}</dd></div>
+                <div><dt>Délai</dt><dd>{bulletin.delayDays !== undefined ? `${bulletin.delayDays} j` : '—'}</dd></div>
+              </dl>
+            </section>
+          </div>
 
           <section className="bulletin-section">
             <h3>Caractérisation</h3>

@@ -403,7 +403,7 @@
 }
 
 /* Modale détail manager */
-.manager-modal {
+.modal.manager-modal {
   width: min(740px, 100%);
 }
 

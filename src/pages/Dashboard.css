@@ -653,6 +653,7 @@
   flex-direction: column;
   overflow: hidden;
   animation: modal-pop-in 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+  text-align: left;
 }
 
 @keyframes modal-pop-in {
@@ -1155,7 +1156,7 @@
    Ticket detail modal (badge MD3 + lifecycle)
    ===================================================================== */
 
-.ticket-modal {
+.modal.ticket-modal {
   width: min(620px, 100%);
 }
 
@@ -1232,7 +1233,7 @@
    Resolution form modal (contrôleur)
    ===================================================================== */
 
-.resolution-modal {
+.modal.resolution-modal {
   width: min(680px, 100%);
 }
 
