@@ -153,7 +153,7 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
   return (
     <>
       <div className="content-header">
-        <h2>Reporting contrôleur — Saisie du journal</h2>
+        <h2>Reporting contrôleur — Rapport quotidien</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {draftRestored && <span className="reporting-draft-tag">Brouillon restauré</span>}
           <button type="button" className="btn-reset-filters" onClick={handleReset}>
@@ -170,7 +170,7 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
             {email && <span className="selected-email">{email}</span>}
           </div>
           <div className="form-field">
-            <label htmlFor="reporting-date">Date du journal</label>
+            <label htmlFor="reporting-date">Date du rapport</label>
             <input
               id="reporting-date"
               type="date"
@@ -363,7 +363,7 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
 
         <div className="reporting-submit-row">
           <button className="btn-submit" type="submit" disabled={submitting}>
-            {submitting ? 'Envoi en cours...' : 'Soumettre le journal'}
+            {submitting ? 'Envoi en cours...' : 'Soumettre le rapport'}
           </button>
         </div>
       </form>

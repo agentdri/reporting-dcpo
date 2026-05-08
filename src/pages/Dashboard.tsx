@@ -58,7 +58,7 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
       { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent' },
     ]
     if (isController || isManager) {
-      items.push({ type: 'leaf', key: 'reporting-saisie', label: 'Saisie journal' })
+      items.push({ type: 'leaf', key: 'reporting-saisie', label: 'Rapport quotidien' })
     }
     if (isManager) {
       items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings' })

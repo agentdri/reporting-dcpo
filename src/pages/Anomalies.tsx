@@ -7,6 +7,7 @@ import type { DCPO_LISTE_ANORMALIERead, DCPO_LISTE_ANORMALIEWrite } from '../gen
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import type { User } from '../generated/models/Office365UsersModel'
+import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
 
 interface AnomaliesProps {
   userName?: string
@@ -153,6 +154,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   })
   const [resolutionSaving, setResolutionSaving] = useState(false)
   const [resolutionError, setResolutionError] = useState<string | null>(null)
+  const [resolutionAttachment, setResolutionAttachment] = useState<File | null>(null)
 
   // Tableau : toggle colonnes intermédiaires
   const [expandedColumns, setExpandedColumns] = useState(false)
@@ -302,6 +304,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
       actionsMenees: '',
       observations: '',
     })
+    setResolutionAttachment(null)
     setResolutionError(null)
     setResolutionItem(item)
     setTicketItem(null)
@@ -311,6 +314,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     setResolutionItem(null)
     setResolutionError(null)
     setResolutionSaving(false)
+    setResolutionAttachment(null)
   }
 
   const updateResolutionForm = <K extends keyof typeof resolutionForm>(field: K, value: string) => {
@@ -370,6 +374,26 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
         setResolutionError('Erreur lors de l\'enregistrement de la résolution.')
         return
       }
+
+      // Upload de la pièce jointe (preuve de résolution)
+      if (resolutionAttachment) {
+        try {
+          const attachmentUrl = await uploadAttachment(String(resolutionItem.ID), resolutionAttachment)
+          if (attachmentUrl) {
+            // Concaténer aux URLs existantes (le champ stocke plusieurs URLs séparées par " | ")
+            const concatenated = appendUrl(resolutionItem.urlPieceJointe, attachmentUrl)
+            await DCPO_LISTE_ANORMALIEService.update(String(resolutionItem.ID), {
+              urlPieceJointe: concatenated,
+            })
+          }
+        } catch (err) {
+          console.error('Erreur upload pièce jointe résolution:', err)
+          setResolutionError('Statut enregistré mais l\'upload de la pièce jointe a échoué.')
+          await fetchItems()
+          return
+        }
+      }
+
       closeResolution()
       await fetchItems()
     } catch (err) {
@@ -474,17 +498,6 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     setAffecteFormSearch(''); setAffecteFormEmail('')
     setAttachment(null)
   }
-
-  const getFileNameFromUrl = (url: string) => {
-    try {
-      const pathname = new URL(url).pathname
-      return decodeURIComponent(pathname.split('/').pop() ?? url)
-    } catch {
-      return url
-    }
-  }
-
-  const isImageUrl = (url: string) => /\.(png|jpe?g|gif|bmp|webp|svg)(\?|$)/i.test(url)
 
   const uploadAttachment = async (itemId: string, file: File): Promise<string | undefined> => {
     const fileContent = await fileToBase64(file)
@@ -1026,20 +1039,35 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
               </dl>
 
               <div className="detail-attachments" style={{ marginTop: 16 }}>
-                <h3 style={{ marginBottom: 8 }}>Piece jointe</h3>
-                {detailItem.urlPieceJointe ? (
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    {isImageUrl(detailItem.urlPieceJointe) && (
-                      <img src={detailItem.urlPieceJointe} alt={getFileNameFromUrl(detailItem.urlPieceJointe)}
-                        style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }} />
-                    )}
-                    <a href={detailItem.urlPieceJointe} target="_blank" rel="noreferrer">
-                      {getFileNameFromUrl(detailItem.urlPieceJointe)}
-                    </a>
-                  </div>
-                ) : (
-                  <p className="loading-text">Aucune piece jointe.</p>
-                )}
+                <h3 style={{ marginBottom: 8 }}>Pièces jointes</h3>
+                {(() => {
+                  const attachments = getTicketAttachments(detailItem)
+                  if (attachments.length === 0) {
+                    return <p className="loading-text">Aucune pièce jointe.</p>
+                  }
+                  return (
+                    <ul className="detail-attachments-list">
+                      {attachments.map((att, i) => (
+                        <li key={i} className="detail-attachment-item">
+                          {att.isImage ? (
+                            <img
+                              src={att.url}
+                              alt={att.name}
+                              style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #ddd', flexShrink: 0 }}
+                            />
+                          ) : (
+                            <span aria-hidden="true" style={{ fontSize: 24, width: 56, textAlign: 'center', flexShrink: 0 }}>
+                              {getAttachmentIcon(att.iconType)}
+                            </span>
+                          )}
+                          <a href={att.url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8', textDecoration: 'none', fontWeight: 600, wordBreak: 'break-all' }}>
+                            {att.name}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                })()}
               </div>
             </div>
           </div>
@@ -1142,7 +1170,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                 >
                   Changer le statut
                 </button>
-                {ticketItem.field_10 !== 'Clos' && (
+                {ticketItem.field_10 !== 'Clos' && ticketItem.field_10 !== 'Resolu' && (
                   <button
                     type="button"
                     className="btn-cta btn-cta-primary btn-cta-resolve"
@@ -1256,6 +1284,21 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                   onChange={e => updateResolutionForm('observations', e.target.value)}
                   placeholder="Remarques additionnelles, recommandations..."
                 />
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="resolution-attachment">
+                  Pièce jointe (preuve de résolution)
+                  <small className="field-hint" style={{ marginLeft: 8 }}>optionnel</small>
+                </label>
+                <input
+                  id="resolution-attachment"
+                  type="file"
+                  onChange={e => setResolutionAttachment(e.target.files?.[0] ?? null)}
+                />
+                {resolutionAttachment && (
+                  <span className="selected-email">📎 {resolutionAttachment.name}</span>
+                )}
               </div>
 
               {resolutionError && <p className="status-error" role="alert">{resolutionError}</p>}

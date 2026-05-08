@@ -86,13 +86,16 @@ export function getTicketAttachments(ticket: DCPO_LISTE_ANORMALIERead | null | u
   }
 
   if (ticket.urlPieceJointe) {
-    const exists = out.some(a => a.url === ticket.urlPieceJointe)
-    if (!exists) {
-      const name = getFileNameFromUrl(ticket.urlPieceJointe)
+    // Le champ peut contenir plusieurs URLs concaténées par " | "
+    const urls = parseUrlList(ticket.urlPieceJointe)
+    for (const url of urls) {
+      const exists = out.some(a => a.url === url)
+      if (exists) continue
+      const name = getFileNameFromUrl(url)
       const iconType = getAttachmentIconType(name)
       out.push({
         name,
-        url: ticket.urlPieceJointe,
+        url,
         isImage: iconType === 'image',
         iconType,
       })
@@ -100,6 +103,27 @@ export function getTicketAttachments(ticket: DCPO_LISTE_ANORMALIERead | null | u
   }
 
   return out
+}
+
+/** Séparateur utilisé pour concaténer plusieurs URLs dans urlPieceJointe */
+export const URL_LIST_SEPARATOR = '|'
+
+/** Découpe une chaîne urlPieceJointe en URLs individuelles. */
+export function parseUrlList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(URL_LIST_SEPARATOR)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+}
+
+/** Concatène une nouvelle URL aux URLs existantes (préserve l'ordre, dédoublonne). */
+export function appendUrl(existing: string | null | undefined, newUrl: string): string {
+  const list = parseUrlList(existing)
+  if (newUrl && !list.includes(newUrl.trim())) {
+    list.push(newUrl.trim())
+  }
+  return list.join(` ${URL_LIST_SEPARATOR} `)
 }
 
 export async function uploadTicketAttachment(
