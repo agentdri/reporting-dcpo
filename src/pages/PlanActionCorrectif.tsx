@@ -1,3 +1,19 @@
+/**
+ * ============================================================================
+ * PLAN D'ACTION CORRECTIF — PLACEHOLDER
+ * ============================================================================
+ *
+ * Onglet réservé pour le futur module "Plan d'Action Correctif".
+ *
+ * Statut : Non implémenté — affiche un message en cours de construction.
+ *
+ * Référencé depuis Dashboard.tsx (clé Tab 'plan-action-correctif').
+ *
+ * Cas d'usage attendu : suite à une anomalie répétée ou critique, créer
+ * un plan d'actions correctives à long terme avec responsables, échéances
+ * et suivi d'avancement. À spécifier avec les utilisateurs.
+ * ============================================================================
+ */
 export default function PlanActionCorrectif() {
   return (
     <>

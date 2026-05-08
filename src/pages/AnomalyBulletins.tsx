@@ -1,3 +1,30 @@
+/**
+ * ============================================================================
+ * MODULE 2 — BULLETINS D'ANOMALIES
+ * ============================================================================
+ *
+ * Vue dédiée aux anomalies CLÔTURÉES (statut Resolu ou Clos).
+ * Chaque anomalie close devient automatiquement un "bulletin consolidé"
+ * affiché en card dans une grille, avec une fiche détaillée accessible
+ * en modale.
+ *
+ * Fonctionnalités :
+ *   - Récupération filtrée serveur : `field_10 eq 'Resolu' or field_10 eq 'Clos'`
+ *   - Filtres client (avec bouton Rechercher pour application différée) :
+ *     statut, classification, criticité, agence, agent (auteur),
+ *     personne affectée, période de clôture, recherche libre
+ *   - Stats : compteurs résolus/clos, délai moyen, montant cumulé
+ *   - Card cliquable → modale fiche bulletin avec :
+ *     identification, dates clés, caractérisation, description/causes,
+ *     timeline du cycle de vie, actions à mener, pièces jointes
+ *   - Bouton imprimer (CSS @media print masque sidebar/header)
+ *   - Bouton SharePoint → ouvrir l'item dans l'UI SharePoint native
+ *
+ * Toute la logique métier (mapping, filtrage, formatage) est dans
+ * src/lib/anomalyBulletin.ts.
+ * ============================================================================
+ */
+
 import { useEffect, useMemo, useState } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
@@ -21,20 +48,39 @@ import {
 import { getAttachmentIcon, getTicketAttachments } from '../lib/ticketAttachments'
 import './AnomalyBulletins.css'
 
+// Listes fermées pour les selects de filtre
 const STATUS_OPTIONS: BulletinStatus[] = ['Tous', 'Resolu', 'Clos']
 const CLASSIFICATION_OPTIONS = ['Operationnel', 'Fraude', 'Commercial']
 const CRITICITE_OPTIONS = ['Faible', 'Moyenne', 'Haute', 'Critique']
 
 export default function AnomalyBulletins() {
+  /* ──────────────────────────────────────────────────────────────────────
+   * ÉTATS
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /** Tickets bruts (anomalies Resolu/Clos) — alimenté par fetchData. */
   const [tickets, setTickets] = useState<DCPO_LISTE_ANORMALIERead[]>([])
+  /** Référentiels pour résoudre les libellés agence/réseau dans les cards. */
   const [agences, setAgences] = useState<DCPO_LISTE_AGENCESRead[]>([])
   const [reseaux, setReseaux] = useState<DCPO_LISTE_RESEAUXRead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** Filtres en cours de saisie (binding inputs). */
   const [filters, setFilters] = useState<BulletinFilters>(EMPTY_BULLETIN_FILTERS)
+  /** Filtres effectivement appliqués (snapshot au clic Rechercher). */
   const [appliedFilters, setAppliedFilters] = useState<BulletinFilters>(EMPTY_BULLETIN_FILTERS)
+  /** Bulletin sélectionné pour la modale fiche détaillée. */
   const [selected, setSelected] = useState<ConsolidatedBulletin | null>(null)
 
+  /**
+   * Récupère depuis SharePoint UNIQUEMENT les anomalies Resolu/Clos.
+   *
+   * Le $filter serveur est figé : on ne récupère jamais les Ouvert/En cours
+   * dans cette page. Les filtres UI (status='Resolu'/'Clos'/'Tous') sont
+   * appliqués côté client en plus.
+   *
+   * En parallèle : agences + réseaux pour résoudre les libellés des cards.
+   */
   const fetchData = async () => {
     setLoading(true)
     setError(null)
@@ -62,17 +108,31 @@ export default function AnomalyBulletins() {
     }
   }
 
+  // Fetch initial unique au montage
   useEffect(() => {
     fetchData()
   }, [])
 
+  /**
+   * Mappe chaque ticket brut en bulletin consolidé (cf. anomalyBulletin.ts).
+   * useMemo : recalcule UNIQUEMENT si tickets/agences/reseaux changent.
+   */
   const bulletins = useMemo(
     () => tickets.map(t => buildConsolidatedBulletin(t, agences, reseaux)),
     [tickets, agences, reseaux],
   )
 
+  /** Bulletins après application des filtres utilisateur (côté client). */
   const filtered = useMemo(() => applyBulletinFilters(bulletins, appliedFilters), [bulletins, appliedFilters])
 
+  /**
+   * Statistiques agrégées pour les cards en haut de page :
+   *   - resolus / clos : compteurs par statut
+   *   - totalMontant   : somme des montants (champ field_8)
+   *   - avgDelay       : délai moyen en jours, calculé uniquement sur les
+   *                      bulletins ayant un délai > 0 (évite la pollution
+   *                      par les valeurs absentes)
+   */
   const stats = useMemo(() => {
     const resolus = filtered.filter(b => b.statut === 'Resolu').length
     const clos = filtered.filter(b => b.statut === 'Clos').length
@@ -82,17 +142,25 @@ export default function AnomalyBulletins() {
     return { total: filtered.length, resolus, clos, totalMontant, avgDelay }
   }, [filtered])
 
+  /** Helper générique pour patcher un champ de filtre. */
   const updateFilter = <K extends keyof BulletinFilters>(key: K, value: BulletinFilters[K]) => {
     setFilters(prev => ({ ...prev, [key]: value }))
   }
 
+  /** Au clic Rechercher : snapshot draft → applied. */
   const applyFilters = () => setAppliedFilters(filters)
 
+  /** Réinitialise tout (saisie + applied). */
   const resetFilters = () => {
     setFilters(EMPTY_BULLETIN_FILTERS)
     setAppliedFilters(EMPTY_BULLETIN_FILTERS)
   }
 
+  /**
+   * Lance l'impression du bulletin (CSS @media print masque sidebar/header).
+   * L'utilisateur peut ensuite "Enregistrer comme PDF" depuis le dialogue
+   * d'impression du navigateur.
+   */
   const printBulletin = () => {
     window.print()
   }
@@ -231,6 +299,21 @@ export default function AnomalyBulletins() {
   )
 }
 
+/**
+ * Card individuelle d'un bulletin dans la grille.
+ *
+ * Comportements UX :
+ *   - Cliquable (onClick) — ouvre la modale fiche
+ *   - Accessible clavier : tabIndex={0} + onKeyDown (Enter / Space)
+ *   - role="button" + aria-label pour les lecteurs d'écran
+ *
+ * Visuellement :
+ *   - Numéro + status chip en header
+ *   - Titre tronqué sur 2 lignes (CSS line-clamp)
+ *   - Tags (criticité + classification)
+ *   - Grille 2 colonnes avec dates clés et montant
+ *   - Footer : qui est affecté + indicateur "Ouvrir →"
+ */
 function BulletinCard({ bulletin, onOpen }: { bulletin: ConsolidatedBulletin; onOpen: () => void }) {
   return (
     <article className="bulletin-card" tabIndex={0} onClick={onOpen} onKeyDown={e => {
@@ -263,12 +346,29 @@ function BulletinCard({ bulletin, onOpen }: { bulletin: ConsolidatedBulletin; on
   )
 }
 
+/** Props de la modale fiche bulletin. */
 interface BulletinModalProps {
   bulletin: ConsolidatedBulletin
   onClose: () => void
   onPrint: () => void
 }
 
+/**
+ * Fiche bulletin complète en modale.
+ *
+ * Sections affichées :
+ *   1. Header : numéro, titre, actions (Imprimer, SharePoint, Fermer)
+ *   2. Status row : chips statut + criticité + classification + délai
+ *   3. Identification + Dates clés (rangée 2 colonnes desktop)
+ *   4. Caractérisation
+ *   5. Description & causes (description + cause immédiate + cause racine
+ *      + observations si présentes)
+ *   6. Cycle de vie (timeline buildLifecycleSteps)
+ *   7. Actions à mener (checklist disabled, cochée si statut Clos)
+ *   8. Pièces jointes (avec icônes par type)
+ *
+ * Raccourci clavier : Escape ferme la modale (handler global window).
+ */
 function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
   const attachments = getTicketAttachments(bulletin.ticket)
 

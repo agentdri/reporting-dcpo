@@ -1,3 +1,32 @@
+/**
+ * ============================================================================
+ * REPORTING PAR AGENT — STATISTIQUES PAR AUTEUR D'ANOMALIE
+ * ============================================================================
+ *
+ * Vue agrégée des anomalies regroupées par AGENT (= auteur_anormalie).
+ *
+ * Use case : un manager veut voir combien d'anomalies chaque agent
+ * (commercial, opérationnel) a déclarées, leur répartition par statut,
+ * leur montant cumulé.
+ *
+ * Workflow utilisateur :
+ *   1. Vue principale : tableau des agents avec leurs stats
+ *      (Total, Ouvert, En cours, Resolu, Clos, Montant)
+ *   2. Clic "Detail" → bascule sur la vue détail de l'agent sélectionné
+ *      avec la liste de TOUTES ses anomalies
+ *   3. Bouton "Retour à la liste" pour revenir à la vue principale
+ *
+ * Filtres (avec bouton Rechercher pour application différée) :
+ *   - Période (date)
+ *   - Agence, Réseau (selects)
+ *   - Classification, Criticité (selects)
+ *   - Statut (select)
+ *   - Agent, Personne affectée (texte)
+ *
+ * Filtrage 100 % côté client (les anomalies sont chargées une fois au montage).
+ * ============================================================================
+ */
+
 import { useEffect, useMemo, useState } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import { DCPO_LISTE_AGENCESService } from '../generated/services/DCPO_LISTE_AGENCESService'
@@ -6,11 +35,27 @@ import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_AN
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 
+/** Nettoie un texte HTML pour ne garder que le contenu textuel (DOMParser). */
 function stripHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   return doc.body.textContent?.trim() ?? ''
 }
 
+/**
+ * Statistiques agrégées d'un agent.
+ *
+ * Identification :
+ *   - email : clé unique du regroupement (case-insensitive en pratique)
+ *   - displayName : pour l'affichage UX
+ *
+ * Compteurs :
+ *   - total : toutes anomalies confondues
+ *   - ouvert / enCours / resolu / clos : par statut
+ *   - montantTotal : somme des field_8
+ *
+ * Détail :
+ *   - anomalies : la liste brute, utilisée dans la vue détail (drill-down)
+ */
 interface AgentStats {
   email: string
   displayName: string
@@ -23,6 +68,7 @@ interface AgentStats {
   anomalies: DCPO_LISTE_ANORMALIERead[]
 }
 
+/** Critères de filtrage du module — tous appliqués côté client. */
 interface FilterState {
   dateFrom: string
   dateTo: string
@@ -31,8 +77,8 @@ interface FilterState {
   classification: string
   criticite: string
   statut: string
-  agent: string
-  affecte: string
+  agent: string    // texte : nom OU email
+  affecte: string  // texte : nom OU email
 }
 
 const EMPTY_FILTERS: FilterState = {
@@ -47,16 +93,29 @@ const EMPTY_FILTERS: FilterState = {
   affecte: '',
 }
 
+/** Listes fermées pour les selects de filtres. */
 const CRITICITE_OPTIONS = ['Faible', 'Moyenne', 'Haute', 'Critique']
 const STATUT_OPTIONS = ['Ouvert', 'En cours', 'Resolu', 'Clos']
 
 export default function ReportingAgent() {
+  /* ──────────────────────────────────────────────────────────────────────
+   * ÉTATS
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /** Liste brute des anomalies (chargées une fois au montage). */
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [agences, setAgences] = useState<DCPO_LISTE_AGENCESRead[]>([])
   const [reseaux, setReseaux] = useState<DCPO_LISTE_RESEAUXRead[]>([])
   const [loading, setLoading] = useState(true)
+  /**
+   * Agent sélectionné pour la vue détail.
+   *   - null  : vue principale (tableau de tous les agents)
+   *   - email : vue détail de cet agent (toutes ses anomalies)
+   */
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  /** Filtres en cours de saisie (binding inputs). */
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
+  /** Filtres effectivement appliqués (snapshot au clic Rechercher). */
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(EMPTY_FILTERS)
 
   useEffect(() => {
@@ -79,15 +138,34 @@ export default function ReportingAgent() {
     load()
   }, [])
 
+  /* ──────────────────────────────────────────────────────────────────────
+   * HANDLERS DES FILTRES
+   * ────────────────────────────────────────────────────────────────────── */
+
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     setFilters(prev => ({ ...prev, [key]: value }))
   }
+  /** Snapshot saisie → applied (déclenche le recalcul de filteredItems). */
   const applyFilters = () => setAppliedFilters(filters)
+  /** Reset complet (vide saisie + applied). */
   const resetFilters = () => {
     setFilters(EMPTY_FILTERS)
     setAppliedFilters(EMPTY_FILTERS)
   }
 
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * CALCULS DÉRIVÉS — PIPELINE items → filteredItems → agentMap → agents
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Étape 1 — applique tous les filtres aux anomalies brutes.
+   *
+   * Optimisations :
+   *   - Pré-calcul des termes lowercase / dates avant le filter()
+   *   - Early return false dès qu'un critère ne matche pas
+   *   - Ordre : filtres simples d'abord, recherches texte en dernier
+   */
   const filteredItems = useMemo(() => {
     const f = appliedFilters
     const fromDate = f.dateFrom ? new Date(`${f.dateFrom}T00:00:00`) : undefined
@@ -123,6 +201,17 @@ export default function ReportingAgent() {
     })
   }, [items, appliedFilters])
 
+  /**
+   * Étape 2 — agrégation des items filtrés par AGENT (auteur_anormalie).
+   *
+   * Algorithme :
+   *   - Map<email, AgentStats> alimentée en un seul passage
+   *   - Skip les items sans email auteur (orphelins)
+   *   - Pour chaque item : créer le bucket si absent, accumuler les compteurs
+   *
+   * Map (vs objet) : permet une recherche O(1) par email + itération facile
+   * via .values() pour le .sort() final.
+   */
   const agentMap = useMemo(() => {
     const map = new Map<string, AgentStats>()
     filteredItems.forEach(item => {
@@ -155,16 +244,29 @@ export default function ReportingAgent() {
     return map
   }, [filteredItems])
 
+  /**
+   * Étape 3 — tableau des agents trié par volume décroissant.
+   * Le top contributeur en termes d'anomalies déclarées apparaît en premier.
+   */
   const agents = useMemo(
     () => Array.from(agentMap.values()).sort((a, b) => b.total - a.total),
     [agentMap],
   )
+  /** Stats de l'agent sélectionné (vue détail), null en vue principale. */
   const selectedStats = selectedAgent ? agentMap.get(selectedAgent) : null
 
+  // Affichage simple pendant le chargement initial
   if (loading) {
     return <p className="loading-text">Chargement du reporting...</p>
   }
 
+  /* ════════════════════════════════════════════════════════════════════════
+   * RENDU JSX
+   *
+   * Layout conditionnel :
+   *   - selectedAgent === null → Vue PRINCIPALE (filtres + tableau agents)
+   *   - selectedAgent !== null → Vue DÉTAIL (header agent + ses anomalies)
+   * ════════════════════════════════════════════════════════════════════════ */
   return (
     <>
       <div className="content-header">

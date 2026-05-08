@@ -1,3 +1,33 @@
+/**
+ * ============================================================================
+ * MODULE 3 (volet manager) — VALIDATION DES RAPPORTS QUOTIDIENS
+ * ============================================================================
+ *
+ * Page accessible UNIQUEMENT aux managers (Chef_Departement / Directeur).
+ * Permet de valider ou invalider les rapports soumis par les contrôleurs.
+ *
+ * Fonctionnalités :
+ *   - Liste consolidée des rapports, regroupés par (contrôleur, date)
+ *   - Filtres : nom/email contrôleur, période, "en attente uniquement"
+ *   - Stats : compteurs par statut (Soumis / Réalisé / Reporté), total heures
+ *   - Modale détail : résumé du rapport + lignes + lien rapport + observations
+ *     + pièces jointes + historique des décisions managers passées
+ *   - Actions managers :
+ *     - Valider → statut 'Réalisé', avec note horodatée optionnelle
+ *     - Invalider → statut 'Reporté', motif obligatoire (saisi en textarea)
+ *
+ * Persistance :
+ *   - Lecture : listReports() depuis activityService (localStorage)
+ *   - Validation : validateReport() qui ajoute une ActivityValidationNote
+ *     à validationHistory (append-only — audit complet préservé)
+ *
+ * Note future :
+ *   Quand SharePoint ACTIVITE_Controleurs sera disponible, listReports et
+ *   validateReport changeront d'implémentation côté lib mais cette page
+ *   ne nécessitera pas de modification.
+ * ============================================================================
+ */
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   listReports,
@@ -6,16 +36,18 @@ import {
 } from '../lib/activityService'
 import './ControllerReporting.css'
 
+/** Identité du manager courant (passée par Dashboard). */
 interface ControllerReportingListProps {
   userName?: string
   userEmail?: string
 }
 
+/** Critères de filtrage de la liste des rapports. */
 interface FilterState {
-  controleur: string
-  dateFrom: string
-  dateTo: string
-  pendingOnly: boolean
+  controleur: string   // recherche partielle nom OU email
+  dateFrom: string     // date min du rapport (YYYY-MM-DD)
+  dateTo: string       // date max du rapport
+  pendingOnly: boolean // ne montrer QUE les rapports en attente de validation
 }
 
 const EMPTY_FILTERS: FilterState = {
@@ -25,12 +57,22 @@ const EMPTY_FILTERS: FilterState = {
   pendingOnly: false,
 }
 
+/**
+ * Clé d'un groupe dans la vue regroupée : un groupe = (contrôleur, date).
+ * Permet d'afficher tous les rapports d'un contrôleur pour un même jour
+ * sous un même header (généralement il n'y en a qu'un, mais le manager peut
+ * avoir reçu plusieurs envois).
+ */
 interface GroupKey {
   controleurEmail: string
   controleurName: string
   date: string
 }
 
+/**
+ * Données agrégées d'un groupe : la liste des rapports + les compteurs
+ * par statut + total heures cumulées.
+ */
 interface Group {
   key: GroupKey
   reports: ActivityReport[]
@@ -40,27 +82,55 @@ interface Group {
   reporte: number
 }
 
+/** Formatte un nombre d'heures avec 2 décimales max (locale FR). */
 function formatHours(value: number): string {
   return `${value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} h`
 }
 
+/** Date jj/mm/aaaa, "—" si vide ou invalide. */
 function formatDate(value?: string): string {
   if (!value) return '—'
   try { return new Date(value).toLocaleDateString('fr-FR') } catch { return value }
 }
 
+/** Date+heure, '' si vide ou invalide (vide = pas de fallback affiché). */
 function formatDateTime(value?: string): string {
   if (!value) return ''
   try { return new Date(value).toLocaleString('fr-FR') } catch { return value }
 }
 
 export default function ControllerReportingList({ userName, userEmail }: ControllerReportingListProps) {
+  /* ──────────────────────────────────────────────────────────────────────
+   * ÉTATS
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Liste des rapports.
+   * Initialisée via lazy initializer `() => listReports()` :
+   *   - Évite un re-fetch à chaque re-render
+   *   - Lit en synchrone localStorage (pas besoin de useEffect)
+   */
   const [reports, setReports] = useState<ActivityReport[]>(() => listReports())
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
+  /** Rapport sélectionné pour la modale détail (null = pas de modale). */
   const [selected, setSelected] = useState<ActivityReport | null>(null)
 
+  /**
+   * Recharge la liste depuis localStorage.
+   * useCallback : référence stable pour éviter les re-renders inutiles.
+   */
   const refresh = useCallback(() => setReports(listReports()), [])
 
+  /**
+   * Applique tous les filtres sur la liste brute.
+   *
+   * Ordre des tests (early return false) :
+   *   1. pendingOnly (booléen le moins coûteux)
+   *   2. controleur (recherche texte)
+   *   3. dates (parsing + comparaison)
+   *
+   * useMemo : recalcul uniquement si reports OU filters change.
+   */
   const filtered = useMemo(() => {
     const fromDate = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : undefined
     const toDate = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59`) : undefined
@@ -81,6 +151,16 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     })
   }, [reports, filters])
 
+  /**
+   * Regroupe les rapports filtrés par (contrôleur, date).
+   *
+   * Algorithme :
+   *   1. Map<key, Group> où key = `${email}|${date}`
+   *   2. Pour chaque rapport : créer le groupe si nécessaire, accumuler
+   *   3. Trier les groupes :
+   *      - D'abord par date desc (plus récent en haut)
+   *      - Puis par nom de contrôleur (alpha)
+   */
   const groups = useMemo<Group[]>(() => {
     const map = new Map<string, Group>()
     for (const r of filtered) {
@@ -108,6 +188,10 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     })
   }, [filtered])
 
+  /**
+   * Stats globales pour les cards en haut de page.
+   * Recalculées sur la liste filtrée (reflète les filtres en cours).
+   */
   const totals = useMemo(() => {
     return {
       total: filtered.length,
@@ -118,11 +202,23 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     }
   }, [filtered])
 
+  /** Helper générique de mise à jour partielle des filtres. */
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     setFilters(prev => ({ ...prev, [key]: value }))
   }
   const resetFilters = () => setFilters(EMPTY_FILTERS)
 
+  /**
+   * Applique une décision manager (Valider ou Invalider) à un rapport.
+   *
+   * Règle métier : motif OBLIGATOIRE pour invalidation (Reporté).
+   * Garde-fou défensif : alert + abort si motif vide.
+   *
+   * Après validation :
+   *   - refresh() recharge la liste depuis localStorage
+   *   - setSelected(updated) garde la modale ouverte avec les données fraîches
+   *     (l'utilisateur voit immédiatement la nouvelle entrée dans l'historique)
+   */
   const handleValidation = (report: ActivityReport, decision: 'Réalisé' | 'Reporté', motif?: string) => {
     if (decision === 'Reporté' && !motif?.trim()) {
       alert('Un motif est requis pour invalider un reporting.')
@@ -268,12 +364,32 @@ export default function ControllerReportingList({ userName, userEmail }: Control
   )
 }
 
+/** Props de la modale détail manager. */
 interface ManagerDetailModalProps {
   report: ActivityReport
   onClose: () => void
   onValidate: (decision: 'Réalisé' | 'Reporté', motif?: string) => void
 }
 
+/**
+ * Modale de détail d'un rapport pour le manager.
+ *
+ * Sections :
+ *   1. Header : nom du contrôleur + bouton fermer
+ *   2. Summary grid : date, total h, % occupé, statut journée, anomalies, statut
+ *   3. Tableau des actions réalisées (lignes du rapport)
+ *   4. Lien rapport externe (si présent)
+ *   5. Observations globales (si présentes)
+ *   6. Pièces jointes (si présentes)
+ *   7. Historique des décisions managers (si non vide)
+ *   8. Zone de décision : textarea motif + boutons Valider / Invalider
+ *
+ * Raccourci : Escape ferme la modale.
+ *
+ * Logique des boutons :
+ *   - Valider : actif sauf si déjà 'Réalisé'
+ *   - Invalider : actif sauf si déjà 'Reporté' OU motif vide
+ */
 function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalProps) {
   const [motif, setMotif] = useState('')
 

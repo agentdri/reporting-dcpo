@@ -1,3 +1,32 @@
+/**
+ * ============================================================================
+ * MODULE 3 — RAPPORT QUOTIDIEN DU CONTRÔLEUR (saisie)
+ * ============================================================================
+ *
+ * Page accessible aux contrôleurs et aux managers.
+ * Permet de consigner les actions menées sur une journée :
+ *   - Plusieurs lignes (domaine, objet, action, durée, observation)
+ *   - Calcul automatique : total heures, % temps occupé, statut journée
+ *   - Options avancées : statut journée forcé, anomalies détectées,
+ *     lien rapport, observations globales, pièces jointes
+ *
+ * Sauvegarde brouillon automatique :
+ *   - Toutes les modifications sont persistées en localStorage avec un
+ *     debounce de 600 ms (évite les écritures à chaque frappe)
+ *   - Au montage : si un brouillon existe pour cet email, il est restauré
+ *   - À la soumission réussie : le brouillon est effacé
+ *
+ * Persistance définitive :
+ *   - Via activityService (localStorage actuellement, SharePoint à terme)
+ *   - createReport() crée le rapport en statut 'Soumis' (manager validera)
+ *
+ * Validation :
+ *   - validateLines() vérifie domaine, objet, action (3-500 chars), durée (5-600 min)
+ *   - Au moins une ligne requise
+ *   - Affichage des erreurs sous chaque champ fautif (aria-invalid + style)
+ * ============================================================================
+ */
+
 import { useEffect, useMemo, useState } from 'react'
 import {
   ACTIVITY_DOMAINES,
@@ -14,33 +43,61 @@ import {
 } from '../lib/activityService'
 import './ControllerReporting.css'
 
+/** Props passées par Dashboard — identité du contrôleur courant. */
 interface ControllerReportingProps {
   userName?: string
   userEmail?: string
 }
 
+/** Liste fermée des options de statut journée pour le forçage manuel. */
 const STATUT_OPTIONS = ['Calme', 'Normal', 'Chargé', 'Très chargé'] as const
 
+/** Helper : renvoie la date du jour au format ISO court (YYYY-MM-DD). */
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
 export default function ControllerReporting({ userName, userEmail }: ControllerReportingProps) {
+  // Identité — fallbacks défensifs pour l'affichage si props absentes
   const email = userEmail ?? ''
   const name = userName ?? '—'
 
+  /* ──────────────────────────────────────────────────────────────────────
+   * ÉTATS DU FORMULAIRE
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /** Date du rapport (par défaut aujourd'hui). */
   const [date, setDate] = useState(todayISO())
+  /** Lignes d'activités. Au moins une ligne vide à l'initialisation. */
   const [lines, setLines] = useState<ActivityLine[]>([makeEmptyLine()])
+  /** Forçage manuel du statut journée (vide = calculé automatiquement). */
   const [statutOverride, setStatutOverride] = useState<string>('')
+  /** Nombre d'anomalies détectées par le contrôleur ce jour. */
   const [anomaliesDetectees, setAnomaliesDetectees] = useState<number>(0)
+  /** URL d'un rapport externe (Excel, PDF…). */
   const [lienRapport, setLienRapport] = useState('')
+  /** Commentaires globaux libres du contrôleur. */
   const [observationsGlobales, setObservationsGlobales] = useState('')
+  /** Pièces jointes locales (uploadées au moment de la soumission). */
   const [attachments, setAttachments] = useState<File[]>([])
+  /** Erreurs de validation par ligne (cf. validateLines). */
   const [errors, setErrors] = useState<LineValidationError[]>([])
+  /** True pendant le POST (désactive le bouton). */
   const [submitting, setSubmitting] = useState(false)
+  /** Message ok/erreur après soumission. */
   const [submitMessage, setSubmitMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  /** Indicateur visuel "Brouillon restauré" pour rassurer l'utilisateur. */
   const [draftRestored, setDraftRestored] = useState(false)
 
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * EFFETS — RESTAURATION & SAUVEGARDE BROUILLON
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Au montage : restaure le brouillon localStorage pour ce contrôleur s'il existe.
+   * Déclenche le badge "Brouillon restauré" pour transparence UX.
+   */
   useEffect(() => {
     if (!email) return
     const draft = loadDraft(email)
@@ -54,6 +111,16 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     }
   }, [email])
 
+  /**
+   * Auto-sauvegarde brouillon avec debounce 600 ms.
+   *
+   * Pourquoi debounce ? Les changements arrivent à chaque frappe utilisateur.
+   * Sans debounce, on écrirait dans localStorage à chaque caractère ; avec
+   * debounce, on n'écrit qu'une fois l'utilisateur a "fini" de taper.
+   *
+   * Le clearTimeout dans la fonction de cleanup garantit qu'un timer
+   * obsolète (avant la nouvelle frappe) est annulé.
+   */
   useEffect(() => {
     if (!email) return
     const handler = setTimeout(() => {
@@ -70,22 +137,40 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     return () => clearTimeout(handler)
   }, [email, date, lines, anomaliesDetectees, lienRapport, observationsGlobales])
 
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * CALCULS DÉRIVÉS & HANDLERS LIGNES
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /** Recalcule totaux à chaque changement des lignes (memoized). */
   const totals = useMemo(() => computeTotals(lines), [lines])
+
+  /** Statut journée effectif : forçage manuel s'il existe, sinon calculé. */
   const effectiveStatut = statutOverride || totals.statutJournee
 
+  /** Met à jour partiellement une ligne (immutable update). */
   const updateLine = (index: number, patch: Partial<ActivityLine>) => {
     setLines(prev => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
   }
 
+  /** Ajoute une ligne vide à la fin. */
   const addLine = () => setLines(prev => [...prev, makeEmptyLine()])
+
+  /** Supprime la ligne à l'index donné. */
   const removeLine = (index: number) => setLines(prev => prev.filter((_, i) => i !== index))
 
+  /** Ajoute les fichiers sélectionnés à la liste existante (multi-select). */
   const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     setAttachments(prev => [...prev, ...files])
   }
+  /** Retire un fichier de la liste de pièces jointes. */
   const removeAttachment = (index: number) => setAttachments(prev => prev.filter((_, i) => i !== index))
 
+  /**
+   * Réinitialise le formulaire avec confirmation.
+   * Efface aussi le brouillon localStorage (impact persistant).
+   */
   const handleReset = () => {
     if (!confirm('Réinitialiser le formulaire ? Le brouillon sera supprimé.')) return
     setDate(todayISO())
@@ -100,6 +185,22 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     if (email) clearDraft(email)
   }
 
+  /**
+   * Soumission du rapport.
+   *
+   * Étapes :
+   *   1. Vérifier email présent
+   *   2. Valider toutes les lignes (validateLines) — affiche les erreurs si KO
+   *   3. Préparer les métadonnées des pièces jointes
+   *      ⚠ Les fichiers ne sont PAS réellement uploadés car la liste
+   *      SharePoint ACTIVITE_Controleurs n'est pas encore une datasource Power Apps.
+   *      On stocke seulement les NOMS pour mémoire — quand la liste sera branchée,
+   *      remplacer par un upload réel + récupération des URLs.
+   *   4. Appeler createReport (persistance localStorage actuellement)
+   *   5. Effacer le brouillon (succès = rapport finalisé)
+   *   6. Reset du formulaire
+   *   7. Afficher message de succès
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitMessage(null)
@@ -147,9 +248,27 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     }
   }
 
+  /**
+   * Recherche l'erreur de validation pour une ligne + un champ donné.
+   * Utilisé dans le JSX pour afficher l'erreur SOUS l'input fautif et
+   * appliquer aria-invalid="true" pour l'accessibilité.
+   */
   const errorFor = (index: number, field: keyof ActivityLine): string | undefined =>
     errors.find(e => e.index === index && e.field === field)?.message
 
+  /* ════════════════════════════════════════════════════════════════════════
+   * RENDU JSX
+   *
+   * Layout :
+   *   - Header : titre + badge "Brouillon restauré" + bouton Réinitialiser
+   *   - Form :
+   *     - Top row : Contrôleur (readonly) + Date du rapport
+   *     - Section "Actions de la journée" : tableau éditable + bouton Ajouter
+   *     - Totaux : 3 cartes (heures / temps occupé / statut journée)
+   *     - Section "Options avancées" : statut forcé, anomalies, lien, observations, PJ
+   *     - Message de retour (ok/err)
+   *     - Bouton Soumettre
+   * ════════════════════════════════════════════════════════════════════════ */
   return (
     <>
       <div className="content-header">

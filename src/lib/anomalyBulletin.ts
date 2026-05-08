@@ -1,22 +1,65 @@
+/**
+ * ============================================================================
+ * MAPPING ANOMALIE → BULLETIN CONSOLIDÉ (Module 2)
+ * ============================================================================
+ *
+ * Rôle :
+ *   Convertit un ticket SharePoint brut (DCPO_LISTE_ANORMALIE) en un objet
+ *   "bulletin" prêt à afficher : champs résolus (libellés au lieu d'IDs),
+ *   dates parsées, timeline construite, filtres applicables.
+ *
+ * Pourquoi cette couche ?
+ *   - Évite de dupliquer la logique de formatage dans le JSX
+ *   - Permet de centraliser les fallbacks (ex : description = field_4 sinon
+ *     field_3 sinon Title)
+ *   - Encapsule la timeline (cycle de vie) reconstituée à partir des dates
+ *     éparpillées sur l'item SharePoint
+ *
+ * Utilisé par :
+ *   - AnomalyBulletins.tsx (Module 2) — vue principale
+ *   - À terme aussi exploitable depuis Anomalies.tsx pour des affichages riches
+ * ============================================================================
+ */
+
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import { findAgenceLabel, findReseauLabel } from './spReferenceRows'
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 1 — TYPES DE FILTRAGE ET DE STATUT
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Statut de filtrage des bulletins.
+ *   - 'Tous'   : pas de filtre statut
+ *   - 'Resolu' : ne montrer que les anomalies résolues
+ *   - 'Clos'   : ne montrer que les anomalies closes
+ *
+ * Note : un bulletin n'existe QUE pour les anomalies Resolu/Clos
+ * (cf. isBulletinTicket). Les Ouvert/En cours sont filtrés en amont.
+ */
 export type BulletinStatus = 'Resolu' | 'Clos' | 'Tous'
 
+/**
+ * Critères de filtrage côté client appliqués à la liste des bulletins.
+ * Tous les champs sont des strings (pratique pour binder directement
+ * sur les inputs HTML).
+ */
 export interface BulletinFilters {
-  search: string
+  search: string         // recherche libre dans tous les textes du bulletin
   status: BulletinStatus
-  classification: string
-  criticite: string
-  agence: string
-  agent: string
-  affecte: string
-  closureFrom: string
-  closureTo: string
+  classification: string // ex : 'Operationnel', 'Fraude', 'Commercial'
+  criticite: string      // ex : 'Faible', 'Moyenne', 'Haute', 'Critique'
+  agence: string         // ID de l'agence (string pour cohérence avec le select)
+  agent: string          // nom OU email de l'auteur (recherche partielle)
+  affecte: string        // nom OU email de la personne affectée
+  closureFrom: string    // date min de clôture (format YYYY-MM-DD)
+  closureTo: string      // date max de clôture
 }
 
+/** État initial des filtres : tout vide, statut "Tous". */
 export const EMPTY_BULLETIN_FILTERS: BulletinFilters = {
   search: '',
   status: 'Tous',
@@ -29,8 +72,30 @@ export const EMPTY_BULLETIN_FILTERS: BulletinFilters = {
   closureTo: '',
 }
 
+/**
+ * Valeurs de field_10 (statut SharePoint) qui qualifient un ticket
+ * comme "bulletin" (i.e. accessible depuis Module 2).
+ *
+ * Utilisé en double :
+ *   1. Côté serveur dans la requête $filter (`field_10 eq 'Resolu' or ...`)
+ *   2. Côté client dans isBulletinTicket() pour re-filtrer après fetch
+ */
 export const BULLETIN_STATUS_VALUES = ['Resolu', 'Clos']
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 2 — TIMELINE (CYCLE DE VIE D'UN TICKET)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Une étape unique sur la timeline d'un bulletin.
+ *
+ *   - date        : ISO timestamp (string), peut être absent pour notes libres
+ *   - label       : titre court de l'étape (ex : "Déclaration", "Clôture")
+ *   - description : précision optionnelle (ex : nom du déclarant)
+ *   - type        : catégorie pour la stylisation visuelle (couleur du dot,
+ *                   icône, etc.) — voir AnomalyBulletins.css `.timeline-*`
+ */
 export interface LifecycleStep {
   date?: string
   label: string
@@ -38,6 +103,28 @@ export interface LifecycleStep {
   type: 'declaration' | 'opening' | 'regularization' | 'closure' | 'log' | 'event'
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 3 — STRUCTURE DU BULLETIN CONSOLIDÉ
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Bulletin enrichi prêt à être affiché. C'est la forme cible produite
+ * par buildConsolidatedBulletin() à partir d'un ticket brut.
+ *
+ * Champs majeurs :
+ *   - ticket            : référence à l'objet brut (utile pour drill-down
+ *                         vers les pièces jointes natives, urlPieceJointe…)
+ *   - numero / titre    : identifiants visuels affichés en gros (ex "T-44")
+ *   - *Label            : libellés résolus depuis les référentiels
+ *   - *Name             : noms des personnes impliquées (DisplayName)
+ *   - *Date             : dates parsées en objets Date (undefined si absent)
+ *   - delayDays         : délai en jours entre déclaration et clôture
+ *   - description, cause*, observations : textes nettoyés (HTML stripped)
+ *   - actions           : liste des actions menées, chaque ligne séparée
+ *   - lifecycle         : timeline triée chronologiquement
+ *   - sharePointUrl     : lien direct vers l'item dans l'UI SharePoint
+ */
 export interface ConsolidatedBulletin {
   ticket: DCPO_LISTE_ANORMALIERead
   numero: string
@@ -68,18 +155,51 @@ export interface ConsolidatedBulletin {
   sharePointUrl?: string
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 4 — HELPERS BAS-NIVEAU (NETTOYAGE / PARSING)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Nettoie un texte HTML pour ne garder que le contenu textuel.
+ *
+ * Pourquoi ? SharePoint stocke souvent les textes longs (cause, description)
+ * en HTML, mais on veut afficher du texte plain dans les cards/timeline.
+ *
+ * Méthode : utiliser DOMParser du navigateur pour parser proprement
+ * (gère les entités HTML, les tags imbriqués, etc.) plutôt qu'une regex
+ * fragile.
+ */
 function stripHtml(html?: string | null): string {
   if (!html) return ''
   const doc = new DOMParser().parseFromString(html, 'text/html')
   return doc.body.textContent?.trim() ?? ''
 }
 
+/**
+ * Parse une string ISO en Date, mais retourne undefined plutôt qu'une
+ * Date invalide.
+ *
+ * Use case : SharePoint peut renvoyer null, undefined, '', ou des strings
+ * non parseables ("0001-01-01T00:00:00Z"). On veut tout normaliser sur
+ * Date | undefined pour pouvoir tester `if (date)` côté UI.
+ */
 function parseDateSafe(value?: string | null): Date | undefined {
   if (!value) return undefined
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? undefined : d
 }
 
+/**
+ * Calcule la différence en jours entiers entre deux dates.
+ *
+ *   - 1000 * 60 * 60 * 24 = nombre de millisecondes dans une journée
+ *   - Math.round = arrondi à l'entier le plus proche (au lieu de tronquer)
+ *   - Math.max(0, …) : garantit qu'on ne renvoie jamais un délai négatif
+ *     (cas où end < start, donnée corrompue)
+ *
+ * Retourne undefined si l'une des deux dates est manquante.
+ */
 function diffInDays(start?: Date, end?: Date): number | undefined {
   if (!start || !end) return undefined
   const ms = end.getTime() - start.getTime()
@@ -87,6 +207,26 @@ function diffInDays(start?: Date, end?: Date): number | undefined {
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)))
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 5 — TYPE ÉTENDU & PICKERS DE FALLBACK
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Extension du type SharePoint généré pour inclure des champs MÉTIER
+ * supplémentaires qui peuvent exister sur la liste mais ne sont pas
+ * dans le modèle généré officiel (DCPO_LISTE_ANORMALIEModel).
+ *
+ * Pourquoi ?
+ *   La liste SharePoint peut avoir évolué (ajout de field_11..23, ou de
+ *   colonnes nommées comme causeImmediate, natureRisque…). Le modèle généré
+ *   ne reflète qu'un sous-ensemble. Plutôt que de modifier le code généré
+ *   (qui serait écrasé), on cast localement pour accéder à ces champs
+ *   "additionnels" sans erreur TypeScript.
+ *
+ * Si un de ces champs n'existe pas réellement sur la liste, l'accès renvoie
+ * simplement undefined → le code fallback prend le relais.
+ */
 interface ExtendedTicket extends DCPO_LISTE_ANORMALIERead {
   field_11?: string
   field_12?: string
@@ -100,7 +240,7 @@ interface ExtendedTicket extends DCPO_LISTE_ANORMALIERead {
   field_20?: number
   field_21?: string
   field_22?: string
-  field_23?: string
+  field_23?: string  // journal d'événements (texte multi-lignes)
   natureRisque?: string
   domaineAnomalie?: string
   causeImmediate?: string
@@ -109,6 +249,17 @@ interface ExtendedTicket extends DCPO_LISTE_ANORMALIERead {
   observationsBulletin?: string
 }
 
+/**
+ * Cherche la première chaîne non-vide dans une liste de candidats.
+ *
+ * Use case : robustesse de l'affichage. Le bulletin tente plusieurs sources
+ * pour un même champ (ex : description = field_4 OU field_3 OU Title).
+ * Renvoie '' si tous les candidats sont vides/null.
+ *
+ * `String(c).trim()` : gère le cas où c serait un nombre (0 → '0' → ''
+ * après trim ne se produira pas). filter(Boolean) sur '0' renverrait true,
+ * donc on utilise && c et trim() explicite.
+ */
 function pickFirstString(...candidates: Array<string | undefined | null>): string {
   for (const c of candidates) {
     if (c && String(c).trim()) return String(c).trim()
@@ -116,11 +267,29 @@ function pickFirstString(...candidates: Array<string | undefined | null>): strin
   return ''
 }
 
+/**
+ * Variante de pickFirstString qui passe ensuite par stripHtml.
+ * Pour les champs dont le contenu peut être HTML (textes riches SharePoint).
+ */
 function pickFirstHtml(...candidates: Array<string | undefined | null>): string {
   const raw = pickFirstString(...candidates)
   return raw ? stripHtml(raw) : ''
 }
 
+/**
+ * Découpe une chaîne en liste d'actions individuelles.
+ *
+ * Sépare sur tout ce qui ressemble à un séparateur de liste :
+ *   - newline (\r\n ou \n)
+ *   - point-virgule
+ *   - puce (• – –)
+ *
+ * Filtre les chunks vides (ex : "; ; foo" → ['foo']).
+ *
+ * Use case : la cause/actions stockée dans field_4 peut être saisie en
+ * format libre par les contrôleurs. On essaie de la transformer en liste
+ * pour l'afficher en bullets dans le bulletin.
+ */
 function splitActions(raw: string): string[] {
   if (!raw) return []
   return raw
@@ -129,10 +298,37 @@ function splitActions(raw: string): string[] {
     .filter(Boolean)
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 6 — CONSTRUCTION DE LA TIMELINE (CYCLE DE VIE)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Construit la timeline du ticket en agrégeant :
+ *   1. Les 4 dates clés (déclaration, ouverture, régularisation, clôture)
+ *   2. Les notes du journal field_23 si présent (logs horodatés)
+ *
+ * Logique :
+ *   - Déclaration : field_0 (date métier) sinon Created (auto-SharePoint)
+ *   - Ouverture   : dateOuvertureTicket sinon == déclaration (pas un step
+ *     séparé si identique)
+ *   - Régularisation : field_9 (date à laquelle le contrôleur a marqué
+ *     l'anomalie comme corrigée)
+ *   - Clôture     : date_cloture_ticket
+ *
+ * Journal field_23 :
+ *   Format attendu : `[2026-05-01 10:30] Note libre`
+ *   La regex extrait la date et le texte. Si pas de date détectée,
+ *   l'entrée est ajoutée sans date (apparaît à la fin du tri).
+ *
+ * Tri final : chronologique croissant. Les entrées sans date (date = 0)
+ * remontent en haut de la timeline.
+ */
 export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): LifecycleStep[] {
   const ext = ticket as ExtendedTicket
   const steps: LifecycleStep[] = []
 
+  // ─── Étape 1 : Dates clés ──────────────────────────────────────────
   const declared = parseDateSafe(ticket.field_0) ?? parseDateSafe(ticket.Created)
   const opened = parseDateSafe(ticket.dateOuvertureTicket) ?? declared
   const regularized = parseDateSafe(ticket.field_9)
@@ -146,6 +342,7 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
       description: ticket.declarant_anormalie?.DisplayName,
     })
   }
+  // On évite un step "Ouverture" doublon si la date est == Déclaration
   if (opened && opened.getTime() !== declared?.getTime()) {
     steps.push({
       type: 'opening',
@@ -169,10 +366,13 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
     })
   }
 
+  // ─── Étape 2 : Journal field_23 (si présent) ───────────────────────
   const journalRaw = ext.field_23
   if (journalRaw && typeof journalRaw === 'string') {
     const lines = stripHtml(journalRaw).split(/\r?\n+/).map(l => l.trim()).filter(Boolean)
     lines.forEach(line => {
+      // Regex : capture les formats type "[YYYY-MM-DD HH:MM:SS] texte"
+      // Groupe 1 : date ISO ; Groupe 2 : reste de la ligne
       const dateMatch = line.match(/^\[?(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)\]?\s*[:\-–]?\s*(.*)$/)
       if (dateMatch) {
         steps.push({
@@ -181,6 +381,7 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
           date: dateMatch[1],
         })
       } else {
+        // Note sans date détectable
         steps.push({
           type: 'log',
           label: line,
@@ -189,6 +390,7 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
     })
   }
 
+  // ─── Étape 3 : Tri chronologique ───────────────────────────────────
   steps.sort((a, b) => {
     const da = a.date ? new Date(a.date).getTime() : 0
     const db = b.date ? new Date(b.date).getTime() : 0
@@ -198,6 +400,29 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
   return steps
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 7 — FONCTION PRINCIPALE : BULLETIN CONSOLIDÉ
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Construit un ConsolidatedBulletin complet à partir d'un ticket SharePoint
+ * et des référentiels (agences, réseaux).
+ *
+ * C'est LA fonction principale du module. Appelée pour chaque ticket dans
+ * la grille de bulletins.
+ *
+ * Stratégie :
+ *   1. Parser toutes les dates en objets Date sécurisés
+ *   2. Calculer le délai (déclaration → clôture, fallback régularisation)
+ *   3. Résoudre les textes avec fallback en cascade
+ *   4. Construire la timeline via buildLifecycleSteps
+ *   5. Construire le numéro et le titre affichés en gros
+ *   6. Retourner l'objet bulletin complet
+ *
+ * Note : retourne une nouvelle structure (pas une mutation du ticket).
+ * → Les pages peuvent garder le ticket original si besoin.
+ */
 export function buildConsolidatedBulletin(
   ticket: DCPO_LISTE_ANORMALIERead,
   agences: DCPO_LISTE_AGENCESRead[],
@@ -205,13 +430,17 @@ export function buildConsolidatedBulletin(
 ): ConsolidatedBulletin {
   const ext = ticket as ExtendedTicket
 
+  // Dates parsées une seule fois pour réutilisation
   const declarationDate = parseDateSafe(ticket.field_0) ?? parseDateSafe(ticket.Created)
   const openingDate = parseDateSafe(ticket.dateOuvertureTicket) ?? declarationDate
   const regularizationDate = parseDateSafe(ticket.field_9)
   const closureDate = parseDateSafe(ticket.date_cloture_ticket)
 
+  // Délai métier : préfère closureDate, fallback regularizationDate
+  // (au cas où un ticket Resolu n'a pas encore date_cloture_ticket renseignée)
   const delayDays = diffInDays(declarationDate, closureDate ?? regularizationDate)
 
+  // Fallback en cascade pour les textes principaux
   const description = pickFirstHtml(ticket.field_4, ticket.field_3, ticket.Title)
   const causeImmediate = pickFirstHtml(ext.causeImmediate, ext.field_11, ticket.field_3)
   const causeRacine = pickFirstHtml(ext.causeRacine, ext.field_12)
@@ -222,9 +451,12 @@ export function buildConsolidatedBulletin(
   const natureRisque = pickFirstString(ext.natureRisque, ext.field_14)
   const occurrences = ext.field_20 ?? undefined
 
+  // {Link} = URL native SharePoint vers l'item dans l'UI moderne
   const sharePointUrl = ticket['{Link}'] ?? undefined
 
+  // Numéro affiché : "T-{ID}" ou "—" si pas d'ID (ne devrait pas arriver)
   const numero = ticket.ID ? `T-${ticket.ID}` : '—'
+  // Titre : Title officiel sinon field_3 sinon début de description
   const titre = pickFirstString(ticket.Title, ticket.field_3, description.substring(0, 80))
 
   return {
@@ -258,15 +490,48 @@ export function buildConsolidatedBulletin(
   }
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 8 — FILTRAGE & GUARDS
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Garde de filtrage : retourne true ssi le ticket est éligible au bulletin.
+ * Utilisé après le fetch pour re-filtrer côté client (sécurité).
+ *
+ * Critère unique : statut field_10 ∈ ['Resolu', 'Clos'].
+ */
 export function isBulletinTicket(ticket: DCPO_LISTE_ANORMALIERead): boolean {
   if (!ticket.field_10) return false
   return BULLETIN_STATUS_VALUES.some(s => ticket.field_10 === s)
 }
 
+/**
+ * Applique le jeu de filtres aux bulletins consolidés.
+ *
+ * Stratégie : un seul .filter() qui rejette dès qu'un critère ne matche pas
+ * (early return false). Ordre des tests optimisé pour exclure rapidement
+ * les non-matchs (champs simples avant search texte coûteux).
+ *
+ * Détails par filtre :
+ *
+ *   1. status        : compare b.statut directement (sauf 'Tous' = bypass)
+ *   2. classification: comparaison stricte
+ *   3. criticite     : comparaison stricte
+ *   4. agence        : compare l'ID brut du ticket avec l'ID filtre
+ *   5. agent (texte) : recherche partielle dans nom + email auteur
+ *   6. affecte (texte): recherche partielle dans nom + email personneAffecter
+ *   7. dates clôture : intervalle [closureFrom, closureTo] avec fallback
+ *                      sur regularizationDate (anciens tickets sans clôture)
+ *   8. search libre  : haystack = concat de tous les textes du bulletin,
+ *                      puis includes() lowercase
+ */
 export function applyBulletinFilters(
   bulletins: ConsolidatedBulletin[],
   filters: BulletinFilters,
 ): ConsolidatedBulletin[] {
+  // Pré-calcul : les opérations toLowerCase / parsing dates sont faites
+  // UNE fois ici, pas N fois dans le .filter()
   const search = filters.search.trim().toLowerCase()
   const agentTerm = filters.agent.trim().toLowerCase()
   const affecteTerm = filters.affecte.trim().toLowerCase()
@@ -274,11 +539,13 @@ export function applyBulletinFilters(
   const toDate = filters.closureTo ? new Date(`${filters.closureTo}T23:59:59`) : undefined
 
   return bulletins.filter(b => {
+    // Filtres simples (égalité) — exclusion rapide
     if (filters.status !== 'Tous' && b.statut !== filters.status) return false
     if (filters.classification && b.classification !== filters.classification) return false
     if (filters.criticite && b.criticite !== filters.criticite) return false
     if (filters.agence && String(b.ticket.field_6 ?? '') !== filters.agence) return false
 
+    // Filtres texte (recherche partielle dans nom + email)
     if (agentTerm) {
       const haystack = `${b.auteurName} ${b.ticket.auteur_anormalie?.Email ?? ''}`.toLowerCase()
       if (!haystack.includes(agentTerm)) return false
@@ -288,13 +555,15 @@ export function applyBulletinFilters(
       if (!haystack.includes(affecteTerm)) return false
     }
 
+    // Filtre par intervalle de dates de clôture
     if (fromDate || toDate) {
       const ref = b.closureDate ?? b.regularizationDate
-      if (!ref) return false
+      if (!ref) return false  // pas de date dispo → exclu d'office
       if (fromDate && ref < fromDate) return false
       if (toDate && ref > toDate) return false
     }
 
+    // Recherche libre — coûteuse, en dernier
     if (search) {
       const haystack = [
         b.numero,
@@ -321,11 +590,25 @@ export function applyBulletinFilters(
   })
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 9 — FORMATTERS POUR L'AFFICHAGE
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Formate une Date en jj/mm/aaaa (locale FR).
+ * Retourne "—" pour les dates absentes (UI plus propre que vide).
+ */
 export function formatDate(date?: Date | null): string {
   if (!date) return '—'
   return date.toLocaleDateString('fr-FR')
 }
 
+/**
+ * Formate une Date OU une string ISO en date+heure FR.
+ * Accepte les deux types pour faciliter l'usage côté JSX où on a parfois
+ * une string brute (ex : `step.date` de la timeline).
+ */
 export function formatDateTime(date?: Date | string | null): string {
   if (!date) return ''
   const d = typeof date === 'string' ? new Date(date) : date
@@ -333,11 +616,30 @@ export function formatDateTime(date?: Date | string | null): string {
   return d.toLocaleString('fr-FR')
 }
 
+/**
+ * Formate un montant numérique avec séparateurs de milliers (locale FR).
+ * Ex : 1500000 → "1 500 000"
+ *
+ * Distinction null/undefined vs 0 : un montant à 0 est affiché "0", pas "—".
+ */
 export function formatAmount(value?: number | null): string {
   if (value === null || value === undefined) return '—'
   return value.toLocaleString('fr-FR')
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 10 — MAPPING VERS CLASSES CSS
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Mappe une criticité vers une classe CSS pour la pastille colorée.
+ * Conversion case-insensitive (.toLowerCase()) pour tolérer les variantes
+ * de saisie ("Critique", "CRITIQUE", "critique").
+ *
+ * Classes CSS définies dans Dashboard.css : .crit-faible / -moyenne / -haute
+ * / -critique / -default
+ */
 export function getCriticiteClass(criticite?: string | null): string {
   switch ((criticite ?? '').toLowerCase()) {
     case 'critique': return 'crit-critique'
@@ -348,6 +650,13 @@ export function getCriticiteClass(criticite?: string | null): string {
   }
 }
 
+/**
+ * Mappe un statut vers une classe CSS pour la pastille de statut.
+ *
+ * Cas particulier : on accepte 'resolu' ET 'résolu' (avec accent) pour
+ * tolérer les éventuelles variations de saisie ou de migration de données.
+ * Les deux convergent vers .status-resolu (pastille bleue Material Design 3).
+ */
 export function getStatusClass(status?: string | null): string {
   switch ((status ?? '').toLowerCase()) {
     case 'clos': return 'status-clos'
