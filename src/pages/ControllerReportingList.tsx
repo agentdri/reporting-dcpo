@@ -104,22 +104,33 @@ export default function ControllerReportingList({ userName, userEmail }: Control
    * ÉTATS
    * ────────────────────────────────────────────────────────────────────── */
 
-  /**
-   * Liste des rapports.
-   * Initialisée via lazy initializer `() => listReports()` :
-   *   - Évite un re-fetch à chaque re-render
-   *   - Lit en synchrone localStorage (pas besoin de useEffect)
-   */
-  const [reports, setReports] = useState<ActivityReport[]>(() => listReports())
+  /** Liste des rapports — chargée via useEffect (async SharePoint). */
+  const [reports, setReports] = useState<ActivityReport[]>([])
+  /** Indicateur de chargement initial (réseau en cours). */
+  const [loadingReports, setLoadingReports] = useState(true)
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   /** Rapport sélectionné pour la modale détail (null = pas de modale). */
   const [selected, setSelected] = useState<ActivityReport | null>(null)
 
   /**
-   * Recharge la liste depuis localStorage.
+   * Recharge la liste depuis SharePoint.
    * useCallback : référence stable pour éviter les re-renders inutiles.
+   * Async désormais (SharePoint fetch).
    */
-  const refresh = useCallback(() => setReports(listReports()), [])
+  const refresh = useCallback(async () => {
+    setLoadingReports(true)
+    try {
+      const data = await listReports()
+      setReports(data)
+    } finally {
+      setLoadingReports(false)
+    }
+  }, [])
+
+  // Chargement initial au montage
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   /**
    * Applique tous les filtres sur la liste brute.
@@ -219,19 +230,19 @@ export default function ControllerReportingList({ userName, userEmail }: Control
    *   - setSelected(updated) garde la modale ouverte avec les données fraîches
    *     (l'utilisateur voit immédiatement la nouvelle entrée dans l'historique)
    */
-  const handleValidation = (report: ActivityReport, decision: 'Réalisé' | 'Reporté', motif?: string) => {
+  const handleValidation = async (report: ActivityReport, decision: 'Réalisé' | 'Reporté', motif?: string) => {
     if (decision === 'Reporté' && !motif?.trim()) {
       alert('Un motif est requis pour invalider un reporting.')
       return
     }
-    const updated = validateReport(report.id, {
+    const updated = await validateReport(report.id, {
       manager: userName ?? 'Manager',
       managerEmail: userEmail,
       decision,
       motif: motif?.trim() || undefined,
     })
     if (updated) {
-      refresh()
+      await refresh()
       setSelected(updated)
     }
   }
@@ -240,7 +251,9 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     <>
       <div className="content-header">
         <h2>Reportings soumis — Validation manager</h2>
-        <button className="btn-add" type="button" onClick={refresh}>Actualiser</button>
+        <button className="btn-add" type="button" onClick={refresh} disabled={loadingReports}>
+          {loadingReports ? 'Chargement...' : 'Actualiser'}
+        </button>
       </div>
 
       <div className="stats-cards">
@@ -295,7 +308,9 @@ export default function ControllerReportingList({ userName, userEmail }: Control
         <button type="button" className="btn-reset-filters" onClick={resetFilters}>Réinitialiser</button>
       </div>
 
-      {groups.length === 0 ? (
+      {loadingReports ? (
+        <p className="loading-text">Chargement des rapports...</p>
+      ) : groups.length === 0 ? (
         <div className="manager-empty">
           <p>Aucun reporting ne correspond aux critères.</p>
         </div>

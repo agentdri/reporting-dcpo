@@ -41,6 +41,7 @@ import {
   type ActivityLine,
   type LineValidationError,
 } from '../lib/activityService'
+import { uploadActivityAttachment } from '../lib/ticketAttachments'
 import './ControllerReporting.css'
 
 /** Props passées par Dashboard — identité du contrôleur courant. */
@@ -48,9 +49,6 @@ interface ControllerReportingProps {
   userName?: string
   userEmail?: string
 }
-
-/** Liste fermée des options de statut journée pour le forçage manuel. */
-const STATUT_OPTIONS = ['Calme', 'Normal', 'Chargé', 'Très chargé'] as const
 
 /** Helper : renvoie la date du jour au format ISO court (YYYY-MM-DD). */
 function todayISO(): string {
@@ -70,12 +68,8 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
   const [date, setDate] = useState(todayISO())
   /** Lignes d'activités. Au moins une ligne vide à l'initialisation. */
   const [lines, setLines] = useState<ActivityLine[]>([makeEmptyLine()])
-  /** Forçage manuel du statut journée (vide = calculé automatiquement). */
-  const [statutOverride, setStatutOverride] = useState<string>('')
   /** Nombre d'anomalies détectées par le contrôleur ce jour. */
   const [anomaliesDetectees, setAnomaliesDetectees] = useState<number>(0)
-  /** URL d'un rapport externe (Excel, PDF…). */
-  const [lienRapport, setLienRapport] = useState('')
   /** Commentaires globaux libres du contrôleur. */
   const [observationsGlobales, setObservationsGlobales] = useState('')
   /** Pièces jointes locales (uploadées au moment de la soumission). */
@@ -105,7 +99,6 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
       setDate(draft.date ?? todayISO())
       setLines(draft.lines)
       setAnomaliesDetectees(draft.anomaliesDetectees ?? 0)
-      setLienRapport(draft.lienRapport ?? '')
       setObservationsGlobales(draft.observationsGlobales ?? '')
       setDraftRestored(true)
     }
@@ -129,13 +122,12 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
         date,
         lines,
         anomaliesDetectees,
-        lienRapport,
         observationsGlobales,
         updatedAt: new Date().toISOString(),
       })
     }, 600)
     return () => clearTimeout(handler)
-  }, [email, date, lines, anomaliesDetectees, lienRapport, observationsGlobales])
+  }, [email, date, lines, anomaliesDetectees, observationsGlobales])
 
 
   /* ──────────────────────────────────────────────────────────────────────
@@ -145,8 +137,8 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
   /** Recalcule totaux à chaque changement des lignes (memoized). */
   const totals = useMemo(() => computeTotals(lines), [lines])
 
-  /** Statut journée effectif : forçage manuel s'il existe, sinon calculé. */
-  const effectiveStatut = statutOverride || totals.statutJournee
+  /** Statut journée calculé automatiquement à partir des durées des lignes. */
+  const effectiveStatut = totals.statutJournee
 
   /** Met à jour partiellement une ligne (immutable update). */
   const updateLine = (index: number, patch: Partial<ActivityLine>) => {
@@ -176,7 +168,6 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     setDate(todayISO())
     setLines([makeEmptyLine()])
     setAnomaliesDetectees(0)
-    setLienRapport('')
     setObservationsGlobales('')
     setAttachments([])
     setErrors([])
@@ -216,26 +207,40 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     }
     setSubmitting(true)
     try {
-      // Note: les pièces jointes locales ne sont pas uploadées tant que la liste
-      // SharePoint ACTIVITE_Controleurs n'est pas branchée comme datasource Power Apps.
-      // On les conserve dans le rapport sous forme de métadonnées (nom + url locale).
-      const attachmentsMeta = attachments.map(f => ({ name: f.name, url: '' }))
-      createReport({
+      // 1. Création du rapport SharePoint
+      const created = await createReport({
         controleurEmail: email,
         controleurName: name,
         date,
         lines,
         anomaliesDetectees,
-        lienRapport: lienRapport.trim() || undefined,
         observationsGlobales: observationsGlobales.trim() || undefined,
-        attachments: attachmentsMeta,
       })
+
+      // 2. Upload des pièces jointes via le workflow Power Automate
+      //    (ACTIVITY_ATTACHMENT_API_URL → liste DCPO_ACTIVICTE_CONTROLLER)
+      let uploadFailures = 0
+      if (attachments.length > 0 && created?.id) {
+        for (const file of attachments) {
+          try {
+            await uploadActivityAttachment(created.id, file)
+          } catch (uploadErr) {
+            console.error(`Échec upload pièce jointe ${file.name}`, uploadErr)
+            uploadFailures++
+          }
+        }
+      }
+
       clearDraft(email)
-      setSubmitMessage({ type: 'ok', text: 'Reporting soumis avec succès.' })
+      setSubmitMessage({
+        type: uploadFailures > 0 ? 'err' : 'ok',
+        text: uploadFailures > 0
+          ? `Rapport soumis, mais ${uploadFailures} pièce(s) jointe(s) ont échoué à l'upload.`
+          : 'Rapport soumis avec succès.',
+      })
       setDate(todayISO())
       setLines([makeEmptyLine()])
       setAnomaliesDetectees(0)
-      setLienRapport('')
       setObservationsGlobales('')
       setAttachments([])
       setErrors([])
@@ -421,13 +426,6 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
           <h3>Options avancées</h3>
           <div className="form-grid">
             <div className="form-field">
-              <label htmlFor="reporting-statut">Statut journée (forçage)</label>
-              <select id="reporting-statut" value={statutOverride} onChange={e => setStatutOverride(e.target.value)}>
-                <option value="">— Calculé automatiquement —</option>
-                {STATUT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="form-field">
               <label htmlFor="reporting-anomalies">Anomalies détectées</label>
               <input
                 id="reporting-anomalies"
@@ -435,16 +433,6 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
                 min={0}
                 value={anomaliesDetectees}
                 onChange={e => setAnomaliesDetectees(Number(e.target.value))}
-              />
-            </div>
-            <div className="form-field" style={{ gridColumn: '1 / -1' }}>
-              <label htmlFor="reporting-lien">Lien rapport</label>
-              <input
-                id="reporting-lien"
-                type="url"
-                value={lienRapport}
-                onChange={e => setLienRapport(e.target.value)}
-                placeholder="https://..."
               />
             </div>
             <div className="form-field" style={{ gridColumn: '1 / -1' }}>

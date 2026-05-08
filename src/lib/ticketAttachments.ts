@@ -88,6 +88,16 @@ export interface UploadResponse {
 export const ATTACHMENT_API_URL =
   'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/a8ced63bd1314a7897003b97eebd85e9/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=EdDW19nkBl6pWigNfp0OQPaiSIjBwyhAuWeTO3s8b8E'
 
+/**
+ * Endpoint Power Automate dédié à l'upload des pièces jointes des rapports
+ * d'activité contrôleur (liste DCPO_ACTIVICTE_CONTROLLER).
+ *
+ * Distinct de ATTACHMENT_API_URL ci-dessus : chaque flow est lié à une
+ * liste cible spécifique côté Power Automate.
+ */
+export const ACTIVITY_ATTACHMENT_API_URL =
+  'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/092b4922268f439eb5cdbc77960a2875/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=txQA9pHc3e3Qb5ziRPWlG7uTiWIy1LuGFm0obmZBbS0'
+
 
 /* ──────────────────────────────────────────────────────────────────────────
  * SECTION 3 — UTILITAIRES BAS-NIVEAU
@@ -354,25 +364,105 @@ export function appendUrl(existing: string | null | undefined, newUrl: string): 
  * @param file - File object issu d'un <input type="file">
  * @param choise - Catégorie métier transmise au workflow (défaut 'Visite')
  */
+/**
+ * POST JSON vers un workflow Power Automate avec retry sur erreurs transitoires (5xx, network).
+ *
+ * Stratégie :
+ *   - 1 tentative initiale + jusqu'à `maxRetries` retries
+ *   - Backoff linéaire 2 s entre tentatives
+ *   - Retry uniquement sur statuts 5xx OU exceptions réseau
+ *   - Pas de retry sur 4xx (erreur client = la requête est mal formée)
+ *
+ * Le 502 "NoResponse" de Power Automate (upstream timeout) est typiquement
+ * transitoire et bénéficie d'un retry.
+ */
+async function postWorkflowWithRetry(
+  url: string,
+  body: unknown,
+  maxRetries: number = 1,
+): Promise<Response> {
+  const payload = JSON.stringify(body)
+  let lastError: Error | undefined
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      })
+      if (response.ok) return response
+      // 5xx = retry possible
+      if (response.status >= 500 && response.status < 600 && attempt < maxRetries) {
+        const errorText = await response.text().catch(() => '')
+        console.warn(`Power Automate ${response.status} (tentative ${attempt + 1}/${maxRetries + 1}) — retry dans 2s : ${errorText}`)
+        await new Promise(r => setTimeout(r, 2000))
+        continue
+      }
+      // 4xx ou retries épuisés → on retourne la réponse pour que l'appelant lise l'erreur
+      return response
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      if (attempt < maxRetries) {
+        console.warn(`Erreur réseau Power Automate (tentative ${attempt + 1}/${maxRetries + 1}) — retry dans 2s`, err)
+        await new Promise(r => setTimeout(r, 2000))
+        continue
+      }
+    }
+  }
+  throw lastError ?? new Error('Échec de l\'upload après retries.')
+}
+
 export async function uploadTicketAttachment(
   itemId: string,
   file: File,
   choise: string = 'Visite',
 ): Promise<string | undefined> {
   const fileContent = await fileToBase64(file)
-  const response = await fetch(ATTACHMENT_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fileName: file.name,
-      fileContent,
-      Choise: choise,
-      idItem: itemId,
-    }),
+  const response = await postWorkflowWithRetry(ATTACHMENT_API_URL, {
+    fileName: file.name,
+    fileContent,
+    Choise: choise,
+    idItem: itemId,
   })
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Echec upload piece jointe (${response.status}): ${errorText}`)
+  }
+  const data: UploadResponse = await response.json()
+  return data.attachmentUrl
+}
+
+/**
+ * Upload une pièce jointe à un item de la liste DCPO_ACTIVICTE_CONTROLLER
+ * (rapport quotidien contrôleur) via le workflow Power Automate dédié.
+ *
+ * Mêmes étapes que uploadTicketAttachment :
+ *   1. Encoder le file en base64
+ *   2. POST JSON vers ACTIVITY_ATTACHMENT_API_URL avec :
+ *      - fileName / fileContent / idItem
+ *      - Choise = 'Activite' (catégorie métier transmise au workflow)
+ *   3. Récupérer l'URL absolue de la pièce jointe créée
+ *
+ * @param itemId - ID SharePoint du rapport d'activité cible
+ * @param file - File issu d'un <input type="file">
+ * @param choise - Catégorie métier (défaut 'Activite')
+ * @returns URL absolue de la pièce jointe attachée (ou undefined si réponse vide)
+ */
+export async function uploadActivityAttachment(
+  itemId: string,
+  file: File,
+  choise: string = 'Activite',
+): Promise<string | undefined> {
+  const fileContent = await fileToBase64(file)
+  const response = await postWorkflowWithRetry(ACTIVITY_ATTACHMENT_API_URL, {
+    fileName: file.name,
+    fileContent,
+    Choise: choise,
+    idItem: itemId,
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Echec upload piece jointe activite (${response.status}): ${errorText}`)
   }
   const data: UploadResponse = await response.json()
   return data.attachmentUrl
