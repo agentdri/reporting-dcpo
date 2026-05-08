@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import { DCPO_LISTE_AGENCESService } from '../generated/services/DCPO_LISTE_AGENCESService'
 import { DCPO_LISTE_RESEAUXService } from '../generated/services/DCPO_LISTE_RESEAUXService'
@@ -114,6 +114,11 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   const [filterReseau, setFilterReseau] = useState('')
   const [filterClassification, setFilterClassification] = useState('')
   const [filterCriticite, setFilterCriticite] = useState('')
+  const [filterAgent, setFilterAgent] = useState('')
+  const [filterAffecte, setFilterAffecte] = useState('')
+  // Filtres appliqués (snapshot lors du clic Rechercher)
+  const [appliedAgent, setAppliedAgent] = useState('')
+  const [appliedAffecte, setAppliedAffecte] = useState('')
 
   // Detail modale
   const [detailItem, setDetailItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
@@ -422,6 +427,8 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
   }, [])
 
   const handleSearch = () => {
+    setAppliedAgent(filterAgent)
+    setAppliedAffecte(filterAffecte)
     fetchItems()
   }
 
@@ -432,8 +439,30 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     setFilterReseau('')
     setFilterClassification('')
     setFilterCriticite('')
+    setFilterAgent('')
+    setFilterAffecte('')
+    setAppliedAgent('')
+    setAppliedAffecte('')
     setTimeout(() => fetchItems(), 0)
   }
+
+  // Filtrage client pour Agent (auteur) et Personne affectée — appliqué uniquement au clic
+  const filteredItems = useMemo(() => {
+    const agentTerm = appliedAgent.trim().toLowerCase()
+    const affecteTerm = appliedAffecte.trim().toLowerCase()
+    if (!agentTerm && !affecteTerm) return items
+    return items.filter(it => {
+      if (agentTerm) {
+        const haystack = `${it.auteur_anormalie?.DisplayName ?? ''} ${it.auteur_anormalie?.Email ?? ''}`.toLowerCase()
+        if (!haystack.includes(agentTerm)) return false
+      }
+      if (affecteTerm) {
+        const haystack = `${it.personneAffecter?.DisplayName ?? ''} ${it.personneAffecter?.Email ?? ''}`.toLowerCase()
+        if (!haystack.includes(affecteTerm)) return false
+      }
+      return true
+    })
+  }, [items, appliedAgent, appliedAffecte])
 
   const handleChange = (field: string, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -554,27 +583,27 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
 
       <div className="stats-cards">
         <div className="stat-card total">
-          <span className="stat-value">{items.length}</span>
+          <span className="stat-value">{filteredItems.length}</span>
           <span className="stat-label">Total</span>
         </div>
         <div className="stat-card ouvert">
-          <span className="stat-value">{items.filter(i => i.field_10 === 'Ouvert').length}</span>
+          <span className="stat-value">{filteredItems.filter(i => i.field_10 === 'Ouvert').length}</span>
           <span className="stat-label">Ouvert</span>
         </div>
         <div className="stat-card en-cours">
-          <span className="stat-value">{items.filter(i => i.field_10 === 'En cours').length}</span>
+          <span className="stat-value">{filteredItems.filter(i => i.field_10 === 'En cours').length}</span>
           <span className="stat-label">En cours</span>
         </div>
         <div className="stat-card resolu">
-          <span className="stat-value">{items.filter(i => i.field_10 === 'Resolu').length}</span>
+          <span className="stat-value">{filteredItems.filter(i => i.field_10 === 'Resolu').length}</span>
           <span className="stat-label">Resolu</span>
         </div>
         <div className="stat-card clos">
-          <span className="stat-value">{items.filter(i => i.field_10 === 'Clos').length}</span>
+          <span className="stat-value">{filteredItems.filter(i => i.field_10 === 'Clos').length}</span>
           <span className="stat-label">Clos</span>
         </div>
         <div className="stat-card montant">
-          <span className="stat-value">{items.reduce((s, i) => s + (i.field_8 ?? 0), 0).toLocaleString()}</span>
+          <span className="stat-value">{filteredItems.reduce((s, i) => s + (i.field_8 ?? 0), 0).toLocaleString()}</span>
           <span className="stat-label">Montant total</span>
         </div>
       </div>
@@ -623,6 +652,24 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
+        </div>
+        <div className="filter-field">
+          <label>Agent (auteur)</label>
+          <input
+            type="text"
+            placeholder="Nom ou email..."
+            value={filterAgent}
+            onChange={e => setFilterAgent(e.target.value)}
+          />
+        </div>
+        <div className="filter-field">
+          <label>Personne affectée</label>
+          <input
+            type="text"
+            placeholder="Nom ou email..."
+            value={filterAffecte}
+            onChange={e => setFilterAffecte(e.target.value)}
+          />
         </div>
         <button className="btn-search-filters" onClick={handleSearch} disabled={loading}>
           {loading ? 'Recherche...' : 'Rechercher'}
@@ -856,8 +903,8 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
 
       {loading ? (
         <p className="loading-text">Chargement des anomalies...</p>
-      ) : items.length === 0 ? (
-        <p className="loading-text">Aucune anomalie trouvee.</p>
+      ) : filteredItems.length === 0 ? (
+        <p className="loading-text">Aucune anomalie trouvée.</p>
       ) : (
         <div className="table-wrapper">
           <table className={`data-table anomalies-table ${expandedColumns ? 'is-expanded' : 'is-compact'}`}>
@@ -896,7 +943,7 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
               </tr>
             </thead>
             <tbody>
-              {items.map((item, index) => (
+              {filteredItems.map((item, index) => (
                 <tr key={item.ID}>
                   <td className="col-ticket">
                     <span

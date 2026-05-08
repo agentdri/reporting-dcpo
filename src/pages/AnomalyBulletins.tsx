@@ -32,6 +32,7 @@ export default function AnomalyBulletins() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<BulletinFilters>(EMPTY_BULLETIN_FILTERS)
+  const [appliedFilters, setAppliedFilters] = useState<BulletinFilters>(EMPTY_BULLETIN_FILTERS)
   const [selected, setSelected] = useState<ConsolidatedBulletin | null>(null)
 
   const fetchData = async () => {
@@ -70,7 +71,7 @@ export default function AnomalyBulletins() {
     [tickets, agences, reseaux],
   )
 
-  const filtered = useMemo(() => applyBulletinFilters(bulletins, filters), [bulletins, filters])
+  const filtered = useMemo(() => applyBulletinFilters(bulletins, appliedFilters), [bulletins, appliedFilters])
 
   const stats = useMemo(() => {
     const resolus = filtered.filter(b => b.statut === 'Resolu').length
@@ -85,7 +86,12 @@ export default function AnomalyBulletins() {
     setFilters(prev => ({ ...prev, [key]: value }))
   }
 
-  const resetFilters = () => setFilters(EMPTY_BULLETIN_FILTERS)
+  const applyFilters = () => setAppliedFilters(filters)
+
+  const resetFilters = () => {
+    setFilters(EMPTY_BULLETIN_FILTERS)
+    setAppliedFilters(EMPTY_BULLETIN_FILTERS)
+  }
 
   const printBulletin = () => {
     window.print()
@@ -131,6 +137,7 @@ export default function AnomalyBulletins() {
             placeholder="Rechercher un bulletin (n°, titre, agence, cause, ...)"
             value={filters.search}
             onChange={e => updateFilter('search', e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') applyFilters() }}
             aria-label="Recherche"
           />
         </div>
@@ -165,6 +172,24 @@ export default function AnomalyBulletins() {
             </select>
           </div>
           <div className="filter-field">
+            <label>Agent (auteur)</label>
+            <input
+              type="text"
+              placeholder="Nom ou email..."
+              value={filters.agent}
+              onChange={e => updateFilter('agent', e.target.value)}
+            />
+          </div>
+          <div className="filter-field">
+            <label>Personne affectée</label>
+            <input
+              type="text"
+              placeholder="Nom ou email..."
+              value={filters.affecte}
+              onChange={e => updateFilter('affecte', e.target.value)}
+            />
+          </div>
+          <div className="filter-field">
             <label>Clôture du</label>
             <input type="date" value={filters.closureFrom} onChange={e => updateFilter('closureFrom', e.target.value)} />
           </div>
@@ -172,6 +197,9 @@ export default function AnomalyBulletins() {
             <label>Clôture au</label>
             <input type="date" value={filters.closureTo} onChange={e => updateFilter('closureTo', e.target.value)} />
           </div>
+          <button type="button" className="btn-search-filters" onClick={applyFilters} disabled={loading}>
+            Rechercher
+          </button>
           <button type="button" className="btn-reset-filters" onClick={resetFilters}>Réinitialiser</button>
         </div>
       </div>

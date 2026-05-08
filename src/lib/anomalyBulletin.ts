@@ -11,6 +11,8 @@ export interface BulletinFilters {
   classification: string
   criticite: string
   agence: string
+  agent: string
+  affecte: string
   closureFrom: string
   closureTo: string
 }
@@ -21,6 +23,8 @@ export const EMPTY_BULLETIN_FILTERS: BulletinFilters = {
   classification: '',
   criticite: '',
   agence: '',
+  agent: '',
+  affecte: '',
   closureFrom: '',
   closureTo: '',
 }
@@ -264,6 +268,8 @@ export function applyBulletinFilters(
   filters: BulletinFilters,
 ): ConsolidatedBulletin[] {
   const search = filters.search.trim().toLowerCase()
+  const agentTerm = filters.agent.trim().toLowerCase()
+  const affecteTerm = filters.affecte.trim().toLowerCase()
   const fromDate = filters.closureFrom ? new Date(`${filters.closureFrom}T00:00:00`) : undefined
   const toDate = filters.closureTo ? new Date(`${filters.closureTo}T23:59:59`) : undefined
 
@@ -272,6 +278,15 @@ export function applyBulletinFilters(
     if (filters.classification && b.classification !== filters.classification) return false
     if (filters.criticite && b.criticite !== filters.criticite) return false
     if (filters.agence && String(b.ticket.field_6 ?? '') !== filters.agence) return false
+
+    if (agentTerm) {
+      const haystack = `${b.auteurName} ${b.ticket.auteur_anormalie?.Email ?? ''}`.toLowerCase()
+      if (!haystack.includes(agentTerm)) return false
+    }
+    if (affecteTerm) {
+      const haystack = `${b.affecteName} ${b.ticket.personneAffecter?.Email ?? ''}`.toLowerCase()
+      if (!haystack.includes(affecteTerm)) return false
+    }
 
     if (fromDate || toDate) {
       const ref = b.closureDate ?? b.regularizationDate
