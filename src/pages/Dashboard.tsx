@@ -41,6 +41,7 @@ import Anomalies from './Anomalies'
 import AnomalyBulletins from './AnomalyBulletins'
 import ReportingAgent from './ReportingAgent'
 import ControllerReporting from './ControllerReporting'
+import ControllerMyReports from './ControllerMyReports'
 import ControllerReportingList from './ControllerReportingList'
 import PlanControle from './PlanControle'
 import PlanActionCorrectif from './PlanActionCorrectif'
@@ -70,6 +71,7 @@ type Tab =
   | 'bulletins'
   | 'reporting-agent'
   | 'reporting-saisie'
+  | 'reporting-mes-rapports'
   | 'reporting-validation'
   | 'plan-controle'
   | 'plan-action-correctif'
@@ -138,7 +140,16 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
     ]
     // Onglets conditionnels selon rôle
     if (isController || isManager) {
-      items.push({ type: 'leaf', key: 'reporting-saisie', label: 'Rapport quotidien' })
+      // Groupe "Rapport quotidien" : saisie + historique personnel
+      items.push({
+        type: 'group',
+        key: 'rapport-quotidien',
+        label: 'Rapport quotidien',
+        children: [
+          { type: 'leaf', key: 'reporting-saisie', label: 'Saisie du rapport' },
+          { type: 'leaf', key: 'reporting-mes-rapports', label: 'Mes rapports' },
+        ],
+      })
     }
     if (isManager) {
       items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings' })
@@ -159,10 +170,13 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
   /**
    * État d'expansion des groupes de navigation.
    * Map keyName → true (ouvert) / false (fermé).
-   * Initialisé avec 'anomalies' ouvert pour que l'utilisateur voie tout
-   * de suite le sous-menu (cohérent avec activeTab par défaut).
+   * Initialisé avec 'anomalies' et 'rapport-quotidien' ouverts pour que
+   * l'utilisateur voie tout de suite les sous-menus disponibles.
    */
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ anomalies: true })
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    anomalies: true,
+    'rapport-quotidien': true,
+  })
 
   /** Toggle l'état d'un groupe (expansion / contraction). */
   const toggleGroup = (key: string) => {
@@ -247,6 +261,9 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
           {activeTab === 'reporting-agent' && <ReportingAgent />}
           {activeTab === 'reporting-saisie' && (
             <ControllerReporting userName={userName} userEmail={userEmail} />
+          )}
+          {activeTab === 'reporting-mes-rapports' && (
+            <ControllerMyReports userName={userName} userEmail={userEmail} />
           )}
           {activeTab === 'reporting-validation' && (
             <ControllerReportingList userName={userName} userEmail={userEmail} />

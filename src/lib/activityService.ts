@@ -47,6 +47,7 @@ import type {
   DCPO_ACTIVICTE_CONTROLLERRead,
   DCPO_ACTIVICTE_CONTROLLERWrite,
 } from '../generated/models/DCPO_ACTIVICTE_CONTROLLERModel'
+import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -161,74 +162,249 @@ function writeValidation(reportId: string, validation: LocalValidation): void {
 }
 
 
-/* ──────────────────────────────────────────────────────────────────────────
- * SECTION 3 — SÉRIALISATION DES LIGNES DANS actionDeLaJournee
+/* ══════════════════════════════════════════════════════════════════════════
+ * SECTION 3 — SÉRIALISATION DES LIGNES D'ACTION DE LA JOURNÉE
+ * ══════════════════════════════════════════════════════════════════════════
  *
- * Format hybride :
- *   1. Section humaine lisible (le contrôleur peut la relire dans SharePoint)
- *   2. Bloc JSON marqué pour parsing robuste (round-trip sans perte)
+ * CONTEXTE
+ * --------
+ * La liste SharePoint DCPO_ACTIVICTE_CONTROLLER ne dispose que d'UN seul
+ * champ multiligne (`actionDeLaJournee`) pour stocker TOUTES les actions
+ * menées par le contrôleur dans la journée. Il faut donc encoder une liste
+ * structurée d'objets ActivityLine[] dans une simple string.
  *
- * Exemple produit :
- *   1) [Contrôle] Visite agence Bessengue — 60 min
- *      ▸ Vérification des écritures du jour
- *      Observation : RAS
+ * CONTRAINTES
+ * -----------
+ *   1. Le champ doit être LISIBLE quand un manager l'ouvre directement dans
+ *      l'UI SharePoint (sans passer par l'app React)
+ *   2. Le champ doit être PARSEABLE de manière robuste pour reconstruire
+ *      les ActivityLine[] et les afficher dans l'app
+ *   3. Le format doit survivre à un éditeur SharePoint qui pourrait
+ *      reformater (ajout/suppression d'espaces, normalisation des sauts de
+ *      ligne)
  *
- *   2) [Reporting] Rapport hebdomadaire — 90 min
- *      ▸ Compilation des chiffres
+ * SOLUTION : FORMAT HYBRIDE (texte humain + JSON encadré)
+ * --------------------------------------------------------
+ * Le champ contient DEUX zones :
  *
- *   <!--LINES_JSON {"v":1,"lines":[{...},{...}]}-->
- * ────────────────────────────────────────────────────────────────────────── */
-
-const JSON_BLOCK_RE = /<!--LINES_JSON\s*([\s\S]*?)\s*-->/
+ *   ZONE 1 — Bloc humain numéroté (en haut) :
+ *   ┌─────────────────────────────────────────────────────┐
+ *   │ 1) [Contrôle] Visite agence Bessengue — 60 min      │
+ *   │    ▸ Vérification des écritures du jour             │
+ *   │    Observation : RAS                                │
+ *   │                                                     │
+ *   │ 2) [Reporting] Rapport hebdomadaire — 90 min        │
+ *   │    ▸ Compilation des chiffres                       │
+ *   └─────────────────────────────────────────────────────┘
+ *
+ *   ZONE 2 — Bloc JSON encadré par marqueurs HTML-comment (en bas) :
+ *   ┌─────────────────────────────────────────────────────┐
+ *   │ <!--LINES_JSON {"v":1,"lines":[{...},{...}]}-->     │
+ *   └─────────────────────────────────────────────────────┘
+ *
+ * RÉPARTITION DES RÔLES
+ * ---------------------
+ *   - La ZONE 1 sert à la LECTURE HUMAINE (managers SharePoint)
+ *   - La ZONE 2 sert à la LECTURE MACHINE (round-trip app React)
+ *   - À l'écriture : on génère TOUJOURS les deux ensemble
+ *   - À la lecture : on essaie d'abord ZONE 2 (JSON parfait), fallback
+ *     vers ZONE 1 (parsing heuristique) si JSON absent/corrompu
+ *
+ * VERSIONING
+ * ----------
+ * Le JSON contient un champ "v":1 (version du format). Si on change le
+ * schéma plus tard (ex. ajout d'un champ obligatoire), on bumpe à v:2 et
+ * on garde une compatibilité descendante dans parseLines().
+ *
+ * POURQUOI HTML-COMMENT COMME MARQUEUR ?
+ * --------------------------------------
+ *   - Visuellement discret (un manager qui survole le champ ne sera pas
+ *     gêné par un gros pavé de JSON brut)
+ *   - SharePoint multi-line text n'interprète PAS le HTML (donc le commentaire
+ *     est conservé tel quel, ne devient pas vraiment "invisible")
+ *   - Facile à matcher avec une regex non-greedy ([\s\S]*?)
+ * ══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Sérialise un tableau de ActivityLine vers le texte multiligne SharePoint.
+ * Regex de capture du bloc JSON dans le champ multiligne.
  *
- * Stratégie :
- *   - Génère d'abord la version humaine (numérotée, structurée)
- *   - Append un bloc JSON minifié encadré par marqueurs HTML-comment
- *     (lisible mais ne pollue pas trop visuellement)
+ * Pattern décortiqué :
+ *   <!--LINES_JSON     ← marqueur d'ouverture (littéral)
+ *   \s*                ← whitespace optionnel après le marqueur
+ *   ([\s\S]*?)         ← GROUPE 1 = contenu JSON (lazy : s'arrête au premier -->)
+ *                        [\s\S] matche TOUT (incluant newlines), à la diff de "."
+ *                        qui ne matche pas \n par défaut
+ *   \s*                ← whitespace optionnel avant la fermeture
+ *   -->                ← marqueur de fermeture (littéral)
+ *
+ * Pas de flag "i" : les marqueurs sont en majuscules strictes.
+ * Pas de flag "g" : on ne cherche QU'UN seul bloc (le dernier emporte si plusieurs).
+ */
+const JSON_BLOCK_RE = /<!--LINES_JSON\s*([\s\S]*?)\s*-->/
+
+
+/**
+ * SÉRIALISATION : ActivityLine[] → string multiligne SharePoint
+ * =============================================================
+ *
+ * Cette fonction est appelée à chaque écriture vers le champ
+ * `actionDeLaJournee` de DCPO_ACTIVICTE_CONTROLLER, c'est-à-dire :
+ *   - createReport() lors de la soumission initiale du rapport
+ *   - updateReport() lors d'une éventuelle modification ultérieure
+ *
+ * Étapes (vue d'ensemble) :
+ *   1. Court-circuit si liste vide → string vide (l'item SP aura un champ
+ *      `actionDeLaJournee` vide aussi, c'est un état valide)
+ *   2. Génération de la ZONE 1 : bloc humain pour chaque ligne
+ *      - Numérotation 1-indexée (UX humaine, pas 0-indexée comme un dev)
+ *      - Crochets autour du domaine pour catégorisation visuelle rapide
+ *      - Tiret cadratin (—) avant la durée pour démarcation propre
+ *      - Indentation de 3 espaces des sous-éléments (action, observation)
+ *      - Préfixe ▸ devant l'action (icône d'item-de-liste minimaliste)
+ *      - Préfixe "Observation :" devant la note (texte explicite)
+ *      - Skip des sous-éléments vides pour ne pas afficher "▸ " tout seul
+ *   3. Génération de la ZONE 2 : JSON minifié encadré par marqueurs
+ *      - Pas d'indentation (économise des bytes dans SharePoint)
+ *      - Wrapper {v:1, lines:[...]} pour le versioning futur
+ *   4. Concaténation : ZONE 1 + double newline + ZONE 2
+ *
+ * @param lines - Tableau d'ActivityLine venant du formulaire React
+ * @returns String prête à être envoyée à SharePoint dans actionDeLaJournee
  */
 export function serializeLines(lines: ActivityLine[]): string {
+  // Court-circuit défensif : pas de lignes → champ vide
+  // (évite de stocker un bloc JSON `{"v":1,"lines":[]}` inutile en SP)
   if (!lines || lines.length === 0) return ''
 
-  // 1. Section humaine
+  // ─────────────────────────────────────────────────────────────────────
+  // ZONE 1 — Construction du bloc humain
+  // ─────────────────────────────────────────────────────────────────────
+  // On itère sur chaque ligne avec son index (pour la numérotation 1-indexée).
+  // Chaque ligne devient potentiellement 1 à 3 lignes texte :
+  //   - L'en-tête (toujours)
+  //   - L'action (uniquement si non vide)
+  //   - L'observation (uniquement si non vide)
+  // Les blocs sont ensuite joints par "\n\n" pour créer une séparation
+  // visuelle claire entre activités.
   const human = lines.map((l, i) => {
-    const num = i + 1
-    const domaine = (l.domaine || '—').trim()
-    const objet = (l.objet || '—').trim()
-    const duree = Number.isFinite(l.duree) ? l.duree : 0
-    const lines: string[] = []
-    lines.push(`${num}) [${domaine}] ${objet} — ${duree} min`)
-    if (l.action?.trim()) lines.push(`   ▸ ${l.action.trim()}`)
-    if (l.observation?.trim()) lines.push(`   Observation : ${l.observation.trim()}`)
-    return lines.join('\n')
-  }).join('\n\n')
+    const num = i + 1                                         // numérotation 1-indexée pour l'humain
+    const domaine = (l.domaine || '—').trim()                 // fallback "—" si vide (mieux qu'une chaîne vide entre crochets)
+    const objet = (l.objet || '—').trim()                    // idem
+    const duree = Number.isFinite(l.duree) ? l.duree : 0      // protection contre NaN/Infinity venant d'un input number cassé
 
-  // 2. Bloc JSON pour round-trip
+    // Accumulateur des lignes texte de cette activité
+    // Note : volontairement nommé "lines" en local mais shadow "lines" du
+    // paramètre extérieur — pas un problème car on n'a plus besoin du paramètre
+    // ici (on a déjà le `l` courant)
+    const out: string[] = []
+
+    // ─── Ligne 1 : en-tête obligatoire ────────────────────────────────
+    // Format : "1) [Contrôle] Visite agence Bessengue — 60 min"
+    //   - "${num})" : numérotation visible
+    //   - "[${domaine}]" : crochets pour signaler la catégorie d'un coup d'œil
+    //   - "${objet}" : sujet de l'action sans décoration (texte libre)
+    //   - " — ${duree} min" : durée explicite avec espacement aéré
+    out.push(`${num}) [${domaine}] ${objet} — ${duree} min`)
+
+    // ─── Ligne 2 (optionnelle) : action menée ─────────────────────────
+    // Indentée de 3 espaces pour signaler la subordination à l'en-tête
+    // Préfixe ▸ : flèche-triangle qui rend l'item facile à parser à l'œil
+    // Le `?.trim()` gère à la fois undefined ET chaîne vide
+    if (l.action?.trim()) out.push(`   ▸ ${l.action.trim()}`)
+
+    // ─── Ligne 3 (optionnelle) : observation libre ────────────────────
+    // Même indentation que l'action
+    // Préfixe "Observation :" en toutes lettres (vs symbole) pour différencier
+    // sémantiquement de l'action (qui est CE qui a été fait, l'observation
+    // étant un commentaire/note)
+    if (l.observation?.trim()) out.push(`   Observation : ${l.observation.trim()}`)
+
+    // Joint les 1-3 lignes de cette activité par un simple newline
+    return out.join('\n')
+  })
+  // Chaque activité est ensuite séparée par DEUX newlines (ligne blanche
+  // entre les blocs) pour la lisibilité.
+  .join('\n\n')
+
+  // ─────────────────────────────────────────────────────────────────────
+  // ZONE 2 — Construction du bloc JSON
+  // ─────────────────────────────────────────────────────────────────────
+  // JSON.stringify SANS indentation pour minimiser la taille stockée.
+  // Le wrapper { v: 1, lines: [...] } permet :
+  //   - "v" : versionner le format pour migration future (v2 = nouveau schéma)
+  //   - "lines" : préserver l'array tel-quel pour reconstruction sans perte
+  //
+  // ⚠ ActivityLine contient des champs string libres qui peuvent contenir des
+  // caractères spéciaux (guillemets, retours à la ligne, etc.). JSON.stringify
+  // les échappe automatiquement (\\n, \", etc.), donc le contenu est safe
+  // dans le bloc HTML-commenté.
   const json = JSON.stringify({ v: 1, lines })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // ASSEMBLAGE FINAL
+  // ─────────────────────────────────────────────────────────────────────
+  // Format final : "<bloc humain>\n\n<!--LINES_JSON <json>-->"
+  // - Le \n\n entre les deux zones crée une séparation visuelle nette
+  // - L'espace après "LINES_JSON" et avant "-->" est facultatif mais
+  //   améliore la lisibilité (et la regex JSON_BLOCK_RE le tolère via \s*)
   return `${human}\n\n<!--LINES_JSON ${json}-->`
 }
 
+
 /**
- * Parse le contenu de actionDeLaJournee pour récupérer les lignes.
+ * DÉSÉRIALISATION : string multiligne SharePoint → ActivityLine[]
+ * ===============================================================
  *
- * Stratégie :
- *   1. Cherche d'abord le bloc <!--LINES_JSON ... --> (round-trip parfait)
- *   2. Si absent ou JSON invalide : tentative de parsing heuristique du
- *      texte humain (pour les rapports créés manuellement dans SharePoint
- *      sans passer par l'app)
- *   3. Si tout échoue : retourne []
+ * Cette fonction est appelée à chaque LECTURE d'un rapport depuis SharePoint
+ * (listReports, getReport). Elle reconstruit la liste des actions à partir
+ * du contenu textuel stocké dans `actionDeLaJournee`.
+ *
+ * Stratégie en 3 niveaux (du plus fiable au plus best-effort) :
+ *
+ *   NIVEAU 1 — Parser le bloc JSON (chemin nominal)
+ *     ✅ Round-trip parfait avec serializeLines
+ *     ✅ Tous les champs préservés (id, observation optionnelle, etc.)
+ *     ⚠ Échoue si JSON corrompu OU bloc absent
+ *
+ *   NIVEAU 2 — Parsing heuristique du texte humain (fallback)
+ *     ⚠ Utile pour les items créés/modifiés MANUELLEMENT dans SharePoint
+ *       sans passer par l'app (ex: un manager corrige une faute via l'UI SP)
+ *     ⚠ Best-effort : peut perdre l'observation, ID régénérés, etc.
+ *
+ *   NIVEAU 3 — Tableau vide (échec total)
+ *     ✅ L'app n'explose pas, mais l'utilisateur voit un rapport sans lignes
+ *
+ * @param raw - Contenu brut du champ actionDeLaJournee (peut être null)
+ * @returns Tableau d'ActivityLine reconstruit (ou [] si rien parsable)
  */
 export function parseLines(raw: string | null | undefined): ActivityLine[] {
+  // Court-circuit : null/undefined/string vide → []
+  // (équivalent à un rapport "sans actions" — état valide mais inhabituel)
   if (!raw) return []
 
-  // 1. Tentative bloc JSON (chemin nominal)
+  // ─────────────────────────────────────────────────────────────────────
+  // NIVEAU 1 : Tentative de parsing du bloc JSON (chemin nominal)
+  // ─────────────────────────────────────────────────────────────────────
+  // .match() avec une regex non-globale retourne soit null soit un objet
+  // avec match[0] = match complet et match[1+] = groupes de capture.
+  // Ici match[1] = contenu entre <!--LINES_JSON et -->
   const match = raw.match(JSON_BLOCK_RE)
   if (match && match[1]) {
     try {
+      // Parse JSON. Cast pessimiste : on suppose que le payload pourrait
+      // être de n'importe quelle forme (pas seulement notre wrapper attendu).
       const parsed = JSON.parse(match[1]) as { v?: number; lines?: ActivityLine[] }
+
+      // Validation structurelle : on attend un objet avec `lines: array`
       if (parsed && Array.isArray(parsed.lines)) {
+        // Re-mappage défensif : on reconstruit chaque ligne avec :
+        //   - Génération d'un nouvel id si manquant (jamais le cas en
+        //     sortie de serializeLines, mais peut arriver si quelqu'un a
+        //     édité le JSON manuellement)
+        //   - Coercition string sur les champs textuels (?? '' évite
+        //     undefined → 'undefined' affiché dans l'UI)
+        //   - Number(l.duree) || 0 : si duree est string (édition manuelle)
+        //     Number() la convertit. Le || 0 fallback gère NaN/0/null.
         return parsed.lines.map(l => ({
           id: l.id ?? uid(),
           domaine: l.domaine ?? '',
@@ -238,44 +414,91 @@ export function parseLines(raw: string | null | undefined): ActivityLine[] {
           observation: l.observation,
         }))
       }
+      // Si on arrive ici, le JSON était valide mais pas dans le format
+      // attendu (ex: array directement, ou objet sans .lines). On laisse
+      // tomber dans le fallback heuristique plus bas.
     } catch (err) {
+      // JSON.parse a levé : contenu corrompu (édition manuelle ratée,
+      // tronquage SharePoint, etc.). On log en warn (pas error) car ce
+      // n'est pas critique — le fallback va prendre le relais.
       console.warn('parseLines: bloc JSON invalide, fallback texte', err)
     }
   }
 
-  // 2. Fallback heuristique : tente d'extraire les lignes du texte humain
-  // Format attendu : "N) [domaine] objet — duree min" suivi de ▸ action et Observation:
+  // ─────────────────────────────────────────────────────────────────────
+  // NIVEAU 2 : Fallback heuristique sur le texte humain
+  // ─────────────────────────────────────────────────────────────────────
+  // Format attendu : "N) [domaine] objet — duree min" suivi de ▸ action
+  // et "Observation : ..." (cf. parseLinesHeuristic).
   return parseLinesHeuristic(raw)
 }
 
 /**
- * Parsing heuristique du texte humain quand le bloc JSON est absent.
- * Utilisé pour les rapports créés directement en SharePoint sans passer
- * par l'app. Best-effort, pas de garantie de fidélité.
+ * PARSER HEURISTIQUE : extrait les lignes du texte humain quand le JSON
+ * est absent ou corrompu.
+ *
+ * Cas d'usage typique : un manager a édité l'item directement dans
+ * SharePoint pour corriger une faute, et a accidentellement supprimé/cassé
+ * le bloc <!--LINES_JSON ... -->. On préserve la donnée visible plutôt
+ * que de retourner [] et perdre le contenu.
+ *
+ * Limites :
+ *   - Les IDs des lignes sont REGÉNÉRÉS (originaux perdus)
+ *   - L'observation est récupérée par recherche de préfixe insensible à la casse
+ *   - Si le format texte a été modifié de façon non-standard, certaines
+ *     lignes peuvent être ignorées silencieusement
  */
 function parseLinesHeuristic(raw: string): ActivityLine[] {
-  // Retire le bloc JSON s'il existe (avec contenu corrompu)
+  // Étape 1 : Retirer le bloc JSON s'il existe (avec contenu corrompu)
+  // → on ne veut pas tenter de parser le JSON brut comme du texte humain
+  // → si le bloc est absent, .replace() est un no-op (rien retiré)
   const text = raw.replace(JSON_BLOCK_RE, '').trim()
   if (!text) return []
 
   const out: ActivityLine[] = []
-  // Sépare en blocs sur les double-newlines
+
+  // Étape 2 : Découpage en blocs sur les lignes blanches
+  // Regex /\n\s*\n/ : un newline + optionnellement des whitespaces + un newline
+  // Tolère les variations comme "\n\n", "\n \n", "\n\t\n", etc.
   const blocks = text.split(/\n\s*\n/)
+
+  // Étape 3 : Pour chaque bloc, tenter d'extraire une ligne d'activité
   for (const block of blocks) {
+    // Découper le bloc en lignes individuelles, trim chaque ligne, ignorer les vides
     const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
     if (lines.length === 0) continue
-    // Parse la ligne d'en-tête : "N) [domaine] objet — duree min"
+
+    // Étape 3.a : Parser la ligne d'EN-TÊTE
+    // Pattern : "N) [domaine] objet — duree min"
+    //   - ^\d+\)         : numéro suivi de )
+    //   - \s*\[([^\]]+)\] : crochets, capture du domaine
+    //   - \s*(.+?)        : objet (lazy pour ne pas avaler le tiret)
+    //   - \s*[—-]\s*      : tiret cadratin OU tiret simple (tolérant)
+    //   - (\d+)\s*min     : durée + suffixe "min"
+    //   - flag /i         : case-insensitive ("MIN" tolérable)
     const headerMatch = lines[0].match(/^\d+\)\s*\[([^\]]+)\]\s*(.+?)\s*[—-]\s*(\d+)\s*min/i)
-    if (!headerMatch) continue
+    if (!headerMatch) continue  // bloc qui n'est pas une activité → skip
+
+    // Étape 3.b : Chercher la ligne d'action (préfixe ▸)
+    // .find() retourne la première ligne matchant ; le ?. gère undefined
+    // .replace(/^▸\s*/, '') retire le préfixe pour ne garder que le contenu
     const action = lines.find(l => l.startsWith('▸'))?.replace(/^▸\s*/, '') ?? ''
+
+    // Étape 3.c : Chercher la ligne d'observation
+    // toLowerCase pour matcher "Observation", "observation", "OBSERVATION"
+    // /^observation\s*[:：]\s*/i : retire le préfixe "Observation :"
+    //   - [:：] tolère le deux-points ASCII (:) ET le pleine-largeur (：)
+    //   - flag /i : insensible à la casse
     const observation = lines.find(l => l.toLowerCase().startsWith('observation'))?.replace(/^observation\s*[:：]\s*/i, '') ?? ''
+
+    // Étape 3.d : Construction de l'ActivityLine reconstruite
     out.push({
-      id: uid(),
-      domaine: headerMatch[1].trim(),
-      objet: headerMatch[2].trim(),
-      duree: parseInt(headerMatch[3], 10) || 0,
-      action,
-      observation: observation || undefined,
+      id: uid(),                                  // nouvel ID (l'original est perdu)
+      domaine: headerMatch[1].trim(),             // groupe 1 = domaine entre crochets
+      objet: headerMatch[2].trim(),               // groupe 2 = objet
+      duree: parseInt(headerMatch[3], 10) || 0,   // groupe 3 = durée. parseInt + fallback 0
+      action,                                     // peut être '' si pas de ligne ▸
+      observation: observation || undefined,      // undefined si vide (cohérent avec le type optionnel)
     })
   }
   return out
@@ -293,6 +516,15 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
   const dateStr = item.Date ? item.Date.split('T')[0] : ''
   const validation = readValidation(String(item.ID))
 
+  // Pièces jointes : le champ urlPieceJointes (champ texte SP) peut contenir
+  // plusieurs URLs concaténées par " | " (cf. helper appendUrl).
+  // On les transforme en tableau {name, url} pour l'affichage côté UI.
+  const attachmentUrls = parseUrlList(item.urlPieceJointes)
+  const attachments = attachmentUrls.map(url => ({
+    name: getFileNameFromUrl(url),
+    url,
+  }))
+
   return {
     id: String(item.ID),
     controleurEmail: item.controlleur?.Email ?? '',
@@ -306,7 +538,7 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
     anomaliesDetectees: item.nombreAnomalieDetectee,
     lienRapport: undefined,
     observationsGlobales: item.observationsGlobales,
-    attachments: [],
+    attachments,
     validationHistory: validation?.history ?? [],
     submittedAt: item.Created ?? '',
     updatedAt: item.Modified ?? '',
@@ -462,6 +694,63 @@ export async function updateReport(id: string, patch: Partial<ActivityReport>): 
     }
   }
   return getReport(id)
+}
+
+/**
+ * Ajoute (concatène) une ou plusieurs URLs de pièces jointes au champ
+ * `urlPieceJointes` du rapport SharePoint, sans écraser celles existantes.
+ *
+ * Pattern identique à celui utilisé pour les anomalies (cf. appendUrl du lib
+ * ticketAttachments.ts) : les URLs sont concaténées par " | " dans le champ
+ * texte. Le helper appendUrl gère le dédoublonnage et la mise en forme.
+ *
+ * Étapes :
+ *   1. Lit l'item courant pour récupérer la valeur existante de urlPieceJointes
+ *   2. Pour chaque URL nouvelle, applique appendUrl (qui déduplique)
+ *   3. Met à jour SharePoint avec la chaîne concaténée
+ *
+ * Utilisé après l'upload de pièces jointes via uploadActivityAttachment :
+ * le workflow Power Automate retourne l'URL de chaque fichier ajouté, et on
+ * persiste ces URLs dans le champ pour pouvoir les afficher côté lecture.
+ *
+ * @param reportId - ID SharePoint du rapport cible
+ * @param newUrls  - URLs à ajouter au champ (typiquement les URLs retournées
+ *                   par les uploads Power Automate, dans l'ordre des fichiers)
+ */
+export async function appendReportAttachmentUrls(reportId: string, newUrls: string[]): Promise<void> {
+  // Court-circuit : aucune URL à ajouter → no-op (évite un round-trip inutile)
+  const cleanUrls = newUrls.filter(u => !!u && u.trim().length > 0)
+  if (cleanUrls.length === 0) return
+
+  // 1. Lire la valeur actuelle pour ne pas écraser les URLs déjà stockées
+  let existing = ''
+  try {
+    const result = await DCPO_ACTIVICTE_CONTROLLERService.get(reportId)
+    existing = result.data?.urlPieceJointes ?? ''
+  } catch (err) {
+    console.error('appendReportAttachmentUrls: échec lecture item', err)
+    // On continue avec une chaîne vide — pire cas on perd les anciennes URLs,
+    // mais c'est mieux que de ne pas écrire les nouvelles.
+  }
+
+  // 2. Concaténer chaque nouvelle URL via appendUrl
+  //    appendUrl gère :
+  //      - le dédoublonnage (si une URL est déjà présente, elle n'est pas réajoutée)
+  //      - le format avec séparateur " | "
+  //      - la propreté finale (trim, etc.)
+  const concatenated = cleanUrls.reduce(
+    (acc, url) => appendUrl(acc, url),
+    existing,
+  )
+
+  // 3. Persister la nouvelle valeur dans SharePoint
+  try {
+    await DCPO_ACTIVICTE_CONTROLLERService.update(reportId, {
+      urlPieceJointes: concatenated,
+    } as Partial<Omit<DCPO_ACTIVICTE_CONTROLLERWrite, 'ID'>>)
+  } catch (err) {
+    console.error('appendReportAttachmentUrls: échec update item', err)
+  }
 }
 
 

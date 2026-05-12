@@ -31,6 +31,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ACTIVITY_DOMAINES,
   ACTIVITY_LINE_LIMITS,
+  appendReportAttachmentUrls,
   clearDraft,
   computeTotals,
   createReport,
@@ -219,14 +220,29 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
 
       // 2. Upload des pièces jointes via le workflow Power Automate
       //    (ACTIVITY_ATTACHMENT_API_URL → liste DCPO_ACTIVICTE_CONTROLLER)
+      //    Le workflow attache le fichier nativement à l'item ET retourne
+      //    l'URL absolue, qu'on accumule pour la persister dans urlPieceJointes.
       let uploadFailures = 0
+      const uploadedUrls: string[] = []
       if (attachments.length > 0 && created?.id) {
         for (const file of attachments) {
           try {
-            await uploadActivityAttachment(created.id, file)
+            const url = await uploadActivityAttachment(created.id, file)
+            if (url) uploadedUrls.push(url)
           } catch (uploadErr) {
             console.error(`Échec upload pièce jointe ${file.name}`, uploadErr)
             uploadFailures++
+          }
+        }
+
+        // 3. Persiste les URLs uploadées dans le champ urlPieceJointes
+        //    (concaténées par " | " via appendUrl, pour cohérence avec les
+        //    anomalies — permet d'afficher les liens directs côté lecture).
+        if (uploadedUrls.length > 0) {
+          try {
+            await appendReportAttachmentUrls(created.id, uploadedUrls)
+          } catch (err) {
+            console.error('Échec mise à jour urlPieceJointes', err)
           }
         }
       }

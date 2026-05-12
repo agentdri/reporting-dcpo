@@ -31,6 +31,7 @@
       "nonFilterableProperties": [
         "actionDeLaJournee",
         "observationsGlobales",
+        "urlPieceJointes",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -249,6 +250,14 @@
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "none"
+        },
+        "urlPieceJointes": {
+          "title": "urlPieceJointes",
+          "description": "le lien de la pièce jointe ",
+          "type": "string",
+          "format": "uri",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc"
         },
         "OData__ColorTag": {
           "title": "Balise de couleur",
@@ -786,6 +795,7 @@
           "actionDeLaJournee",
           "nombreAnomalieDetectee",
           "observationsGlobales",
+          "urlPieceJointes",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -794,7 +804,9 @@
           "Date",
           "actionDeLaJournee",
           "nombreAnomalieDetectee",
-          "observationsGlobales"
+          "observationsGlobales",
+          "ID",
+          "urlPieceJointes"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -802,7 +814,9 @@
           "Date",
           "actionDeLaJournee",
           "nombreAnomalieDetectee",
-          "observationsGlobales"
+          "observationsGlobales",
+          "ID",
+          "urlPieceJointes"
         ]
       }
     }

@@ -451,7 +451,7 @@ export async function uploadTicketAttachment(
 export async function uploadActivityAttachment(
   itemId: string,
   file: File,
-  choise: string = 'Activite',
+  choise: string = 'Visite',
 ): Promise<string | undefined> {
   const fileContent = await fileToBase64(file)
   const response = await postWorkflowWithRetry(ACTIVITY_ATTACHMENT_API_URL, {
