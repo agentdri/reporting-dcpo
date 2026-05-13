@@ -60,6 +60,8 @@ import {
   type ActivityStatus,
 } from '../lib/activityService'
 import { getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
+import { Pagination } from '../components/Pagination'
+import { usePagination } from '../components/usePagination'
 import './ControllerReporting.css'
 
 
@@ -339,6 +341,22 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
 
 
   /**
+   * Pagination du tableau.
+   * resetKey : JSON des filtres appliqués → revient page 1 dès qu'un
+   * filtre change. La pagination n'affecte PAS les stats cards qui
+   * gardent la vue d'ensemble du filtre.
+   */
+  const pagination = usePagination({
+    total: sortedReports.length,
+    resetKey: JSON.stringify(appliedFilters),
+  })
+  const pagedReports = useMemo(
+    () => sortedReports.slice(pagination.start, pagination.end),
+    [sortedReports, pagination.start, pagination.end],
+  )
+
+
+  /**
    * Statistiques agrégées pour les cards en haut de page.
    * Recalculées sur la liste filtrée (reflète les filtres actuels).
    */
@@ -471,7 +489,7 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
               </tr>
             </thead>
             <tbody>
-              {sortedReports.map(r => (
+              {pagedReports.map(r => (
                 <tr key={r.id}>
                   <td><strong>{formatDate(r.date)}</strong></td>
                   <td>{formatHours(r.totalHeures)}</td>
@@ -497,6 +515,12 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
               ))}
             </tbody>
           </table>
+          {/* Barre de pagination — affichée sous le tableau */}
+          <Pagination
+            state={pagination}
+            total={sortedReports.length}
+            itemLabel="rapports"
+          />
         </div>
       )}
 
@@ -691,41 +715,42 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
             </section>
           )}
 
-          {/* ─── Historique des décisions managers (si présent) ─── */}
+          {/* ─── Décision actuelle du manager (si statut != Soumis) ─── */}
           {/*
             Lecture seule pour le contrôleur — important pour qu'il
             comprenne pourquoi son rapport a été rejeté (motif).
-            La couleur de la décision (vert/rouge) facilite la lecture rapide.
+            Politique métier : UN SEUL statut + UN SEUL motif à la fois,
+            pas d'historique. La décision la plus récente prime.
           */}
-          {report.validationHistory && report.validationHistory.length > 0 && (
+          {report.statut !== 'Soumis' && (
             <section>
               <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>
-                Décisions du manager
+                Décision du manager
               </h3>
               <ul className="manager-history">
-                {report.validationHistory.map((note, i) => (
-                  <li key={i}>
-                    <div>
-                      <span
-                        className={
-                          'manager-history-decision ' +
-                          (note.decision === 'Réalisé' ? 'realise' : 'reporte')
-                        }
-                      >
-                        {note.decision}
-                      </span>
-                      {' — '}
-                      <span>{note.manager}</span>
-                      {' — '}
-                      <span>{formatDateTime(note.date)}</span>
-                    </div>
-                    {note.motif && (
-                      <div style={{ marginTop: 4, color: '#444' }}>
-                        <em>Motif :</em> {note.motif}
-                      </div>
+                <li>
+                  <div>
+                    <span
+                      className={
+                        'manager-history-decision ' +
+                        (report.statut === 'Réalisé' ? 'realise' : 'reporte')
+                      }
+                    >
+                      {report.statut}
+                    </span>
+                    {report.updatedAt && (
+                      <>
+                        {' — '}
+                        <span>{formatDateTime(report.updatedAt)}</span>
+                      </>
                     )}
-                  </li>
-                ))}
+                  </div>
+                  {report.motifRejet && (
+                    <div style={{ marginTop: 4, color: '#444' }}>
+                      <em>Motif :</em> {report.motifRejet}
+                    </div>
+                  )}
+                </li>
               </ul>
             </section>
           )}

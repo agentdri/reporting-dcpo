@@ -34,6 +34,8 @@ import { DCPO_LISTE_RESEAUXService } from '../generated/services/DCPO_LISTE_RESE
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
+import { Pagination } from '../components/Pagination'
+import { usePagination } from '../components/usePagination'
 
 /** Nettoie un texte HTML pour ne garder que le contenu textuel (DOMParser). */
 function stripHtml(html: string): string {
@@ -255,6 +257,31 @@ export default function ReportingAgent() {
   /** Stats de l'agent sélectionné (vue détail), null en vue principale. */
   const selectedStats = selectedAgent ? agentMap.get(selectedAgent) : null
 
+  /* ──────────────────────────────────────────────────────────────────────
+   * PAGINATION — 2 paginators distincts
+   *   1. Pour le tableau "Liste des agents" (vue principale)
+   *   2. Pour le tableau "Détail des anomalies de l'agent sélectionné"
+   * Les deux ont leurs propres resetKey indépendants.
+   * ────────────────────────────────────────────────────────────────────── */
+  const agentsPagination = usePagination({
+    total: agents.length,
+    resetKey: JSON.stringify(appliedFilters),
+  })
+  const pagedAgents = useMemo(
+    () => agents.slice(agentsPagination.start, agentsPagination.end),
+    [agents, agentsPagination.start, agentsPagination.end],
+  )
+
+  const detailPagination = usePagination({
+    total: selectedStats?.anomalies.length ?? 0,
+    // Reset quand on change d'agent ou que les filtres changent
+    resetKey: `${selectedAgent ?? ''}|${JSON.stringify(appliedFilters)}`,
+  })
+  const pagedDetailAnomalies = useMemo(
+    () => (selectedStats?.anomalies ?? []).slice(detailPagination.start, detailPagination.end),
+    [selectedStats, detailPagination.start, detailPagination.end],
+  )
+
   // Affichage simple pendant le chargement initial
   if (loading) {
     return <p className="loading-text">Chargement du reporting...</p>
@@ -386,7 +413,7 @@ export default function ReportingAgent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {agents.map(agent => (
+                  {pagedAgents.map(agent => (
                     <tr key={agent.email}>
                       <td><strong>{agent.displayName}</strong></td>
                       <td>{agent.email}</td>
@@ -405,6 +432,11 @@ export default function ReportingAgent() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                state={agentsPagination}
+                total={agents.length}
+                itemLabel="agents"
+              />
             </div>
           )}
         </>
@@ -455,7 +487,7 @@ export default function ReportingAgent() {
                 </tr>
               </thead>
               <tbody>
-                {selectedStats.anomalies.map(item => (
+                {pagedDetailAnomalies.map(item => (
                   <tr key={item.ID}>
                     <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
                     <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
@@ -471,6 +503,11 @@ export default function ReportingAgent() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              state={detailPagination}
+              total={selectedStats.anomalies.length}
+              itemLabel="anomalies"
+            />
           </div>
         </>
       )}

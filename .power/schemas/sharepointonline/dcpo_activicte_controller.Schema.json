@@ -259,6 +259,34 @@
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc"
         },
+        "statutValidation": {
+          "title": "statutValidation",
+          "description": "le statut de validation du rapport ",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
+        "motifRejet": {
+          "title": "motifRejet",
+          "description": "le motif du rejet du rapport",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
         "OData__ColorTag": {
           "title": "Balise de couleur",
           "type": "string",
@@ -796,6 +824,8 @@
           "nombreAnomalieDetectee",
           "observationsGlobales",
           "urlPieceJointes",
+          "statutValidation",
+          "motifRejet",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -806,7 +836,9 @@
           "nombreAnomalieDetectee",
           "observationsGlobales",
           "ID",
-          "urlPieceJointes"
+          "urlPieceJointes",
+          "statutValidation",
+          "motifRejet"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -816,7 +848,9 @@
           "nombreAnomalieDetectee",
           "observationsGlobales",
           "ID",
-          "urlPieceJointes"
+          "urlPieceJointes",
+          "statutValidation",
+          "motifRejet"
         ]
       }
     }

@@ -42,6 +42,8 @@ export interface DCPO_ACTIVICTE_CONTROLLERBase {
   nombreAnomalieDetectee?: number;
   observationsGlobales?: string;
   urlPieceJointes?: string;
+  statutValidation?: string;
+  motifRejet?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   Modified?: string;

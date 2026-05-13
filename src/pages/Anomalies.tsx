@@ -40,6 +40,8 @@ import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGEN
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
+import { Pagination } from '../components/Pagination'
+import { usePagination } from '../components/usePagination'
 
 /**
  * Props passées par Dashboard.tsx — identité de l'utilisateur courant.
@@ -804,6 +806,22 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
     })
   }, [items, appliedAgent, appliedAffecte])
 
+  /* ──────────────────────────────────────────────────────────────────────
+   * PAGINATION
+   *
+   * Le tableau n'affiche que la page courante ; les stats cards restent
+   * basées sur filteredItems (vue d'ensemble du filtre, pas de la page).
+   * resetKey : remet à la page 1 quand les filtres ou les items changent.
+   * ────────────────────────────────────────────────────────────────────── */
+  const pagination = usePagination({
+    total: filteredItems.length,
+    resetKey: `${items.length}|${appliedAgent}|${appliedAffecte}`,
+  })
+  const pagedItems = useMemo(
+    () => filteredItems.slice(pagination.start, pagination.end),
+    [filteredItems, pagination.start, pagination.end],
+  )
+
 
   /* ──────────────────────────────────────────────────────────────────────
    * HANDLERS — FORMULAIRE DE CRÉATION
@@ -1328,15 +1346,15 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredItems.map((item, index) => (
+              {pagedItems.map((item, index) => (
                 <tr key={item.ID}>
                   <td className="col-ticket">
                     <span
                       className={`ticket-badge ${statusBadgeClass(item.field_10)}`}
-                      aria-label={`Ticket #${index + 1}, statut ${item.field_10 ?? 'inconnu'}`}
+                      aria-label={`Ticket #${pagination.start + index + 1}, statut ${item.field_10 ?? 'inconnu'}`}
                     >
                       <span className="ticket-badge-icon" aria-hidden="true">{statusIcon(item.field_10)}</span>
-                      <span className="ticket-badge-num">T-{index + 1}</span>
+                      <span className="ticket-badge-num">T-{pagination.start + index + 1}</span>
                     </span>
                   </td>
                   <td className="col-status">
@@ -1381,6 +1399,13 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
               ))}
             </tbody>
           </table>
+          {/* Barre de pagination — taille de page configurable globalement
+              via DEFAULT_PAGE_SIZE / PAGE_SIZE_OPTIONS dans Pagination.tsx */}
+          <Pagination
+            state={pagination}
+            total={filteredItems.length}
+            itemLabel="anomalies"
+          />
         </div>
       )}
 

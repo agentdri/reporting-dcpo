@@ -17,14 +17,10 @@
  *     - Invalider → statut 'Reporté', motif obligatoire (saisi en textarea)
  *
  * Persistance :
- *   - Lecture : listReports() depuis activityService (localStorage)
- *   - Validation : validateReport() qui ajoute une ActivityValidationNote
- *     à validationHistory (append-only — audit complet préservé)
- *
- * Note future :
- *   Quand SharePoint ACTIVITE_Controleurs sera disponible, listReports et
- *   validateReport changeront d'implémentation côté lib mais cette page
- *   ne nécessitera pas de modification.
+ *   - Lecture : listReports() depuis activityService (SharePoint DCPO_ACTIVICTE_CONTROLLER)
+ *   - Validation : validateReport() écrase les colonnes statutValidation et
+ *     motifRejet du rapport (un seul statut + un seul motif à la fois,
+ *     pas d'historique). La décision la plus récente prime.
  * ============================================================================
  */
 
@@ -34,6 +30,8 @@ import {
   validateReport,
   type ActivityReport,
 } from '../lib/activityService'
+import { Pagination } from '../components/Pagination'
+import { usePagination } from '../components/usePagination'
 import './ControllerReporting.css'
 
 /** Identité du manager courant (passée par Dashboard). */
@@ -200,6 +198,20 @@ export default function ControllerReportingList({ userName, userEmail }: Control
   }, [filtered])
 
   /**
+   * Pagination — porte sur les GROUPES (1 carte = 1 contrôleur+date).
+   * Plus naturel qu'au niveau du rapport individuel car les managers
+   * scrollent par contrôleur/jour, pas par rapport unitaire.
+   */
+  const pagination = usePagination({
+    total: groups.length,
+    resetKey: JSON.stringify(filters),
+  })
+  const pagedGroups = useMemo(
+    () => groups.slice(pagination.start, pagination.end),
+    [groups, pagination.start, pagination.end],
+  )
+
+  /**
    * Stats globales pour les cards en haut de page.
    * Recalculées sur la liste filtrée (reflète les filtres en cours).
    */
@@ -315,7 +327,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
           <p>Aucun reporting ne correspond aux critères.</p>
         </div>
       ) : (
-        groups.map(group => (
+        pagedGroups.map(group => (
           <section key={`${group.key.controleurEmail}-${group.key.date}`} className="manager-group">
             <header className="manager-group-header">
               <div className="manager-group-title">
@@ -366,6 +378,15 @@ export default function ControllerReportingList({ userName, userEmail }: Control
             </table>
           </section>
         ))
+      )}
+
+      {/* Barre de pagination — paginée au niveau "groupe" (1 carte = 1 couple contrôleur+date) */}
+      {!loadingReports && groups.length > 0 && (
+        <Pagination
+          state={pagination}
+          total={groups.length}
+          itemLabel="groupes"
+        />
       )}
 
       {selected && (
@@ -505,24 +526,31 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
             </section>
           )}
 
-          {report.validationHistory.length > 0 && (
+          {/* Décision actuelle — un seul statut + un seul motif à la fois.
+              Pas d'historique des décisions précédentes (politique métier :
+              chaque nouvelle décision écrase la précédente). */}
+          {report.statut !== 'Soumis' && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>Historique des décisions</h3>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>Décision actuelle</h3>
               <ul className="manager-history">
-                {report.validationHistory.map((note, i) => (
-                  <li key={i}>
-                    <div>
-                      <span className={`manager-history-decision ${note.decision === 'Réalisé' ? 'realise' : 'reporte'}`}>
-                        {note.decision}
-                      </span>
-                      {' — '}
-                      <span>{note.manager}</span>
-                      {' — '}
-                      <span>{formatDateTime(note.date)}</span>
+                <li>
+                  <div>
+                    <span className={`manager-history-decision ${report.statut === 'Réalisé' ? 'realise' : 'reporte'}`}>
+                      {report.statut}
+                    </span>
+                    {report.updatedAt && (
+                      <>
+                        {' — '}
+                        <span>{formatDateTime(report.updatedAt)}</span>
+                      </>
+                    )}
+                  </div>
+                  {report.motifRejet && (
+                    <div style={{ marginTop: 4, color: '#444' }}>
+                      <em>Motif :</em> {report.motifRejet}
                     </div>
-                    {note.motif && <div style={{ marginTop: 4, color: '#444' }}><em>Motif :</em> {note.motif}</div>}
-                  </li>
-                ))}
+                  )}
+                </li>
               </ul>
             </section>
           )}

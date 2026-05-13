@@ -67,16 +67,17 @@ export interface ActivityLine {
   observation?: string
 }
 
-/** Trace d'une décision manager (validation/invalidation). */
-export interface ActivityValidationNote {
-  date: string
-  manager: string
-  managerEmail?: string
-  decision: 'Réalisé' | 'Reporté'
-  motif?: string
-}
-
-/** Représentation enrichie d'un rapport pour le front (combine SP + métas locales). */
+/**
+ * Représentation enrichie d'un rapport pour le front.
+ *
+ * Note sur la validation manager :
+ *   - `statut`     : statut courant (Soumis / Réalisé / Reporté) — UN SEUL
+ *                    à la fois, stocké en SharePoint dans `statutValidation`
+ *   - `motifRejet` : motif courant en cas de rejet — UN SEUL à la fois,
+ *                    vidé quand on bascule sur Réalisé
+ *
+ *   Pas d'historique : chaque décision manager ÉCRASE la précédente.
+ */
 export interface ActivityReport {
   id: string
   controleurEmail: string
@@ -87,11 +88,11 @@ export interface ActivityReport {
   tempsOccupe: number
   statutJournee: 'Calme' | 'Normal' | 'Chargé' | 'Très chargé'
   statut: ActivityStatus
+  motifRejet?: string
   anomaliesDetectees?: number
   lienRapport?: string
   observationsGlobales?: string
   attachments?: { name: string; url: string }[]
-  validationHistory: ActivityValidationNote[]
   submittedAt: string
   updatedAt: string
 }
@@ -110,19 +111,16 @@ export interface ActivityDraft {
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * SECTION 2 — LOCALSTORAGE (brouillons + métadonnées de validation)
+ * SECTION 2 — LOCALSTORAGE (brouillons uniquement)
+ *
+ * Le statut + motif de validation est désormais persisté DIRECTEMENT en
+ * SharePoint via les colonnes `statutValidation` et `motifRejet` ajoutées
+ * à la liste DCPO_ACTIVICTE_CONTROLLER. Plus de stockage localStorage pour
+ * la validation manager → données partagées entre tous les utilisateurs.
  * ────────────────────────────────────────────────────────────────────────── */
 
 /** Préfixe pour les brouillons de saisie (par contrôleur). */
 const STORAGE_KEY_DRAFT_PREFIX = 'reportingDCPO.activityDraft.v1.'
-
-/**
- * Préfixe pour les métadonnées de validation (statut + historique manager).
- * Indexé par l'ID SharePoint du rapport.
- * Cette indirection disparaîtra quand les colonnes statut/historiqueValidations
- * seront ajoutées à la liste SharePoint.
- */
-const STORAGE_KEY_VALIDATION_PREFIX = 'reportingDCPO.activityValidation.v1.'
 
 const READ_RAW = (key: string): string | null => {
   try { return window.localStorage.getItem(key) } catch { return null }
@@ -137,28 +135,6 @@ const REMOVE_RAW = (key: string): void => {
 /** Génère un identifiant local unique (utilisé pour les ID des lignes). */
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-/** Forme du blob de validation stocké en localStorage. */
-interface LocalValidation {
-  statut: ActivityStatus
-  history: ActivityValidationNote[]
-}
-
-/** Lit la validation stockée localement pour un rapport. */
-function readValidation(reportId: string): LocalValidation | undefined {
-  const raw = READ_RAW(STORAGE_KEY_VALIDATION_PREFIX + reportId)
-  if (!raw) return undefined
-  try {
-    return JSON.parse(raw) as LocalValidation
-  } catch {
-    return undefined
-  }
-}
-
-/** Écrase les méta-données de validation pour un rapport. */
-function writeValidation(reportId: string, validation: LocalValidation): void {
-  WRITE_RAW(STORAGE_KEY_VALIDATION_PREFIX + reportId, JSON.stringify(validation))
 }
 
 
@@ -514,7 +490,6 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
   const lines = parseLines(item.actionDeLaJournee)
   const totals = computeTotals(lines)
   const dateStr = item.Date ? item.Date.split('T')[0] : ''
-  const validation = readValidation(String(item.ID))
 
   // Pièces jointes : le champ urlPieceJointes (champ texte SP) peut contenir
   // plusieurs URLs concaténées par " | " (cf. helper appendUrl).
@@ -525,6 +500,14 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
     url,
   }))
 
+  // Validation manager : statut + motif lus DIRECTEMENT depuis SharePoint.
+  // Un seul statut + un seul motif à la fois (pas d'historique).
+  // Fallback 'Soumis' si la colonne statutValidation est vide (rapport
+  // nouvellement créé, en attente de décision manager).
+  const rawStatut = (item.statutValidation ?? '').trim()
+  const statut: ActivityStatus =
+    rawStatut === 'Réalisé' || rawStatut === 'Reporté' ? rawStatut : 'Soumis'
+
   return {
     id: String(item.ID),
     controleurEmail: item.controlleur?.Email ?? '',
@@ -534,12 +517,12 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
     totalHeures: totals.totalHeures,
     tempsOccupe: totals.tempsOccupe,
     statutJournee: totals.statutJournee,
-    statut: validation?.statut ?? 'Soumis',
+    statut,
+    motifRejet: item.motifRejet ?? undefined,
     anomaliesDetectees: item.nombreAnomalieDetectee,
     lienRapport: undefined,
     observationsGlobales: item.observationsGlobales,
     attachments,
-    validationHistory: validation?.history ?? [],
     submittedAt: item.Created ?? '',
     updatedAt: item.Modified ?? '',
   }
@@ -649,6 +632,11 @@ export async function createReport(input: CreateReportInput): Promise<ActivityRe
     actionDeLaJournee: actionText,
     nombreAnomalieDetectee: input.anomaliesDetectees ?? 0,
     observationsGlobales: input.observationsGlobales ?? '',
+    // Statut initial : en attente de décision manager
+    // (motifRejet reste vide à la création — il ne sera renseigné que sur
+    //  une éventuelle décision Reporté ultérieure).
+    statutValidation: 'Soumis',
+    motifRejet: '',
   }
   if (input.controleurEmail) {
     payload.controlleur = {
@@ -755,16 +743,27 @@ export async function appendReportAttachmentUrls(reportId: string, newUrls: stri
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * SECTION 9 — VALIDATION MANAGER (en localStorage)
+ * SECTION 9 — VALIDATION MANAGER (persistance SharePoint)
  *
- * Le statut et l'historique de validation sont stockés en localStorage
- * (indexés par l'ID SharePoint) tant que les colonnes correspondantes ne
- * sont pas ajoutées à la liste SharePoint.
+ * Le statut et le motif de rejet sont stockés DIRECTEMENT dans la liste
+ * SharePoint DCPO_ACTIVICTE_CONTROLLER via les colonnes :
+ *   - statutValidation : 'Soumis' / 'Réalisé' / 'Reporté'
+ *   - motifRejet       : texte libre, pertinent uniquement si Reporté
  *
- * Migration future : remplacer ces deux fonctions par des appels à
- * SP_SERVICE.update() sur les futures colonnes statut + historiqueValidations.
+ * Règle métier : UN seul statut + UN seul motif à la fois (pas d'historique).
+ * Chaque décision manager écrase la précédente, et basculer sur Réalisé vide
+ * automatiquement le motifRejet pour la cohérence.
  * ────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Entrée d'une validation manager.
+ *
+ * Les champs `manager` et `managerEmail` sont conservés dans l'interface pour
+ * compatibilité avec l'UI existante, mais ils NE SONT PAS persistés en
+ * SharePoint (l'historique n'est plus stocké — seul le statut courant l'est).
+ * L'identité du dernier validateur peut être retrouvée via les méta SharePoint
+ * `Editor` / `Modified` du record.
+ */
 export interface ValidationInput {
   manager: string
   managerEmail?: string
@@ -773,22 +772,30 @@ export interface ValidationInput {
 }
 
 /**
- * Applique une décision manager. Append-only sur l'historique.
- * Retourne le rapport rechargé (avec la validation à jour).
+ * Applique une décision manager au rapport SharePoint.
+ *
+ * Comportement :
+ *   - decision = 'Réalisé' → statutValidation = 'Réalisé', motifRejet vidé
+ *   - decision = 'Reporté' → statutValidation = 'Reporté', motifRejet = motif
+ *
+ * Retourne le rapport rechargé (avec le nouveau statut + motif).
  */
 export async function validateReport(id: string, input: ValidationInput): Promise<ActivityReport | undefined> {
-  const existing = readValidation(id) ?? { statut: 'Soumis', history: [] }
-  const note: ActivityValidationNote = {
-    date: new Date().toISOString(),
-    manager: input.manager,
-    managerEmail: input.managerEmail,
-    decision: input.decision,
-    motif: input.motif,
+  // Préparation du payload : on écrit TOUJOURS les deux colonnes en même temps
+  // pour garantir la cohérence (un Réalisé ne doit pas garder un ancien motif).
+  const payload: Record<string, unknown> = {
+    statutValidation: input.decision,
+    motifRejet: input.decision === 'Reporté' ? (input.motif?.trim() ?? '') : '',
   }
-  writeValidation(id, {
-    statut: input.decision,
-    history: [...existing.history, note],
-  })
+  try {
+    await DCPO_ACTIVICTE_CONTROLLERService.update(
+      id,
+      payload as Partial<Omit<DCPO_ACTIVICTE_CONTROLLERWrite, 'ID'>>,
+    )
+  } catch (err) {
+    console.error('validateReport: échec update SharePoint', err)
+    return undefined
+  }
   return getReport(id)
 }
 

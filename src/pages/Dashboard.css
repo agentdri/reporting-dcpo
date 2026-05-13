@@ -1512,3 +1512,126 @@
     padding: 0;
   }
 }
+
+/* =====================================================================
+   Pagination — composant réutilisable (cf. src/components/Pagination.tsx)
+   ===================================================================== */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.pagination-info {
+  color: #666;
+}
+
+.pagination-info strong {
+  color: #1a1a2e;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pagination-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  color: #1a1a2e;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.pagination-controls button:hover:not(:disabled) {
+  background: #e63946;
+  color: #fff;
+  border-color: #e63946;
+  transform: translateY(-1px);
+}
+
+.pagination-controls button:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+}
+
+.pagination-controls button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pagination-controls button:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.pagination-page {
+  padding: 0 10px;
+  color: #555;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pagination-page strong {
+  color: #1a1a2e;
+  font-weight: 700;
+}
+
+.pagination-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.pagination-size label {
+  font-weight: 600;
+}
+
+.pagination-size select {
+  padding: 5px 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pagination-size select:focus {
+  outline: none;
+  border-color: #e63946;
+  box-shadow: 0 0 0 2px rgba(230, 57, 70, 0.15);
+}
+
+@media (max-width: 640px) {
+  .pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .pagination-controls,
+  .pagination-size {
+    justify-content: center;
+  }
+}
