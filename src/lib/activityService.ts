@@ -34,7 +34,7 @@
  *   chargement est 'Soumis'.
  *
  *   Pour activer le workflow complet de validation côté SharePoint, ajouter :
- *     - statut          : Choix (Soumis / Réalisé / Reporté)
+ *     - statut          : Choix (Soumis / Valider / Refuser)
  *     - historiqueValidations : Plusieurs lignes de texte (JSON)
  *
  * Brouillons :
@@ -54,8 +54,16 @@ import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments
  * SECTION 1 — TYPES DU DOMAINE (inchangés côté API publique)
  * ────────────────────────────────────────────────────────────────────────── */
 
-/** Statut de workflow d'un rapport (suivi via localStorage). */
-export type ActivityStatus = 'Soumis' | 'Réalisé' | 'Reporté'
+/**
+ * Statut de workflow d'un rapport (persisté dans la colonne SharePoint
+ * `statutValidation`). Les libellés sont volontairement identiques à ceux
+ * affichés dans l'UI manager (boutons "Valider" / "Invalider (Refuser)") pour
+ * éviter toute divergence visuel / stockage.
+ *
+ * Compatibilité descendante : les anciens rapports stockés avec 'Réalisé' /
+ * 'Reporté' sont automatiquement remappés à la lecture (cf. reportFromItem).
+ */
+export type ActivityStatus = 'Soumis' | 'Valider' | 'Refuser'
 
 /** Une ligne d'activité (action menée par le contrôleur). */
 export interface ActivityLine {
@@ -71,10 +79,10 @@ export interface ActivityLine {
  * Représentation enrichie d'un rapport pour le front.
  *
  * Note sur la validation manager :
- *   - `statut`     : statut courant (Soumis / Réalisé / Reporté) — UN SEUL
+ *   - `statut`     : statut courant (Soumis / Valider / Refuser) — UN SEUL
  *                    à la fois, stocké en SharePoint dans `statutValidation`
  *   - `motifRejet` : motif courant en cas de rejet — UN SEUL à la fois,
- *                    vidé quand on bascule sur Réalisé
+ *                    vidé quand on bascule sur Valider
  *
  *   Pas d'historique : chaque décision manager ÉCRASE la précédente.
  */
@@ -504,9 +512,15 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
   // Un seul statut + un seul motif à la fois (pas d'historique).
   // Fallback 'Soumis' si la colonne statutValidation est vide (rapport
   // nouvellement créé, en attente de décision manager).
+  //
+  // Compatibilité descendante : les anciens rapports utilisaient 'Réalisé' /
+  // 'Reporté' avant le renommage des libellés. On les remappe à la volée vers
+  // les nouvelles valeurs (Valider / Refuser) pour éviter de perdre l'historique.
   const rawStatut = (item.statutValidation ?? '').trim()
   const statut: ActivityStatus =
-    rawStatut === 'Réalisé' || rawStatut === 'Reporté' ? rawStatut : 'Soumis'
+    rawStatut === 'Valider' || rawStatut === 'Réalisé' ? 'Valider' :
+    rawStatut === 'Refuser' || rawStatut === 'Reporté' ? 'Refuser' :
+    'Soumis'
 
   return {
     id: String(item.ID),
@@ -747,11 +761,11 @@ export async function appendReportAttachmentUrls(reportId: string, newUrls: stri
  *
  * Le statut et le motif de rejet sont stockés DIRECTEMENT dans la liste
  * SharePoint DCPO_ACTIVICTE_CONTROLLER via les colonnes :
- *   - statutValidation : 'Soumis' / 'Réalisé' / 'Reporté'
- *   - motifRejet       : texte libre, pertinent uniquement si Reporté
+ *   - statutValidation : 'Soumis' / 'Valider' / 'Refuser'
+ *   - motifRejet       : texte libre, pertinent uniquement si Refuser
  *
  * Règle métier : UN seul statut + UN seul motif à la fois (pas d'historique).
- * Chaque décision manager écrase la précédente, et basculer sur Réalisé vide
+ * Chaque décision manager écrase la précédente, et basculer sur Valider vide
  * automatiquement le motifRejet pour la cohérence.
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -767,7 +781,7 @@ export async function appendReportAttachmentUrls(reportId: string, newUrls: stri
 export interface ValidationInput {
   manager: string
   managerEmail?: string
-  decision: 'Réalisé' | 'Reporté'
+  decision: 'Valider' | 'Refuser'
   motif?: string
 }
 
@@ -775,17 +789,17 @@ export interface ValidationInput {
  * Applique une décision manager au rapport SharePoint.
  *
  * Comportement :
- *   - decision = 'Réalisé' → statutValidation = 'Réalisé', motifRejet vidé
- *   - decision = 'Reporté' → statutValidation = 'Reporté', motifRejet = motif
+ *   - decision = 'Valider' → statutValidation = 'Valider', motifRejet vidé
+ *   - decision = 'Refuser' → statutValidation = 'Refuser', motifRejet = motif
  *
  * Retourne le rapport rechargé (avec le nouveau statut + motif).
  */
 export async function validateReport(id: string, input: ValidationInput): Promise<ActivityReport | undefined> {
   // Préparation du payload : on écrit TOUJOURS les deux colonnes en même temps
-  // pour garantir la cohérence (un Réalisé ne doit pas garder un ancien motif).
+  // pour garantir la cohérence (un Valider ne doit pas garder un ancien motif).
   const payload: Record<string, unknown> = {
     statutValidation: input.decision,
-    motifRejet: input.decision === 'Reporté' ? (input.motif?.trim() ?? '') : '',
+    motifRejet: input.decision === 'Refuser' ? (input.motif?.trim() ?? '') : '',
   }
   try {
     await DCPO_ACTIVICTE_CONTROLLERService.update(

@@ -26,7 +26,7 @@
  * Fonctionnalités :
  *   - Filtres :
  *       Période (date du / date au) — par défaut 30 derniers jours
- *       Statut (Soumis / Réalisé / Reporté / Tous)
+ *       Statut (Soumis / Valider / Refuser / Tous)
  *       Recherche libre (dans observations + actions)
  *   - Pattern saisie/applied : les filtres ne se déclenchent qu'au clic
  *     sur "Rechercher" (cohérent avec les autres modules de l'app)
@@ -142,14 +142,14 @@ function formatDateTime(value?: string): string {
 /**
  * Mappe un statut workflow vers la classe CSS de la pastille colorée.
  *   Soumis  → orange (en attente)
- *   Réalisé → vert (validé)
- *   Reporté → rouge (rejeté)
+ *   Valider → vert (validé)
+ *   Refuser → rouge (rejeté)
  */
 function statutPillClass(statut: ActivityStatus): string {
   switch (statut) {
     case 'Soumis': return 'manager-pill-pending'
-    case 'Réalisé': return 'manager-pill-realise'
-    case 'Reporté': return 'manager-pill-reporte'
+    case 'Valider': return 'manager-pill-realise'
+    case 'Refuser': return 'manager-pill-reporte'
     default: return 'manager-pill'
   }
 }
@@ -364,8 +364,8 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
     return {
       total: filteredReports.length,
       pending: filteredReports.filter(r => r.statut === 'Soumis').length,
-      realise: filteredReports.filter(r => r.statut === 'Réalisé').length,
-      reporte: filteredReports.filter(r => r.statut === 'Reporté').length,
+      realise: filteredReports.filter(r => r.statut === 'Valider').length,
+      reporte: filteredReports.filter(r => r.statut === 'Refuser').length,
       totalHeures: filteredReports.reduce((s, r) => s + (r.totalHeures || 0), 0),
     }
   }, [filteredReports])
@@ -401,7 +401,7 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
         </div>
         <div className="stat-card ouvert">
           <span className="stat-value">{stats.reporte}</span>
-          <span className="stat-label">Reportés</span>
+          <span className="stat-label">Refusés</span>
         </div>
         <div className="stat-card montant">
           <span className="stat-value">{formatHours(stats.totalHeures)}</span>
@@ -440,8 +440,8 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
           >
             <option value="">Tous</option>
             <option value="Soumis">Soumis (en attente)</option>
-            <option value="Réalisé">Réalisé (validé)</option>
-            <option value="Reporté">Reporté (rejeté)</option>
+            <option value="Valider">Validé</option>
+            <option value="Refuser">Refusé</option>
           </select>
         </div>
         <div className="filter-field" style={{ flex: 1, minWidth: 220 }}>
@@ -733,7 +733,7 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
                     <span
                       className={
                         'manager-history-decision ' +
-                        (report.statut === 'Réalisé' ? 'realise' : 'reporte')
+                        (report.statut === 'Valider' ? 'realise' : 'reporte')
                       }
                     >
                       {report.statut}

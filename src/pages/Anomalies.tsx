@@ -50,6 +50,22 @@ import { usePagination } from '../components/usePagination'
 interface AnomaliesProps {
   userName?: string
   userEmail?: string
+  /**
+   * Rôle métier de l'utilisateur (issu de DCPO_LISTE_USER.fonction).
+   *
+   * Pilote les permissions d'affectation :
+   *   - 'Controleur'                          → NE PEUT PAS affecter une anomalie
+   *   - 'Chef_Departement' / 'Directeur'      → PEUVENT affecter
+   *
+   * Concrètement, quand le rôle vaut 'Controleur' :
+   *   - le bouton "Affecter" est masqué dans le tableau d'anomalies
+   *   - le champ "Personne affectée" est masqué dans le formulaire de création
+   *
+   * Note : cette restriction est UX/côté client uniquement. SharePoint peut
+   * toujours rejeter une affectation si l'utilisateur n'a pas les permissions
+   * effectives sur la colonne (couche de défense supplémentaire).
+   */
+  userRole?: string
 }
 
 /**
@@ -202,7 +218,21 @@ function statusIcon(status?: string | null): string {
   }
 }
 
-export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
+export default function Anomalies({ userName, userEmail, userRole }: AnomaliesProps) {
+  /**
+   * Permission "affecter une anomalie".
+   *
+   * Règle : seuls les managers (Chef_Departement / Directeur) peuvent
+   * assigner une personne sur une anomalie. Un Controleur peut créer et
+   * consulter les anomalies mais l'affectation est réservée à sa hiérarchie.
+   *
+   * On NIE explicitement le rôle Controleur (plutôt que d'autoriser
+   * uniquement les managers) pour rester permissif en cas de rôle inconnu
+   * ou non renseigné — l'absence de rôle est un cas de bord rare mais
+   * possible, et il ne faut pas bloquer un utilisateur légitime à cause
+   * d'un trou de configuration.
+   */
+  const canAffect = userRole !== 'Controleur'
 
   /* ──────────────────────────────────────────────────────────────────────
    * ÉTATS — DONNÉES PRINCIPALES & FORMULAIRE DE CRÉATION
@@ -1121,29 +1151,35 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                 </div>
               </div>
 
-              <div className="form-field">
-                <label htmlFor="anom-affecte">Personne affectée</label>
-                <div className="autocomplete-wrapper">
-                  <input
-                    id="anom-affecte"
-                    type="text"
-                    value={affecteFormSearch}
-                    placeholder="Rechercher une personne..."
-                    onChange={e => searchAffecteForm(e.target.value)}
-                    onBlur={() => setTimeout(() => setShowAffecteFormDropdown(false), 200)}
-                  />
-                  {affecteFormEmail && <span className="selected-email">{affecteFormEmail}</span>}
-                  {showAffecteFormDropdown && affecteFormResults.length > 0 && (
-                    <ul className="autocomplete-dropdown">
-                      {affecteFormResults.map(u => (
-                        <li key={u.Id} onClick={() => selectAffecteForm(u)}>
-                          <strong>{u.DisplayName}</strong><span>{u.Mail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+              {/* Champ "Personne affectée" : réservé aux managers (cf. canAffect).
+                  Un Controleur crée une anomalie sans pouvoir l'assigner — c'est
+                  ensuite le manager qui réalisera l'affectation depuis le tableau
+                  via le bouton "Affecter". */}
+              {canAffect && (
+                <div className="form-field">
+                  <label htmlFor="anom-affecte">Personne affectée</label>
+                  <div className="autocomplete-wrapper">
+                    <input
+                      id="anom-affecte"
+                      type="text"
+                      value={affecteFormSearch}
+                      placeholder="Rechercher une personne..."
+                      onChange={e => searchAffecteForm(e.target.value)}
+                      onBlur={() => setTimeout(() => setShowAffecteFormDropdown(false), 200)}
+                    />
+                    {affecteFormEmail && <span className="selected-email">{affecteFormEmail}</span>}
+                    {showAffecteFormDropdown && affecteFormResults.length > 0 && (
+                      <ul className="autocomplete-dropdown">
+                        {affecteFormResults.map(u => (
+                          <li key={u.Id} onClick={() => selectAffecteForm(u)}>
+                            <strong>{u.DisplayName}</strong><span>{u.Mail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </fieldset>
 
@@ -1387,9 +1423,14 @@ export default function Anomalies({ userName, userEmail }: AnomaliesProps) {
                       <button type="button" className="btn-cta btn-cta-detail" onClick={() => setDetailItem(item)}>
                         Détail
                       </button>
-                      <button type="button" className="btn-cta btn-cta-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
-                        Affecter
-                      </button>
+                      {/* Bouton "Affecter" : réservé aux managers (cf. canAffect).
+                          Un Controleur ne voit pas ce bouton — il consulte mais
+                          ne peut pas réassigner l'anomalie. */}
+                      {canAffect && (
+                        <button type="button" className="btn-cta btn-cta-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
+                          Affecter
+                        </button>
+                      )}
                       <button type="button" className="btn-cta btn-cta-status" onClick={() => setTicketItem(item)}>
                         Ticket
                       </button>

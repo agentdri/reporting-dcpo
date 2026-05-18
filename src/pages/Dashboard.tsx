@@ -31,8 +31,11 @@
  *
  * Logique des permissions :
  *   - Tous les utilisateurs autorisés voient les onglets standards
- *   - "Rapport quotidien" : visible pour Controleur OU manager
+ *   - "Rapport quotidien" (Saisie + Mes rapports) : visible UNIQUEMENT pour
+ *     les Controleurs (les managers ne soumettent pas de rapport eux-mêmes)
  *   - "Validation reportings" : visible UNIQUEMENT pour les managers
+ *     (Chef_Departement, Directeur) — leur permet de voir et valider les
+ *     rapports soumis par les contrôleurs
  * ============================================================================
  */
 
@@ -139,8 +142,15 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
       { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent' },
     ]
     // Onglets conditionnels selon rôle
-    if (isController || isManager) {
-      // Groupe "Rapport quotidien" : saisie + historique personnel
+    //
+    // Règle métier :
+    //   - Un Controleur SOUMET des rapports et consulte SES propres rapports
+    //     → groupe "Rapport quotidien" (Saisie + Mes rapports)
+    //   - Un manager (Chef_Departement / Directeur) NE soumet PAS de rapport,
+    //     il VALIDE ceux soumis par les contrôleurs → onglet "Validation reportings"
+    //   - Les deux ensembles sont disjoints (un user ne peut pas être les deux)
+    if (isController) {
+      // Groupe "Rapport quotidien" : saisie + historique personnel (controleur uniquement)
       items.push({
         type: 'group',
         key: 'rapport-quotidien',
@@ -152,6 +162,7 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
       })
     }
     if (isManager) {
+      // Validation des rapports soumis par les contrôleurs (manager uniquement)
       items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings' })
     }
     // Onglets toujours en queue
@@ -255,7 +266,7 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
         {/* Pattern simple "&& render" : un seul des conditions matche */}
         <div className="dashboard-content">
           {activeTab === 'anomalie' && (
-            <Anomalies userName={userName} userEmail={userEmail} />
+            <Anomalies userName={userName} userEmail={userEmail} userRole={userRole} />
           )}
           {activeTab === 'bulletins' && <AnomalyBulletins />}
           {activeTab === 'reporting-agent' && <ReportingAgent />}

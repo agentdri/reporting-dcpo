@@ -46,6 +46,8 @@ import {
   type ConsolidatedBulletin,
 } from '../lib/anomalyBulletin'
 import { getAttachmentIcon, getTicketAttachments } from '../lib/ticketAttachments'
+import { Pagination } from '../components/Pagination'
+import { usePagination } from '../components/usePagination'
 import './AnomalyBulletins.css'
 
 // Listes fermées pour les selects de filtre
@@ -124,6 +126,25 @@ export default function AnomalyBulletins() {
 
   /** Bulletins après application des filtres utilisateur (côté client). */
   const filtered = useMemo(() => applyBulletinFilters(bulletins, appliedFilters), [bulletins, appliedFilters])
+
+  /**
+   * Pagination — porte sur la liste FILTRÉE (les filtres réduisent le total
+   * paginé). resetKey = signature JSON des filtres : un changement applique
+   * automatiquement le retour en page 1 (sinon UX cassée : on serait page 5
+   * d'une liste qui n'a plus que 3 pages).
+   *
+   * Taille de page configurable globalement via DEFAULT_PAGE_SIZE dans
+   * src/components/usePagination.ts (cf. doc de paramétrage).
+   */
+  const pagination = usePagination({
+    total: filtered.length,
+    resetKey: JSON.stringify(appliedFilters),
+  })
+  /** Sous-ensemble visible sur la page courante (tranche start..end). */
+  const pagedBulletins = useMemo(
+    () => filtered.slice(pagination.start, pagination.end),
+    [filtered, pagination.start, pagination.end],
+  )
 
   /**
    * Statistiques agrégées pour les cards en haut de page :
@@ -281,11 +302,20 @@ export default function AnomalyBulletins() {
           <p>Aucun bulletin ne correspond aux critères. {tickets.length === 0 && 'Aucune anomalie résolue ou close trouvée.'}</p>
         </div>
       ) : (
-        <div className="bulletins-grid">
-          {filtered.map(b => (
-            <BulletinCard key={b.ticket.ID ?? b.numero} bulletin={b} onOpen={() => setSelected(b)} />
-          ))}
-        </div>
+        <>
+          <div className="bulletins-grid">
+            {pagedBulletins.map(b => (
+              <BulletinCard key={b.ticket.ID ?? b.numero} bulletin={b} onOpen={() => setSelected(b)} />
+            ))}
+          </div>
+          {/* Barre de pagination — taille de page configurable globalement
+              via DEFAULT_PAGE_SIZE / PAGE_SIZE_OPTIONS dans usePagination.ts */}
+          <Pagination
+            state={pagination}
+            total={filtered.length}
+            itemLabel="bulletins"
+          />
+        </>
       )}
 
       {selected && (

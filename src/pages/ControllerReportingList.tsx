@@ -9,12 +9,12 @@
  * Fonctionnalités :
  *   - Liste consolidée des rapports, regroupés par (contrôleur, date)
  *   - Filtres : nom/email contrôleur, période, "en attente uniquement"
- *   - Stats : compteurs par statut (Soumis / Réalisé / Reporté), total heures
+ *   - Stats : compteurs par statut (Soumis / Valider / Refuser), total heures
  *   - Modale détail : résumé du rapport + lignes + lien rapport + observations
  *     + pièces jointes + historique des décisions managers passées
  *   - Actions managers :
- *     - Valider → statut 'Réalisé', avec note horodatée optionnelle
- *     - Invalider → statut 'Reporté', motif obligatoire (saisi en textarea)
+ *     - Valider → statut 'Valider', avec note horodatée optionnelle
+ *     - Invalider → statut 'Refuser', motif obligatoire (saisi en textarea)
  *
  * Persistance :
  *   - Lecture : listReports() depuis activityService (SharePoint DCPO_ACTIVICTE_CONTROLLER)
@@ -188,8 +188,8 @@ export default function ControllerReportingList({ userName, userEmail }: Control
       g.reports.push(r)
       g.totalHeures += r.totalHeures
       if (r.statut === 'Soumis') g.pending++
-      else if (r.statut === 'Réalisé') g.realise++
-      else if (r.statut === 'Reporté') g.reporte++
+      else if (r.statut === 'Valider') g.realise++
+      else if (r.statut === 'Refuser') g.reporte++
     }
     return Array.from(map.values()).sort((a, b) => {
       if (a.key.date !== b.key.date) return a.key.date < b.key.date ? 1 : -1
@@ -219,8 +219,8 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     return {
       total: filtered.length,
       pending: filtered.filter(r => r.statut === 'Soumis').length,
-      realise: filtered.filter(r => r.statut === 'Réalisé').length,
-      reporte: filtered.filter(r => r.statut === 'Reporté').length,
+      realise: filtered.filter(r => r.statut === 'Valider').length,
+      reporte: filtered.filter(r => r.statut === 'Refuser').length,
       totalHeures: filtered.reduce((s, r) => s + r.totalHeures, 0),
     }
   }, [filtered])
@@ -234,7 +234,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
   /**
    * Applique une décision manager (Valider ou Invalider) à un rapport.
    *
-   * Règle métier : motif OBLIGATOIRE pour invalidation (Reporté).
+   * Règle métier : motif OBLIGATOIRE pour invalidation (Refuser).
    * Garde-fou défensif : alert + abort si motif vide.
    *
    * Après validation :
@@ -242,8 +242,8 @@ export default function ControllerReportingList({ userName, userEmail }: Control
    *   - setSelected(updated) garde la modale ouverte avec les données fraîches
    *     (l'utilisateur voit immédiatement la nouvelle entrée dans l'historique)
    */
-  const handleValidation = async (report: ActivityReport, decision: 'Réalisé' | 'Reporté', motif?: string) => {
-    if (decision === 'Reporté' && !motif?.trim()) {
+  const handleValidation = async (report: ActivityReport, decision: 'Valider' | 'Refuser', motif?: string) => {
+    if (decision === 'Refuser' && !motif?.trim()) {
       alert('Un motif est requis pour invalider un reporting.')
       return
     }
@@ -279,11 +279,11 @@ export default function ControllerReportingList({ userName, userEmail }: Control
         </div>
         <div className="stat-card resolu">
           <span className="stat-value">{totals.realise}</span>
-          <span className="stat-label">Réalisé</span>
+          <span className="stat-label">Validés</span>
         </div>
         <div className="stat-card ouvert">
           <span className="stat-value">{totals.reporte}</span>
-          <span className="stat-label">Reporté</span>
+          <span className="stat-label">Refusés</span>
         </div>
         <div className="stat-card montant">
           <span className="stat-value">{formatHours(totals.totalHeures)}</span>
@@ -339,7 +339,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                 <span className="manager-pill">{formatHours(group.totalHeures)}</span>
                 {group.pending > 0 && <span className="manager-pill manager-pill-pending">{group.pending} en attente</span>}
                 {group.realise > 0 && <span className="manager-pill manager-pill-realise">{group.realise} validé(s)</span>}
-                {group.reporte > 0 && <span className="manager-pill manager-pill-reporte">{group.reporte} reporté(s)</span>}
+                {group.reporte > 0 && <span className="manager-pill manager-pill-reporte">{group.reporte} refusé(s)</span>}
               </div>
             </header>
             <table className="manager-table">
@@ -363,7 +363,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                     <td>
                       <span className={`manager-pill ${
                         r.statut === 'Soumis' ? 'manager-pill-pending'
-                          : r.statut === 'Réalisé' ? 'manager-pill-realise'
+                          : r.statut === 'Valider' ? 'manager-pill-realise'
                             : 'manager-pill-reporte'
                       }`}>{r.statut}</span>
                     </td>
@@ -404,7 +404,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
 interface ManagerDetailModalProps {
   report: ActivityReport
   onClose: () => void
-  onValidate: (decision: 'Réalisé' | 'Reporté', motif?: string) => void
+  onValidate: (decision: 'Valider' | 'Refuser', motif?: string) => void
 }
 
 /**
@@ -423,8 +423,8 @@ interface ManagerDetailModalProps {
  * Raccourci : Escape ferme la modale.
  *
  * Logique des boutons :
- *   - Valider : actif sauf si déjà 'Réalisé'
- *   - Invalider : actif sauf si déjà 'Reporté' OU motif vide
+ *   - Valider : actif sauf si déjà 'Valider'
+ *   - Invalider : actif sauf si déjà 'Refuser' OU motif vide
  */
 function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalProps) {
   const [motif, setMotif] = useState('')
@@ -535,7 +535,7 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
               <ul className="manager-history">
                 <li>
                   <div>
-                    <span className={`manager-history-decision ${report.statut === 'Réalisé' ? 'realise' : 'reporte'}`}>
+                    <span className={`manager-history-decision ${report.statut === 'Valider' ? 'realise' : 'reporte'}`}>
                       {report.statut}
                     </span>
                     {report.updatedAt && (
@@ -570,18 +570,18 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
               <button
                 type="button"
                 className="btn-validate"
-                onClick={() => onValidate('Réalisé')}
-                disabled={report.statut === 'Réalisé'}
+                onClick={() => onValidate('Valider')}
+                disabled={report.statut === 'Valider'}
               >
-                ✓ Valider (Réalisé)
+                ✓ Valider (Valider)
               </button>
               <button
                 type="button"
                 className="btn-invalidate"
-                onClick={() => onValidate('Reporté', motif)}
-                disabled={report.statut === 'Reporté' || !motif.trim()}
+                onClick={() => onValidate('Refuser', motif)}
+                disabled={report.statut === 'Refuser' || !motif.trim()}
               >
-                ✗ Invalider (Reporté)
+                ✗ Invalider (Refuser)
               </button>
             </div>
           </div>
