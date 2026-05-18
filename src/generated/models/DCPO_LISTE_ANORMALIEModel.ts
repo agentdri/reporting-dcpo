@@ -75,9 +75,11 @@ export interface DCPO_LISTE_ANORMALIEBase {
   "declarant_anormalie#Claims"?: string;
   urlPieceJointe?: string;
   criticiteAnomalie?: string;
+  Modified?: string;
+  delai?: string;
+  commentaireAffectation?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
-  Modified?: string;
   "{Identifier}"?: string;
   "{IsFolder}"?: boolean;
   "{Thumbnail}"?: {

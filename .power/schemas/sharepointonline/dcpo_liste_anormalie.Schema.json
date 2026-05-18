@@ -805,6 +805,52 @@
           },
           "maxLength": 255
         },
+        "Modified": {
+          "title": "Modifié",
+          "description": "Date de dernière modification de cet élément.",
+          "type": "string",
+          "format": "date-time",
+          "x-ms-permission": "read-only",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "ne"
+            ]
+          }
+        },
+        "delai": {
+          "title": "delai",
+          "description": "le délai de traitement recommandé de l'anomalie renseigné par le chef de département ou le directeur ",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
+        "commentaireAffectation": {
+          "title": "commentaireAffectation",
+          "description": "le commentaire pour la personne affecter, renseigner au moment de l'affectation de l'anomalie ",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
         "OData__ColorTag": {
           "title": "Balise de couleur",
           "type": "string",
@@ -830,24 +876,6 @@
             ]
           },
           "maxLength": 255
-        },
-        "Modified": {
-          "title": "Modifié",
-          "description": "Date de dernière modification de cet élément.",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-only",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
         },
         "{Identifier}": {
           "title": "Identificateur",
@@ -1138,6 +1166,8 @@
           "personneAffecter",
           "urlPieceJointe",
           "criticiteAnomalie",
+          "delai",
+          "commentaireAffectation",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -1161,7 +1191,10 @@
           "declarant_anormalie",
           "urlPieceJointe",
           "criticiteAnomalie",
-          "ID"
+          "ID",
+          "Modified",
+          "delai",
+          "commentaireAffectation"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -1184,7 +1217,10 @@
           "declarant_anormalie",
           "urlPieceJointe",
           "criticiteAnomalie",
-          "ID"
+          "ID",
+          "Modified",
+          "delai",
+          "commentaireAffectation"
         ]
       }
     }

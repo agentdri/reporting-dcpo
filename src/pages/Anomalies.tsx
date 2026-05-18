@@ -287,11 +287,34 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   /** Modale "Détail" (lecture complète d'une anomalie). null = fermée. */
   const [detailItem, setDetailItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
 
-  /** Modale "Affecter" — recherche utilisateur Office 365 puis assignation. */
+  /**
+   * Modale "Affecter" — workflow en 2 étapes :
+   *   1. Rechercher un utilisateur Office 365 et le sélectionner
+   *   2. Renseigner le délai de traitement + le commentaire d'affectation
+   *   3. Cliquer sur "Valider l'affectation" → écrit personneAffecter, delai
+   *      et commentaireAffectation sur l'item SharePoint
+   *
+   * Champs SharePoint cibles :
+   *   - personneAffecter      : Person (format Claims)
+   *   - delai                 : texte (date YYYY-MM-DD stockée comme string)
+   *   - commentaireAffectation: texte libre
+   */
   const [affectItemId, setAffectItemId] = useState<number | null>(null)
   const [affectSearch, setAffectSearch] = useState('')
   const [affectResults, setAffectResults] = useState<User[]>([])
   const [affectLoading, setAffectLoading] = useState(false)
+  /** Utilisateur sélectionné mais pas encore validé (étape 2 du wizard). */
+  const [affectSelectedUser, setAffectSelectedUser] = useState<User | null>(null)
+  /**
+   * Délai de traitement EN NOMBRE DE JOURS (entier positif, stocké en string SP).
+   * Ex: '7', '15', '30'. SharePoint a typé ce champ comme string max 255, donc
+   * on stocke un nombre converti en string.
+   */
+  const [affectDelai, setAffectDelai] = useState('')
+  /** Commentaire d'affectation libre (instructions pour la personne assignée). */
+  const [affectCommentaire, setAffectCommentaire] = useState('')
+  /** Message d'erreur de validation (champs vides, etc.). */
+  const [affectError, setAffectError] = useState<string | null>(null)
 
   /** Modale "Changer le statut" — workflow rapide (Ouvert/En cours/Resolu/Clos). */
   const [statusItem, setStatusItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
@@ -423,7 +446,34 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   }
 
   /**
-   * Confirme l'affectation : met à jour personneAffecter sur l'item SharePoint.
+   * Étape 1 → 2 : un utilisateur a été cliqué dans la liste de résultats.
+   *
+   * On NE confirme PAS encore l'affectation à SharePoint : on bascule la modale
+   * en mode "formulaire" (délai + commentaire). La validation effective passe
+   * désormais par le clic sur le bouton "Valider l'affectation" (cf. confirmAffect).
+   *
+   * On vide aussi les résultats de recherche pour laisser place aux champs
+   * du formulaire, mais on conserve le terme recherché (visuellement pratique :
+   * l'utilisateur voit ce qu'il a tapé).
+   */
+  const selectAffectUser = (u: User) => {
+    setAffectSelectedUser(u)
+    setAffectResults([])
+    setAffectError(null)
+  }
+
+  /**
+   * Permet de revenir à l'étape 1 (changer de personne sans fermer la modale).
+   * Vide la sélection et remet le focus sur la recherche.
+   */
+  const clearAffectSelection = () => {
+    setAffectSelectedUser(null)
+    setAffectError(null)
+  }
+
+  /**
+   * Confirme l'affectation : met à jour personneAffecter + delai +
+   * commentaireAffectation sur l'item SharePoint.
    *
    * Format SharePoint personne :
    *   {
@@ -434,20 +484,46 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    * Le `as never` cast contourne le typage trop strict du service généré
    * (le modèle attend personneAffecterValue complet, mais SharePoint accepte
    * juste les Claims pour les écritures).
+   *
+   * Règle métier : délai et commentaire sont REQUIS pour valider une affectation
+   * (le métier veut tracer qui a été assigné, pour quand, avec quelles
+   * instructions). Garde-fou ici + désactivation visuelle du bouton dans l'UI.
    */
-  const confirmAffect = async (u: User) => {
-    if (!affectItemId || !u.Mail) return
+  const confirmAffect = async () => {
+    if (!affectItemId || !affectSelectedUser?.Mail) {
+      setAffectError('Sélectionnez d\'abord une personne.')
+      return
+    }
+    // Validation du délai : doit être un entier strictement positif.
+    // On le parse pour rejeter "0", "-3", "abc", "" en une seule expression.
+    const delaiNum = parseInt(affectDelai, 10)
+    if (!Number.isFinite(delaiNum) || delaiNum <= 0) {
+      setAffectError('Le délai de traitement doit être un nombre de jours > 0.')
+      return
+    }
+    if (!affectCommentaire.trim()) {
+      setAffectError('Le commentaire d\'affectation est obligatoire.')
+      return
+    }
     setAffectLoading(true)
+    setAffectError(null)
     try {
       await DCPO_LISTE_ANORMALIEService.update(String(affectItemId), {
         personneAffecter: {
           '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
-          Claims: toClaims(u.Mail),
+          Claims: toClaims(affectSelectedUser.Mail),
         } as never,
+        // delai : stocké comme string (typage SP) mais représente un entier
+        // de jours. On envoie la version normalisée (sans espaces / zéros tête).
+        delai: String(delaiNum),
+        commentaireAffectation: affectCommentaire.trim(),
       })
       closeAffectModal()
       await fetchItems()
-    } catch (err) { console.error('Erreur affectation', err) }
+    } catch (err) {
+      console.error('Erreur affectation', err)
+      setAffectError('Échec de l\'affectation. Réessayer.')
+    }
     finally { setAffectLoading(false) }
   }
 
@@ -456,6 +532,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setAffectItemId(null)
     setAffectSearch('')
     setAffectResults([])
+    setAffectSelectedUser(null)
+    setAffectDelai('')
+    setAffectCommentaire('')
+    setAffectError(null)
   }
 
 
@@ -1467,6 +1547,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 <dt>Declarant</dt><dd>{detailItem.declarant_anormalie?.DisplayName ?? '-'}</dd>
                 <dt>Auteur</dt><dd>{detailItem.auteur_anormalie?.DisplayName ?? '-'}</dd>
                 <dt>Personne affectee</dt><dd>{detailItem.personneAffecter?.DisplayName ?? '-'}</dd>
+                <dt>Délai de traitement</dt><dd>{detailItem.delai ? `${detailItem.delai} jour(s)` : '-'}</dd>
+                <dt>Commentaire affectation</dt><dd>{detailItem.commentaireAffectation ?? '-'}</dd>
                 <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
                 <dt>Cause</dt><dd>{detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}</dd>
                 <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
@@ -1515,7 +1597,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       )}
 
       {/* ─── MODALE AFFECTATION ────────────────────────────────────── */}
-      {/* Recherche utilisateur Office 365 → assigne personneAffecter */}
+      {/* Workflow en 2 étapes :
+          1. Recherche Office 365 → sélection d'un utilisateur (setAffectSelectedUser)
+          2. Saisie du délai + commentaire → clic "Valider" (confirmAffect)
+          → écrit personneAffecter + delai + commentaireAffectation en SharePoint */}
       {affectItemId !== null && (
         <div className="modal-overlay" onClick={closeAffectModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -1524,18 +1609,108 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               <button className="modal-close" onClick={closeAffectModal}>&times;</button>
             </div>
             <div className="modal-body">
-              <input type="text" value={affectSearch} placeholder="Rechercher un utilisateur..."
-                onChange={e => searchAffectUser(e.target.value)} autoFocus />
-              {affectResults.length > 0 && (
-                <ul className="modal-results">
-                  {affectResults.map(u => (
-                    <li key={u.Id} onClick={() => confirmAffect(u)}>
-                      <strong>{u.DisplayName}</strong><span>{u.Mail}</span>
-                    </li>
-                  ))}
-                </ul>
+              {/* ─── ÉTAPE 1 : Recherche utilisateur (tant qu'aucun sélectionné) */}
+              {!affectSelectedUser && (
+                <>
+                  <label htmlFor="affect-search" style={{ fontSize: 12, fontWeight: 700, color: '#666' }}>
+                    Personne à affecter
+                  </label>
+                  <input
+                    id="affect-search"
+                    type="text"
+                    value={affectSearch}
+                    placeholder="Rechercher un utilisateur..."
+                    onChange={e => searchAffectUser(e.target.value)}
+                    autoFocus
+                  />
+                  {affectResults.length > 0 && (
+                    <ul className="modal-results">
+                      {affectResults.map(u => (
+                        <li key={u.Id} onClick={() => selectAffectUser(u)}>
+                          <strong>{u.DisplayName}</strong><span>{u.Mail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
-              {affectLoading && <p className="loading-text">Affectation en cours...</p>}
+
+              {/* ─── ÉTAPE 2 : Formulaire délai + commentaire (après sélection) */}
+              {affectSelectedUser && (
+                <div className="affect-form">
+                  {/* Récap de la personne sélectionnée + bouton "changer" */}
+                  <div className="affect-selected">
+                    <div>
+                      <strong>{affectSelectedUser.DisplayName}</strong>
+                      <div style={{ fontSize: 12, color: '#666' }}>{affectSelectedUser.Mail}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-cta btn-cta-detail"
+                      onClick={clearAffectSelection}
+                      disabled={affectLoading}
+                    >
+                      Changer
+                    </button>
+                  </div>
+
+                  {/* Délai : nombre de JOURS (entier > 0). Stocké comme string
+                      en SP (typage de la colonne) mais représente bien un entier. */}
+                  <div className="form-field" style={{ marginTop: 12 }}>
+                    <label htmlFor="affect-delai">Délai de traitement (jours) *</label>
+                    <input
+                      id="affect-delai"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={affectDelai}
+                      placeholder="Ex: 7"
+                      onChange={e => setAffectDelai(e.target.value)}
+                      disabled={affectLoading}
+                    />
+                  </div>
+
+                  {/* Commentaire d'affectation : instructions/contexte pour la personne */}
+                  <div className="form-field" style={{ marginTop: 8 }}>
+                    <label htmlFor="affect-commentaire">Commentaire d'affectation *</label>
+                    <textarea
+                      id="affect-commentaire"
+                      rows={4}
+                      value={affectCommentaire}
+                      placeholder="Instructions, contexte, points d'attention..."
+                      onChange={e => setAffectCommentaire(e.target.value)}
+                      disabled={affectLoading}
+                    />
+                  </div>
+
+                  {affectError && (
+                    <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0 0' }} role="alert">
+                      {affectError}
+                    </p>
+                  )}
+
+                  <div className="modal-actions" style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn-cta btn-cta-detail"
+                      onClick={closeAffectModal}
+                      disabled={affectLoading}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-cta btn-cta-affect"
+                      onClick={confirmAffect}
+                      disabled={affectLoading || !(parseInt(affectDelai, 10) > 0) || !affectCommentaire.trim()}
+                    >
+                      {affectLoading ? 'Affectation...' : "Valider l'affectation"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {affectLoading && !affectSelectedUser && <p className="loading-text">Affectation en cours...</p>}
             </div>
           </div>
         </div>
@@ -1585,6 +1760,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 <dd>{ticketItem.auteur_anormalie?.DisplayName ?? '—'}</dd>
                 <dt>Affecté à</dt>
                 <dd>{ticketItem.personneAffecter?.DisplayName ?? '—'}</dd>
+                <dt>Délai</dt>
+                <dd>{ticketItem.delai ? `${ticketItem.delai} jour(s)` : '—'}</dd>
                 <dt>Agence</dt>
                 <dd>{agences.find(a => String(a.ID) === ticketItem.field_6)?.Title ?? '—'}</dd>
                 <dt>Réseau</dt>
@@ -1597,6 +1774,16 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 <div className="ticket-description">
                   <h3>Description / cause</h3>
                   <p>{stripHtml(ticketItem.field_4)}</p>
+                </div>
+              )}
+
+              {/* Commentaire d'affectation : visible si renseigné — donne le
+                  contexte / les instructions laissés par le manager à la
+                  personne assignée au moment de l'affectation. */}
+              {ticketItem.commentaireAffectation && (
+                <div className="ticket-description">
+                  <h3>Commentaire d'affectation</h3>
+                  <p>{ticketItem.commentaireAffectation}</p>
                 </div>
               )}
 
