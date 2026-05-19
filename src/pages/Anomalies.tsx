@@ -234,6 +234,36 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    */
   const canAffect = userRole !== 'Controleur'
 
+  /**
+   * Vérifie si l'utilisateur peut éditer une anomalie donnée dans la modale Détail.
+   *
+   * Règle métier :
+   *   - Chef_Departement / Directeur → peuvent éditer N'IMPORTE quelle anomalie
+   *   - Controleur                   → ne peut éditer QUE les anomalies qui
+   *                                    LUI SONT affectées (personneAffecter.Email
+   *                                    match userEmail, comparaison
+   *                                    case-insensitive)
+   *   - Autre rôle / pas de rôle     → permissif (true) pour ne pas bloquer
+   *                                    en cas de configuration manquante
+   *
+   * Le calcul est case-insensitive sur l'email pour absorber les variations
+   * de casse SharePoint vs Office 365.
+   *
+   * @param item Anomalie à tester
+   * @returns true si l'utilisateur peut basculer en mode édition
+   */
+  const canEditAnomaly = (item: DCPO_LISTE_ANORMALIERead | null): boolean => {
+    if (!item) return false
+    if (userRole === 'Chef_Departement' || userRole === 'Directeur') return true
+    if (userRole === 'Controleur') {
+      const affecteEmail = item.personneAffecter?.Email?.toLowerCase()
+      const myEmail = userEmail?.toLowerCase()
+      return !!affecteEmail && !!myEmail && affecteEmail === myEmail
+    }
+    // Rôle inconnu : permissif (cf. note canAffect).
+    return true
+  }
+
   /* ──────────────────────────────────────────────────────────────────────
    * ÉTATS — DONNÉES PRINCIPALES & FORMULAIRE DE CRÉATION
    * ────────────────────────────────────────────────────────────────────── */
@@ -270,6 +300,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const [filterReseau, setFilterReseau] = useState('')
   const [filterClassification, setFilterClassification] = useState('')
   const [filterCriticite, setFilterCriticite] = useState('')
+  /**
+   * Filtre serveur par statut workflow (field_10 en SharePoint).
+   * Valeurs possibles : 'Ouvert' / 'En cours' / 'Resolu' / 'Clos' / ''
+   * (chaîne vide = pas de filtre = toutes les anomalies retournées).
+   */
+  const [filterStatut, setFilterStatut] = useState('')
   // Filtres client (champs personne, gérés côté frontend)
   const [filterAgent, setFilterAgent] = useState('')
   const [filterAffecte, setFilterAffecte] = useState('')
@@ -286,6 +322,46 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
 
   /** Modale "Détail" (lecture complète d'une anomalie). null = fermée. */
   const [detailItem, setDetailItem] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
+
+  /**
+   * Mode édition dans la modale Détail.
+   *   - false : affichage en lecture seule (<dl>/<dd>)
+   *   - true  : tous les champs métier deviennent des inputs/selects
+   *
+   * Le toggle se fait via le bouton "Modifier" en header (si l'utilisateur a
+   * les droits — cf. canEditDetail). Quitter la modale (close ou changement
+   * d'item) repasse implicitement en lecture seule via closeDetailModal().
+   *
+   * Les champs personnes (auteur, déclarant, personne affectée) NE SONT PAS
+   * éditables ici : la personne affectée se change via le bouton "Affecter"
+   * dédié (workflow personne + délai + commentaire en un seul geste).
+   */
+  const [detailEditMode, setDetailEditMode] = useState(false)
+
+  /**
+   * Snapshot des champs en cours d'édition dans la modale Détail.
+   *
+   * Initialisé depuis detailItem au passage en mode édition (enterDetailEdit).
+   * Les inputs sont liés à ce state — l'item SharePoint n'est mis à jour
+   * QU'AU clic sur "Enregistrer" (saveDetailEdit).
+   *
+   * Si l'utilisateur clique "Annuler", on jette ce snapshot sans rien écrire.
+   */
+  const [detailForm, setDetailForm] = useState({
+    field_0: '',        // Date de l'anomalie (YYYY-MM-DD)
+    field_4: '',        // Cause / description (texte brut, sans HTML)
+    field_5: '',        // Classification
+    field_6: '',        // Agence (ID en string)
+    field_7: '',        // Réseau (ID en string, auto-déduit de l'agence)
+    field_8: 0,         // Montant
+    field_9: '',        // Date de régularisation (YYYY-MM-DD)
+    field_10: '',       // Statut workflow
+    criticiteAnomalie: '',  // Criticité
+    delai: '',          // Délai de traitement en jours (entier sous forme string)
+    commentaireAffectation: '',  // Commentaire pour la personne affectée
+  })
+  const [detailSaving, setDetailSaving] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
 
   /**
    * Modale "Affecter" — workflow en 2 étapes :
@@ -536,6 +612,139 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setAffectDelai('')
     setAffectCommentaire('')
     setAffectError(null)
+  }
+
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * HANDLERS — MODE ÉDITION DANS LA MODALE DÉTAIL
+   *
+   * Workflow :
+   *   1. Clic "Modifier" → enterDetailEdit() initialise detailForm depuis
+   *      detailItem et bascule en mode édition
+   *   2. L'utilisateur saisit dans les inputs (detailForm est mis à jour)
+   *   3. Clic "Annuler" → cancelDetailEdit() jette les modifications
+   *      OU Clic "Enregistrer" → saveDetailEdit() écrit en SP
+   *
+   * La modale Détail elle-même est fermée séparément via closeDetailModal()
+   * qui prend soin de reset le mode édition (évite la conservation d'un
+   * snapshot orphelin).
+   * ────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Helper : ferme la modale Détail et reset l'éventuel mode édition en cours.
+   *
+   * À utiliser à la place de setDetailItem(null) pour garantir la cohérence
+   * des états (sinon le snapshot detailForm reste en mémoire jusqu'au prochain
+   * enterDetailEdit, ce qui peut polluer une future session d'édition).
+   */
+  const closeDetailModal = () => {
+    setDetailItem(null)
+    setDetailEditMode(false)
+    setDetailError(null)
+    setDetailSaving(false)
+  }
+
+  /**
+   * Bascule en mode édition : initialise detailForm depuis detailItem courant.
+   *
+   * Pourquoi un snapshot plutôt que pointer directement detailItem ?
+   *   - detailItem est partagé avec la liste : modifier ses champs directement
+   *     polluerait l'affichage de la liste pendant l'édition
+   *   - permet le "Annuler" propre (jeter le snapshot, garder detailItem intact)
+   *
+   * Le champ field_4 (cause) contient du HTML en SharePoint ; on le convertit
+   * en texte brut via stripHtml pour l'édition (la sauvegarde renvoie du
+   * texte brut, SP l'accepte tel quel — il ne sera juste pas formaté).
+   */
+  const enterDetailEdit = () => {
+    if (!detailItem) return
+    setDetailForm({
+      field_0: detailItem.field_0 ? detailItem.field_0.split('T')[0] : '',
+      field_4: detailItem.field_4 ? stripHtml(detailItem.field_4) : '',
+      field_5: detailItem.field_5 ?? '',
+      field_6: detailItem.field_6 ?? '',
+      field_7: detailItem.field_7 ?? '',
+      field_8: detailItem.field_8 ?? 0,
+      field_9: detailItem.field_9 ? detailItem.field_9.split('T')[0] : '',
+      field_10: detailItem.field_10 ?? '',
+      criticiteAnomalie: detailItem.criticiteAnomalie ?? '',
+      delai: detailItem.delai ?? '',
+      commentaireAffectation: detailItem.commentaireAffectation ?? '',
+    })
+    setDetailEditMode(true)
+    setDetailError(null)
+  }
+
+  /** Sort du mode édition SANS sauvegarder. */
+  const cancelDetailEdit = () => {
+    setDetailEditMode(false)
+    setDetailError(null)
+  }
+
+  /** Helper générique pour patcher un champ du formulaire d'édition. */
+  const updateDetailForm = <K extends keyof typeof detailForm>(key: K, value: (typeof detailForm)[K]) => {
+    setDetailForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  /**
+   * Envoie les modifications en SharePoint puis recharge la liste.
+   *
+   * Validation minimale :
+   *   - Si délai renseigné, doit être un entier > 0 (cohérent avec le workflow
+   *     d'affectation)
+   *   - Les autres champs n'ont pas de validation stricte (on accepte vide
+   *     pour permettre l'effacement)
+   *
+   * Après succès :
+   *   - On recharge la liste via fetchItems()
+   *   - On bascule la modale en lecture seule (mais on garde detailItem ouvert
+   *     pour que l'utilisateur voie les nouvelles valeurs)
+   *   - Le nouveau detailItem est récupéré dans le résultat du refetch via
+   *     un match sur l'ID
+   */
+  const saveDetailEdit = async () => {
+    if (!detailItem?.ID) return
+
+    // Validation conditionnelle du délai
+    if (detailForm.delai.trim() !== '') {
+      const delaiNum = parseInt(detailForm.delai, 10)
+      if (!Number.isFinite(delaiNum) || delaiNum <= 0) {
+        setDetailError('Le délai doit être un nombre de jours > 0.')
+        return
+      }
+    }
+
+    setDetailSaving(true)
+    setDetailError(null)
+    try {
+      const payload: Record<string, unknown> = {
+        field_0: detailForm.field_0 ? `${detailForm.field_0}T00:00:00Z` : '',
+        field_4: detailForm.field_4,
+        field_5: detailForm.field_5,
+        field_6: detailForm.field_6,
+        field_7: detailForm.field_7,
+        field_8: Number(detailForm.field_8) || 0,
+        field_9: detailForm.field_9 ? `${detailForm.field_9}T00:00:00Z` : '',
+        field_10: detailForm.field_10,
+        criticiteAnomalie: detailForm.criticiteAnomalie,
+        // Normalisation du délai : on stocke l'entier sans zéros tête / espaces
+        delai: detailForm.delai.trim() === '' ? '' : String(parseInt(detailForm.delai, 10)),
+        commentaireAffectation: detailForm.commentaireAffectation.trim(),
+      }
+      await DCPO_LISTE_ANORMALIEService.update(String(detailItem.ID), payload as never)
+      await fetchItems()
+      // On garde la modale ouverte mais on revient en lecture seule.
+      // detailItem sera rafraîchi automatiquement au prochain render via fetchItems.
+      setDetailEditMode(false)
+      // Mise à jour optimiste de detailItem pour refléter les changements
+      // immédiatement (sinon il faut attendre que le user reclique sur Détail).
+      setDetailItem(prev => prev ? { ...prev, ...payload } as DCPO_LISTE_ANORMALIERead : prev)
+    } catch (err) {
+      console.error('Erreur sauvegarde anomalie', err)
+      setDetailError('Échec de la sauvegarde. Réessayer.')
+    } finally {
+      setDetailSaving(false)
+    }
   }
 
 
@@ -813,6 +1022,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     if (filterReseau) clauses.push(`field_7 eq '${filterReseau}'`)
     if (filterClassification) clauses.push(`field_5 eq '${filterClassification}'`)
     if (filterCriticite) clauses.push(`criticiteAnomalie eq '${filterCriticite}'`)
+    if (filterStatut) clauses.push(`field_10 eq '${filterStatut}'`)
     return clauses.join(' and ')
   }
 
@@ -882,6 +1092,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setFilterReseau('')
     setFilterClassification('')
     setFilterCriticite('')
+    setFilterStatut('')
     setFilterAgent('')
     setFilterAffecte('')
     setAppliedAgent('')
@@ -1155,6 +1366,16 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             {CRITICITE_OPTIONS.map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Statut</label>
+          <select value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
+            <option value="">Tous</option>
+            <option value="Ouvert">Ouvert</option>
+            <option value="En cours">En cours</option>
+            <option value="Resolu">Résolu</option>
+            <option value="Clos">Clos</option>
           </select>
         </div>
         <div className="filter-field">
@@ -1530,35 +1751,253 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         </div>
       )}
 
-      {/* ─── MODALE DÉTAIL (lecture seule) ─────────────────────────── */}
-      {/* Affiche tous les champs de l'anomalie + pièces jointes via getTicketAttachments */}
+      {/* ─── MODALE DÉTAIL ─────────────────────────────────────────── */}
+      {/* Deux modes :
+            - Lecture seule (par défaut) : <dl><dd> avec valeurs formatées
+            - Édition : tous les champs métier deviennent des inputs/selects
+          Le toggle se fait via le bouton "Modifier" dans le header
+          (visible uniquement si canEditAnomaly(detailItem) === true).
+
+          Permissions (cf. canEditAnomaly) :
+            - Chef_Departement / Directeur : édition de TOUTES les anomalies
+            - Controleur : édition uniquement si elle lui est affectée
+            - Champs personnes (auteur/déclarant/affectée) NE SONT PAS éditables
+              ici → la personne affectée se change via le bouton "Affecter" */}
       {detailItem && (
-        <div className="modal-overlay" onClick={() => setDetailItem(null)}>
+        <div className="modal-overlay" onClick={closeDetailModal}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 560 }}>
-            <div className="modal-header">
-              <h2>Detail de l'anomalie</h2>
-              <button className="modal-close" onClick={() => setDetailItem(null)}>&times;</button>
+            <div className="modal-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h2 style={{ flex: 1 }}>{detailEditMode ? "Modifier l'anomalie" : "Detail de l'anomalie"}</h2>
+              {/* Bouton "Modifier" : visible si user a les droits ET pas déjà en édition */}
+              {!detailEditMode && canEditAnomaly(detailItem) && (
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-detail"
+                  onClick={enterDetailEdit}
+                >
+                  ✎ Modifier
+                </button>
+              )}
+              <button className="modal-close" onClick={closeDetailModal}>&times;</button>
             </div>
             <div className="modal-body">
-              <dl className="detail-grid">
-                <dt>N° Ticket</dt><dd><strong>{detailItem.ID ? `T-${detailItem.ID}` : '-'}</strong></dd>
-                <dt>Ouverture ticket</dt><dd>{detailItem.dateOuvertureTicket ? new Date(detailItem.dateOuvertureTicket).toLocaleString() : '-'}</dd>
-                <dt>Cloture ticket</dt><dd>{detailItem.date_cloture_ticket ? new Date(detailItem.date_cloture_ticket).toLocaleString() : '-'}</dd>
-                <dt>Declarant</dt><dd>{detailItem.declarant_anormalie?.DisplayName ?? '-'}</dd>
-                <dt>Auteur</dt><dd>{detailItem.auteur_anormalie?.DisplayName ?? '-'}</dd>
-                <dt>Personne affectee</dt><dd>{detailItem.personneAffecter?.DisplayName ?? '-'}</dd>
-                <dt>Délai de traitement</dt><dd>{detailItem.delai ? `${detailItem.delai} jour(s)` : '-'}</dd>
-                <dt>Commentaire affectation</dt><dd>{detailItem.commentaireAffectation ?? '-'}</dd>
-                <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
-                <dt>Cause</dt><dd>{detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}</dd>
-                <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
-                <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
-                <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
-                <dt>Montant</dt><dd>{detailItem.field_8?.toLocaleString() ?? '-'}</dd>
-                <dt>Date regularisation</dt><dd>{detailItem.field_9 ? new Date(detailItem.field_9).toLocaleDateString() : '-'}</dd>
-                <dt>Statut</dt><dd>{detailItem.field_10 ?? '-'}</dd>
-                <dt>Criticite</dt><dd>{detailItem.criticiteAnomalie ?? '-'}</dd>
-              </dl>
+              {!detailEditMode ? (
+                /* ═══ MODE LECTURE ═══════════════════════════════════════ */
+                <dl className="detail-grid">
+                  <dt>N° Ticket</dt><dd><strong>{detailItem.ID ? `T-${detailItem.ID}` : '-'}</strong></dd>
+                  <dt>Ouverture ticket</dt><dd>{detailItem.dateOuvertureTicket ? new Date(detailItem.dateOuvertureTicket).toLocaleString() : '-'}</dd>
+                  <dt>Cloture ticket</dt><dd>{detailItem.date_cloture_ticket ? new Date(detailItem.date_cloture_ticket).toLocaleString() : '-'}</dd>
+                  <dt>Declarant</dt><dd>{detailItem.declarant_anormalie?.DisplayName ?? '-'}</dd>
+                  <dt>Auteur</dt><dd>{detailItem.auteur_anormalie?.DisplayName ?? '-'}</dd>
+                  <dt>Personne affectee</dt><dd>{detailItem.personneAffecter?.DisplayName ?? '-'}</dd>
+                  <dt>Délai de traitement</dt><dd>{detailItem.delai ? `${detailItem.delai} jour(s)` : '-'}</dd>
+                  <dt>Commentaire affectation</dt><dd>{detailItem.commentaireAffectation ?? '-'}</dd>
+                  <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
+                  <dt>Cause</dt><dd>{detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}</dd>
+                  <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
+                  <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
+                  <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
+                  <dt>Montant</dt><dd>{detailItem.field_8?.toLocaleString() ?? '-'}</dd>
+                  <dt>Date regularisation</dt><dd>{detailItem.field_9 ? new Date(detailItem.field_9).toLocaleDateString() : '-'}</dd>
+                  <dt>Statut</dt><dd>{detailItem.field_10 ?? '-'}</dd>
+                  <dt>Criticite</dt><dd>{detailItem.criticiteAnomalie ?? '-'}</dd>
+                </dl>
+              ) : (
+                /* ═══ MODE ÉDITION ═══════════════════════════════════════ */
+                /* Champs métier éditables. Les champs personnes (auteur,
+                   déclarant, personne affectée) restent en lecture seule —
+                   personne affectée se change via le bouton "Affecter" dédié. */
+                <div className="detail-edit-form">
+                  {/* Infos système (toujours lecture seule) */}
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label>N° Ticket</label>
+                    <input type="text" readOnly value={detailItem.ID ? `T-${detailItem.ID}` : '-'} />
+                  </div>
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label>Personne affectée</label>
+                    <input type="text" readOnly value={detailItem.personneAffecter?.DisplayName ?? '-'} />
+                    <span style={{ fontSize: 11, color: '#888' }}>
+                      Pour changer la personne affectée, utiliser le bouton « Affecter ».
+                    </span>
+                  </div>
+
+                  {/* Champs métier éditables */}
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-date">Date de l'anomalie</label>
+                    <input
+                      id="edit-date"
+                      type="date"
+                      value={detailForm.field_0}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={e => updateDetailForm('field_0', e.target.value)}
+                      disabled={detailSaving}
+                    />
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-classification">Classification</label>
+                    <select
+                      id="edit-classification"
+                      value={detailForm.field_5}
+                      onChange={e => updateDetailForm('field_5', e.target.value)}
+                      disabled={detailSaving}
+                    >
+                      <option value="">— Choisir —</option>
+                      <option value="Operationnel">Opérationnel</option>
+                      <option value="Fraude">Fraude</option>
+                      <option value="Commercial">Commercial</option>
+                    </select>
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-criticite">Criticité</label>
+                    <select
+                      id="edit-criticite"
+                      value={detailForm.criticiteAnomalie}
+                      onChange={e => updateDetailForm('criticiteAnomalie', e.target.value)}
+                      disabled={detailSaving}
+                    >
+                      <option value="">— Choisir —</option>
+                      {CRITICITE_OPTIONS.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-cause">Cause / description</label>
+                    <textarea
+                      id="edit-cause"
+                      rows={3}
+                      value={detailForm.field_4}
+                      onChange={e => updateDetailForm('field_4', e.target.value)}
+                      disabled={detailSaving}
+                    />
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-agence">Agence</label>
+                    <select
+                      id="edit-agence"
+                      value={detailForm.field_6}
+                      onChange={e => {
+                        const agenceId = e.target.value
+                        updateDetailForm('field_6', agenceId)
+                        // Auto-déduction du réseau depuis l'agence (cohérent avec la
+                        // logique du formulaire de création)
+                        const agence = agences.find(a => String(a.ID) === agenceId)
+                        updateDetailForm('field_7', agence?.field_1 ? String(agence.field_1) : '')
+                      }}
+                      disabled={detailSaving}
+                    >
+                      <option value="">— Choisir une agence —</option>
+                      {agences.map(a => (
+                        <option key={a.ID} value={String(a.ID)}>{a.Title}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-reseau">Réseau</label>
+                    <input
+                      id="edit-reseau"
+                      type="text"
+                      readOnly
+                      value={reseaux.find(r => String(r.ID) === detailForm.field_7)?.field_1 ?? ''}
+                      placeholder="Sélectionner une agence d'abord"
+                    />
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-montant">Montant</label>
+                    <input
+                      id="edit-montant"
+                      type="number"
+                      min={0}
+                      value={detailForm.field_8}
+                      onChange={e => updateDetailForm('field_8', Number(e.target.value))}
+                      disabled={detailSaving}
+                    />
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-dateRegul">Date régularisation</label>
+                    <input
+                      id="edit-dateRegul"
+                      type="date"
+                      value={detailForm.field_9}
+                      onChange={e => updateDetailForm('field_9', e.target.value)}
+                      disabled={detailSaving}
+                    />
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-statut">Statut</label>
+                    <select
+                      id="edit-statut"
+                      value={detailForm.field_10}
+                      onChange={e => updateDetailForm('field_10', e.target.value)}
+                      disabled={detailSaving}
+                    >
+                      <option value="">— Choisir —</option>
+                      <option value="Ouvert">Ouvert</option>
+                      <option value="En cours">En cours</option>
+                      <option value="Resolu">Résolu</option>
+                      <option value="Clos">Clos</option>
+                    </select>
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-delai">Délai de traitement (jours)</label>
+                    <input
+                      id="edit-delai"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={detailForm.delai}
+                      placeholder="Ex: 7"
+                      onChange={e => updateDetailForm('delai', e.target.value)}
+                      disabled={detailSaving}
+                    />
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-commentaire">Commentaire d'affectation</label>
+                    <textarea
+                      id="edit-commentaire"
+                      rows={3}
+                      value={detailForm.commentaireAffectation}
+                      onChange={e => updateDetailForm('commentaireAffectation', e.target.value)}
+                      disabled={detailSaving}
+                    />
+                  </div>
+
+                  {detailError && (
+                    <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                      {detailError}
+                    </p>
+                  )}
+
+                  <div className="modal-actions" style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn-cta btn-cta-detail"
+                      onClick={cancelDetailEdit}
+                      disabled={detailSaving}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-cta btn-cta-affect"
+                      onClick={saveDetailEdit}
+                      disabled={detailSaving}
+                    >
+                      {detailSaving ? 'Enregistrement...' : 'Enregistrer'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="detail-attachments" style={{ marginTop: 16 }}>
                 <h3 style={{ marginBottom: 8 }}>Pièces jointes</h3>
