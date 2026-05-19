@@ -279,8 +279,12 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
           {activeTab === 'reporting-validation' && (
             <ControllerReportingList userName={userName} userEmail={userEmail} />
           )}
-          {activeTab === 'plan-controle' && <PlanControle />}
-          {activeTab === 'plan-action-correctif' && <PlanActionCorrectif />}
+          {activeTab === 'plan-controle' && (
+            <PlanControle userName={userName} userEmail={userEmail} userRole={userRole} />
+          )}
+          {activeTab === 'plan-action-correctif' && (
+            <PlanActionCorrectif userName={userName} userEmail={userEmail} userRole={userRole} />
+          )}
         </div>
       </div>
     </div>
