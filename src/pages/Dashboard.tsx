@@ -55,8 +55,40 @@ import './Dashboard.css'
  */
 interface DashboardProps {
   userName?: string  // displayName Office 365
-  userRole?: string  // fonction.Value depuis DCPO_LISTE_USER
+  userRole?: string  // rôle EFFECTIF (peut être un rôle simulé) — pilote la nav/permissions
   userEmail?: string // mail Office 365 (utile pour les pages enfants)
+  /**
+   * Rôle RÉEL de l'utilisateur (DCPO_LISTE_USER.fonction). Sert uniquement à
+   * déterminer quels rôles il peut simuler via le sélecteur de la topbar.
+   */
+  realUserRole?: string
+  /**
+   * Callback de changement de rôle effectif (simulation). Appelé par le
+   * sélecteur de la topbar. Si absent, le sélecteur n'est pas affiché.
+   */
+  onRoleChange?: (role: string) => void
+}
+
+/**
+ * Rôles que chaque rôle réel peut "assumer" (simuler), dans l'ordre
+ * d'affichage du sélecteur. Le premier est toujours le rôle réel lui-même
+ * (= revenir à son rôle normal).
+ *
+ * Règle métier :
+ *   - Directeur        → Directeur, Chef_Departement, Controleur
+ *   - Chef_Departement → Chef_Departement, Controleur
+ *   - Controleur       → (absent du map → pas de sélecteur, pas de simulation)
+ */
+const ROLE_SWITCH_OPTIONS: Record<string, string[]> = {
+  Directeur: ['Directeur', 'Chef_Departement', 'Controleur'],
+  Chef_Departement: ['Chef_Departement', 'Controleur'],
+}
+
+/** Libellés lisibles pour l'affichage des rôles dans le sélecteur. */
+const ROLE_LABELS: Record<string, string> = {
+  Directeur: 'Directeur',
+  Chef_Departement: 'Chef de département',
+  Controleur: 'Contrôleur',
 }
 
 /**
@@ -114,11 +146,16 @@ type NavEntry = NavLeaf | NavGroup
  */
 const MANAGER_ROLES = ['Chef_Departement', 'Directeur']
 
-export default function Dashboard({ userName, userRole, userEmail }: DashboardProps) {
+export default function Dashboard({ userName, userRole, userEmail, realUserRole, onRoleChange }: DashboardProps) {
   // ─── Calculs dérivés du rôle ─────────────────────────────────────────
   // Booléens pour conditionner l'affichage des onglets sensibles
   const isManager = !!userRole && MANAGER_ROLES.includes(userRole)
   const isController = userRole === 'Controleur'
+
+  // Rôles que l'utilisateur peut simuler, en fonction de son rôle RÉEL.
+  // Vide (et donc pas de sélecteur) si le rôle réel n'autorise pas la simulation
+  // (ex: Controleur) ou si le callback de changement n'est pas fourni.
+  const switchableRoles = (realUserRole && onRoleChange) ? (ROLE_SWITCH_OPTIONS[realUserRole] ?? []) : []
 
   /**
    * Construction dynamique de la nav selon le rôle.
@@ -203,7 +240,34 @@ export default function Dashboard({ userName, userRole, userEmail }: DashboardPr
         </div>
         <div className="topbar-user">
           <span className="topbar-user-name">{userName}</span>
-          <span className="topbar-user-job">{userRole}</span>
+          {/* Sélecteur de rôle : affiché uniquement pour les rôles qui peuvent
+              en simuler d'autres (Directeur / Chef_Departement). Sinon, simple
+              libellé du rôle. */}
+          {switchableRoles.length > 0 ? (
+            <label className="topbar-role-switch">
+              <span className="topbar-role-switch-icon" aria-hidden="true">👤</span>
+              <select
+                value={userRole ?? ''}
+                onChange={e => onRoleChange?.(e.target.value)}
+                aria-label="Changer de rôle (simulation)"
+              >
+                {switchableRoles.map(role => (
+                  <option key={role} value={role}>
+                    {ROLE_LABELS[role] ?? role}
+                    {role === realUserRole ? ' (mon rôle)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <span className="topbar-user-job">{ROLE_LABELS[userRole ?? ''] ?? userRole}</span>
+          )}
+          {/* Indicateur visuel quand l'utilisateur simule un rôle ≠ son rôle réel */}
+          {realUserRole && userRole !== realUserRole && (
+            <span className="topbar-role-simulated" title={`Rôle réel : ${ROLE_LABELS[realUserRole] ?? realUserRole}`}>
+              rôle simulé
+            </span>
+          )}
         </div>
       </header>
 

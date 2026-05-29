@@ -55,8 +55,27 @@ function App() {
   /** Profil Microsoft Graph de l'utilisateur connecté (Office 365) */
   const [user, setUser] = useState<GraphUser_V1 | null>(null)
 
-  /** Rôle métier (issu de DCPO_LISTE_USER) — null si user inconnu de la liste */
+  /**
+   * Rôle métier RÉEL (issu de DCPO_LISTE_USER) — null si user inconnu.
+   * C'est la "vérité" : il sert à l'autorisation et borne les rôles que
+   * l'utilisateur peut simuler (cf. activeRole).
+   */
   const [userRole, setUserRole] = useState<string | null>(null)
+
+  /**
+   * Rôle EFFECTIF utilisé par l'interface (nav, permissions du dashboard).
+   *
+   * Par défaut égal au rôle réel. Mais un Directeur ou un Chef_Departement
+   * peut le "rétrograder" temporairement via le sélecteur de la topbar pour
+   * voir la plateforme comme un rôle inférieur :
+   *   - Directeur        → peut simuler Chef_Departement ou Controleur
+   *   - Chef_Departement → peut simuler Controleur
+   *
+   * C'est une simulation côté client UNIQUEMENT (aide à la vérification UX,
+   * démonstration, support). Le rôle réel reste inchangé en base et
+   * l'autorisation d'accès continue de s'appuyer dessus.
+   */
+  const [activeRole, setActiveRole] = useState<string | null>(null)
 
   /** True ssi user existe dans DCPO_LISTE_USER ET son rôle ∈ ALLOWED_ROLES */
   const [authorized, setAuthorized] = useState(false)
@@ -95,6 +114,8 @@ function App() {
           if (match?.fonction?.Value && ALLOWED_ROLES.includes(match.fonction.Value)) {
             setAuthorized(true)
             setUserRole(match.fonction.Value)
+            // Le rôle effectif démarre toujours égal au rôle réel.
+            setActiveRole(match.fonction.Value)
           }
         }
       } catch (err) {
@@ -128,7 +149,17 @@ function App() {
       setPage('home')
       return null
     }
-    return <Dashboard userName={user?.displayName} userRole={userRole ?? undefined} userEmail={user?.mail ?? undefined} />
+    return (
+      <Dashboard
+        userName={user?.displayName}
+        // Le dashboard pilote sa nav/permissions sur le rôle EFFECTIF
+        userRole={activeRole ?? userRole ?? undefined}
+        // Le rôle RÉEL borne les rôles simulables (sélecteur topbar)
+        realUserRole={userRole ?? undefined}
+        onRoleChange={setActiveRole}
+        userEmail={user?.mail ?? undefined}
+      />
+    )
   }
 
   // ─── Rendu : écran de chargement ──────────────────────────────────────
