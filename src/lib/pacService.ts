@@ -3,73 +3,60 @@
  * SERVICE — PLAN D'ACTION CORRECTIF (PAC)
  * ============================================================================
  *
- * Couche d'accès aux données pour le module "Plan d'Action Correctif".
+ * Persistance des PAC : liste SharePoint DCPO_LISTE_PLAN_ACTION_CORRECTIF.
  *
- * Persistance ACTUELLE : localStorage (interim, le temps que les listes
- * SharePoint soient créées et que les services soient générés).
+ * Mapping des colonnes SharePoint :
+ *   ┌──────────────────────────┬────────────────────────┬───────────────────┐
+ *   │ Colonne SP               │ Champ domaine          │ Notes             │
+ *   ├──────────────────────────┼────────────────────────┼───────────────────┤
+ *   │ Title                    │ intitule               │                   │
+ *   │ field_1                  │ sourcePac              │                   │
+ *   │ field_2                  │ dateCreation           │ texte (YYYY-MM-DD) │
+ *   │ field_3                  │ descriptionProbleme    │                   │
+ *   │ field_4                  │ causeImmediate         │                   │
+ *   │ field_5                  │ causeRacine            │                   │
+ *   │ field_6                  │ actionsCorrectives     │                   │
+ *   │ field_7                  │ directionsConcernees   │ codes joints ';'  │
+ *   │ field_8                  │ echeance               │ texte (YYYY-MM-DD) │
+ *   │ field_9 (number)         │ annee                  │                   │
+ *   │ field_11                 │ statut                 │                   │
+ *   │ field_12                 │ kpi                    │                   │
+ *   │ field_13                 │ observations           │                   │
+ *   │ responsableMiseEnOeuvre  │ responsable*           │ champ PERSONNE     │
+ *   └──────────────────────────┴────────────────────────┴───────────────────┘
  *
- * Persistance CIBLE : deux listes SharePoint
- *   1. DCPO_LISTE_DIRECTIONS (référentiel des directions concernées)
- *   2. DCPO_PAC                (plans d'action correctifs)
- *
- * Pour basculer vers SharePoint quand les listes seront en place :
- *   1. Lancer `npm run dev` (déclenche `pac code run` → régénère les services)
- *   2. Remplacer le corps des fonctions list/get/create par des appels
- *      aux services générés (DCPO_LISTE_DIRECTIONSService, DCPO_PACService).
- *      L'API publique (interfaces, signatures) NE doit PAS changer pour
- *      éviter d'impacter le composant React.
- *
- * Schéma des colonnes attendues côté SharePoint :
- *   - DCPO_LISTE_DIRECTIONS : Title (code), libelle, actif (Yes/No)
- *   - DCPO_PAC : Title (intitulé), sourcePac, dateCreation, descriptionProbleme,
- *                causeImmediate, causeRacine, actionsCorrectives,
- *                directionsConcernees (codes séparés par ';'),
- *                echeance, kpi, annee, responsable,
- *                statutPac (Choice: Exécutée / En cours / Non Exécutée),
- *                observations, derniereEvaluation, nouveauDelai, meoDcpo
+ * Référentiel des DIRECTIONS : conservé en localStorage / constante (aucune
+ * liste SharePoint dédiée n'a été créée pour les directions). Seuls les PAC
+ * eux-mêmes sont persistés en SharePoint.
  * ============================================================================
  */
+
+import { DCPO_LISTE_PLAN_ACTION_CORRECTIFService } from '../generated/services/DCPO_LISTE_PLAN_ACTION_CORRECTIFService'
+import type {
+  DCPO_LISTE_PLAN_ACTION_CORRECTIFRead,
+  DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite,
+} from '../generated/models/DCPO_LISTE_PLAN_ACTION_CORRECTIFModel'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
  * SECTION 1 — TYPES DU DOMAINE
  * ────────────────────────────────────────────────────────────────────────── */
 
-/** Statut workflow d'un PAC (correspond à la colonne `statutPac` côté SP). */
+/** Statut workflow d'un PAC (colonne field_11). */
 export type PacStatus = 'Exécutée' | 'En cours' | 'Non Exécutée'
 
-/** Direction concernée (référentiel maintenu dans DCPO_LISTE_DIRECTIONS). */
+/** Direction concernée (référentiel local, pas de liste SharePoint dédiée). */
 export interface Direction {
-  /** Code court (ex: 'DJC', 'DCE', 'DSI'). Sert d'identifiant métier. */
   code: string
-  /** Libellé complet (ex: 'Direction Juridique et Conformité'). */
   libelle: string
-  /** Si false, la direction est masquée des sélecteurs mais conservée. */
   actif: boolean
 }
 
 /**
- * Représentation d'un Plan d'Action Correctif côté front.
+ * Représentation d'un Plan d'Action Correctif.
  *
- * Mapping avec la feuille Excel "PAC DCPO" :
- *   id                       → Ordre (auto)
- *   sourcePac                → Source PAC
- *   dateCreation             → Date
- *   intitule                 → Intitulés PAC
- *   descriptionProbleme      → Description du problème
- *   causeImmediate           → Causes immédiate
- *   causeRacine              → Causes racines (profondes/réelles)
- *   actionsCorrectives       → Détermination des actions correctives
- *   directionsConcernees     → Directions concernées (codes)
- *   echeance                 → Échéance
- *   kpi                      → KPI
- *   annee                    → ANNEE
- *   responsable              → Responsable de mise en œuvre
- *   statut                   → Statut anomalie
- *   observations             → Observations
- *   derniereEvaluation       → Dernière date d'Evaluation
- *   nouveauDelai             → NOUVEAU DELAI PROPOSE
- *   meoDcpo                  → MEO de la DCPO
+ * Le responsable est un champ Personne côté SharePoint : on garde son nom
+ * affiché (responsable) + son email (responsableEmail, pour l'écriture).
  */
 export interface Pac {
   id: string
@@ -80,21 +67,19 @@ export interface Pac {
   causeImmediate: string
   causeRacine: string
   actionsCorrectives: string
-  /** Liste de codes Direction (ex: ['DSI', 'DJC']). */
   directionsConcernees: string[]
   echeance: string             // YYYY-MM-DD
   kpi: string
   annee: number
-  responsable: string
+  responsable: string          // DisplayName (affichage)
+  responsableEmail: string     // email (écriture Person)
   statut: PacStatus
   observations?: string
-  derniereEvaluation?: string  // YYYY-MM-DD
-  nouveauDelai?: string        // YYYY-MM-DD
-  meoDcpo?: string
-  createdAt: string            // ISO timestamp (interne, pour tri/audit)
+  createdAt: string
+  updatedAt: string
 }
 
-/** Données minimales pour créer un PAC. */
+/** Données pour créer un PAC. */
 export interface CreatePacInput {
   sourcePac: string
   dateCreation: string
@@ -107,160 +92,202 @@ export interface CreatePacInput {
   echeance: string
   kpi: string
   annee: number
-  responsable: string
+  responsableName: string
+  responsableEmail: string
   statut: PacStatus
   observations?: string
 }
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * SECTION 2 — STOCKAGE LOCALSTORAGE (INTERIM)
+ * SECTION 2 — RÉFÉRENTIEL DES DIRECTIONS (localStorage / constante)
  *
- * À supprimer / remplacer dès que les listes SharePoint sont en place et
- * que les services générés sont disponibles.
+ * Pas de liste SharePoint dédiée → on garde les directions côté client.
+ * Pour préconfigurer, éditer DEFAULT_DIRECTIONS. Pour modifier dynamiquement,
+ * utiliser upsertDirection / deactivateDirection (persistés en localStorage).
  * ────────────────────────────────────────────────────────────────────────── */
 
-const STORAGE_KEY_PAC = 'reportingDCPO.pac.v1'
 const STORAGE_KEY_DIRECTIONS = 'reportingDCPO.directions.v1'
 
-/**
- * Directions par défaut au premier chargement (vues dans le tableau de bord
- * Excel fourni). L'utilisateur peut ensuite les modifier/compléter via
- * upsertDirection — ou, idéalement, les gérer dans la liste SharePoint
- * DCPO_LISTE_DIRECTIONS une fois celle-ci créée.
- */
 const DEFAULT_DIRECTIONS: Direction[] = [
   { code: 'DJC', libelle: 'Direction Juridique et Conformité', actif: true },
   { code: 'DCE', libelle: 'Direction Commercial Entreprises', actif: true },
   { code: 'DSI', libelle: 'Direction des Systèmes d\'Information', actif: true },
 ]
 
-const readJSON = <T>(key: string, fallback: T): T => {
+const readDirections = (): Direction[] => {
   try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return fallback
-    return JSON.parse(raw) as T
+    const raw = window.localStorage.getItem(STORAGE_KEY_DIRECTIONS)
+    return raw ? (JSON.parse(raw) as Direction[]) : []
   } catch {
-    return fallback
+    return []
   }
 }
 
-const writeJSON = (key: string, value: unknown): void => {
+const writeDirections = (dirs: Direction[]): void => {
   try {
-    window.localStorage.setItem(key, JSON.stringify(value))
+    window.localStorage.setItem(STORAGE_KEY_DIRECTIONS, JSON.stringify(dirs))
   } catch {
-    /* ignore — quota dépassé / mode privé */
+    /* ignore */
   }
 }
 
-/** Génère un identifiant unique court (interne). */
-function uid(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-
-/* ──────────────────────────────────────────────────────────────────────────
- * SECTION 3 — API — DIRECTIONS
- *
- * Une fois passé en SharePoint :
- *   - listDirections() → DCPO_LISTE_DIRECTIONSService.getAll({ filter: "actif eq 1" })
- *   - upsertDirection() → create / update sur le même service
- *   - removeDirection() → soft delete : on met actif=false plutôt que de supprimer
- * ────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Liste les directions actives (triées par code).
- *
- * Au premier appel sur un nouvel utilisateur, on initialise le localStorage
- * avec DEFAULT_DIRECTIONS pour éviter une UI vide au démarrage. L'utilisateur
- * peut ensuite éditer librement.
- */
+/** Liste les directions (initialise avec DEFAULT_DIRECTIONS au premier accès). */
 export function listDirections(activeOnly: boolean = true): Direction[] {
-  const all = readJSON<Direction[]>(STORAGE_KEY_DIRECTIONS, [])
+  const all = readDirections()
   if (all.length === 0) {
-    writeJSON(STORAGE_KEY_DIRECTIONS, DEFAULT_DIRECTIONS)
+    writeDirections(DEFAULT_DIRECTIONS)
     return activeOnly ? DEFAULT_DIRECTIONS.filter(d => d.actif) : DEFAULT_DIRECTIONS
   }
   const filtered = activeOnly ? all.filter(d => d.actif) : all
   return [...filtered].sort((a, b) => a.code.localeCompare(b.code))
 }
 
-/**
- * Crée OU met à jour une direction (clé = code, case-sensitive).
- *
- * Utilisé par l'écran de gestion des directions (à venir) — pour l'instant
- * il suffit de modifier DEFAULT_DIRECTIONS ci-dessus pour préconfigurer la
- * liste, ou d'appeler upsertDirection depuis la console dev.
- */
+/** Crée ou met à jour une direction (clé = code). */
 export function upsertDirection(direction: Direction): void {
-  const all = readJSON<Direction[]>(STORAGE_KEY_DIRECTIONS, [])
+  const all = readDirections()
   const idx = all.findIndex(d => d.code === direction.code)
   if (idx >= 0) all[idx] = direction
   else all.push(direction)
-  writeJSON(STORAGE_KEY_DIRECTIONS, all)
+  writeDirections(all)
 }
 
-/** Désactive une direction (soft delete — préserve les PAC qui la référencent). */
+/** Désactive une direction (soft delete). */
 export function deactivateDirection(code: string): void {
-  const all = readJSON<Direction[]>(STORAGE_KEY_DIRECTIONS, [])
+  const all = readDirections()
   const idx = all.findIndex(d => d.code === code)
   if (idx >= 0) {
     all[idx] = { ...all[idx], actif: false }
-    writeJSON(STORAGE_KEY_DIRECTIONS, all)
+    writeDirections(all)
   }
 }
 
-/** Résout un libellé à partir d'un code de direction (fallback = code lui-même). */
+/** Résout le libellé d'un code de direction (fallback = code). */
 export function getDirectionLabel(code: string): string {
-  const all = readJSON<Direction[]>(STORAGE_KEY_DIRECTIONS, DEFAULT_DIRECTIONS)
-  return all.find(d => d.code === code)?.libelle ?? code
+  const all = readDirections()
+  const source = all.length > 0 ? all : DEFAULT_DIRECTIONS
+  return source.find(d => d.code === code)?.libelle ?? code
 }
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * SECTION 4 — API — PAC
- *
- * Une fois passé en SharePoint :
- *   - listPACs() → DCPO_PACService.getAll({ orderBy: ['Created desc'] })
- *                  + mapper item SP → Pac (parser directionsConcernees split ';')
- *   - createPAC() → DCPO_PACService.create({ ...payload, directionsConcernees: codes.join(';') })
+ * SECTION 3 — MAPPING SHAREPOINT ↔ DOMAINE (PAC)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Format SharePoint Claims pour un champ Personne. */
+function toClaims(email: string): string {
+  return `i:0#.f|membership|${email}`
+}
+
+/** Sépare/normalise les codes directions stockés en texte ("DSI;DJC"). */
+function parseDirections(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw.split(';').map(s => s.trim()).filter(Boolean)
+}
+
+/** Normalise une date SP (peut être ISO ou déjà YYYY-MM-DD) → YYYY-MM-DD. */
+function toDateOnly(raw: string | undefined): string {
+  if (!raw) return ''
+  return raw.split('T')[0]
+}
+
+/** Construit un Pac depuis un item SharePoint. */
+function fromItem(item: DCPO_LISTE_PLAN_ACTION_CORRECTIFRead): Pac {
+  const statut = item.field_11 as PacStatus
+  return {
+    id: String(item.ID),
+    intitule: item.Title ?? '',
+    sourcePac: item.field_1 ?? '',
+    dateCreation: toDateOnly(item.field_2),
+    descriptionProbleme: item.field_3 ?? '',
+    causeImmediate: item.field_4 ?? '',
+    causeRacine: item.field_5 ?? '',
+    actionsCorrectives: item.field_6 ?? '',
+    directionsConcernees: parseDirections(item.field_7),
+    echeance: toDateOnly(item.field_8),
+    annee: item.field_9 ?? new Date().getFullYear(),
+    statut: PAC_STATUS_OPTIONS.includes(statut) ? statut : 'En cours',
+    kpi: item.field_12 ?? '',
+    observations: item.field_13 || undefined,
+    responsable: item.responsableMiseEnOeuvre?.DisplayName ?? '',
+    responsableEmail: item.responsableMiseEnOeuvre?.Email ?? '',
+    createdAt: item.Created ?? '',
+    updatedAt: item.Modified ?? '',
+  }
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 4 — API PUBLIQUE (PAC)
  * ────────────────────────────────────────────────────────────────────────── */
 
 /** Liste tous les PAC (du plus récent au plus ancien). */
-export function listPACs(): Pac[] {
-  const all = readJSON<Pac[]>(STORAGE_KEY_PAC, [])
-  return [...all].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+export async function listPACs(): Promise<Pac[]> {
+  try {
+    const res = await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.getAll({ orderBy: ['Created desc'] })
+    if (!res.data) return []
+    return res.data.map(fromItem)
+  } catch (err) {
+    console.error('listPACs error', err)
+    return []
+  }
 }
 
 /** Récupère un PAC par ID. */
-export function getPAC(id: string): Pac | undefined {
-  return listPACs().find(p => p.id === id)
+export async function getPAC(id: string): Promise<Pac | undefined> {
+  try {
+    const res = await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.get(id)
+    if (!res.data) return undefined
+    return fromItem(res.data)
+  } catch (err) {
+    console.error('getPAC error', err)
+    return undefined
+  }
 }
 
 /**
- * Crée un nouveau PAC.
+ * Crée un PAC dans SharePoint.
  *
- * Validation minimale ici (l'UI fait la validation détaillée) :
+ * Validation minimale :
  *   - intitule obligatoire
  *   - au moins une direction concernée
- *   - statut valide
  */
-export function createPAC(input: CreatePacInput): Pac {
-  if (!input.intitule.trim()) {
-    throw new Error('Intitulé obligatoire.')
-  }
+export async function createPAC(input: CreatePacInput): Promise<Pac> {
+  if (!input.intitule.trim()) throw new Error('Intitulé obligatoire.')
   if (input.directionsConcernees.length === 0) {
     throw new Error('Au moins une direction concernée est requise.')
   }
-  const pac: Pac = {
-    id: uid(),
-    ...input,
-    createdAt: new Date().toISOString(),
+
+  const payload: Record<string, unknown> = {
+    Title: input.intitule.trim(),
+    field_1: input.sourcePac.trim(),
+    field_2: input.dateCreation,
+    field_3: input.descriptionProbleme.trim(),
+    field_4: input.causeImmediate.trim(),
+    field_5: input.causeRacine.trim(),
+    field_6: input.actionsCorrectives.trim(),
+    field_7: input.directionsConcernees.join(';'),
+    field_8: input.echeance,
+    field_9: input.annee,
+    field_11: input.statut,
+    field_12: input.kpi.trim(),
+    field_13: input.observations?.trim() ?? '',
   }
-  const all = listPACs()
-  all.unshift(pac)
-  writeJSON(STORAGE_KEY_PAC, all)
-  return pac
+  // Champ Personne : responsable de mise en œuvre.
+  if (input.responsableEmail) {
+    payload.responsableMiseEnOeuvre = {
+      '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+      Claims: toClaims(input.responsableEmail),
+    }
+  }
+
+  const res = await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.create(
+    payload as Omit<DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite, 'ID'>,
+  )
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'Échec de la création du PAC.')
+  }
+  return fromItem(res.data)
 }
 
 
@@ -268,13 +295,9 @@ export function createPAC(input: CreatePacInput): Pac {
  * SECTION 5 — HELPERS UI
  * ────────────────────────────────────────────────────────────────────────── */
 
-/** Liste fermée des statuts PAC (pour les selects de filtre / formulaire). */
 export const PAC_STATUS_OPTIONS: PacStatus[] = ['En cours', 'Exécutée', 'Non Exécutée']
 
-/**
- * Mappe un statut PAC vers une classe CSS (réutilise les pastilles "manager-pill"
- * déjà définies pour rester cohérent visuellement avec les autres modules).
- */
+/** Mappe un statut PAC vers une classe CSS (pastilles manager-pill). */
 export function getPacStatusClass(statut: PacStatus): string {
   switch (statut) {
     case 'Exécutée': return 'manager-pill-realise'

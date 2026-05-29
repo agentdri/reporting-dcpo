@@ -15,9 +15,9 @@
  *   - Modale Détail (lecture seule)
  *   - Modale Création (formulaire complet)
  *
- * Persistance : actuellement localStorage via src/lib/pacService.ts. Le
- * service expose une API stable — l'utilisateur peut basculer vers les
- * listes SharePoint sans toucher à ce composant.
+ * Persistance des PAC : liste SharePoint DCPO_LISTE_PLAN_ACTION_CORRECTIF
+ * via src/lib/pacService.ts. Le référentiel des directions reste local
+ * (constante, pas de liste SharePoint dédiée).
  *
  * Source des champs : feuille "PAC DCPO" du fichier Excel
  * Tableau_de_bord_KPI_DCPO_2026.xlsx fourni par l'utilisateur.
@@ -38,6 +38,7 @@ import {
 } from '../lib/pacService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { UserPicker } from '../components/UserPicker'
 
 
 /**
@@ -79,7 +80,8 @@ const EMPTY_FORM = {
   echeance: '',
   kpi: '',
   annee: new Date().getFullYear(),
-  responsable: '',
+  responsableName: '',
+  responsableEmail: '',
   statut: 'En cours' as PacStatus,
   observations: '',
 }
@@ -101,14 +103,11 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
    * ÉTATS
    * ════════════════════════════════════════════════════════════════════════ */
 
-  /**
-   * Liste des PAC (rechargée à chaque mutation).
-   * Lazy init via useState(() => ...) pour éviter le pattern "fetch in useEffect"
-   * → satisfait la règle react-hooks/set-state-in-effect.
-   */
-  const [pacs, setPacs] = useState<Pac[]>(() => listPACs())
-  /** Liste des directions actives (idem lazy init). */
-  const [directions, setDirections] = useState<Direction[]>(() => listDirections(true))
+  /** Liste des PAC (chargée depuis SharePoint). */
+  const [pacs, setPacs] = useState<Pac[]>([])
+  /** Liste des directions actives (référentiel local, synchrone). */
+  const [directions] = useState<Direction[]>(() => listDirections(true))
+  const [loading, setLoading] = useState(true)
   /** Filtres en cours de saisie (binding inputs). */
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   /** Filtres effectivement appliqués (snapshot au clic Rechercher). */
@@ -121,24 +120,35 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
   const [form, setForm] = useState(EMPTY_FORM)
   /** Erreur de soumission affichée sous le formulaire. */
   const [formError, setFormError] = useState<string | null>(null)
+  /** True pendant la sauvegarde d'un nouveau PAC. */
+  const [saving, setSaving] = useState(false)
 
   /** Permission "créer / éditer un PAC". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
 
 
   /* ════════════════════════════════════════════════════════════════════════
-   * CHARGEMENT INITIAL + REFRESH
+   * CHARGEMENT INITIAL + REFRESH (SharePoint)
    * ════════════════════════════════════════════════════════════════════════ */
 
-  /**
-   * Recharge la liste depuis le service après mutation (créa / édition).
-   * Pas d'appel via useEffect : on n'a pas besoin de "sync" — le composant
-   * peut directement rafraîchir aux moments choisis (après createPAC, après
-   * clic sur "Actualiser", etc.).
-   */
-  const refresh = () => {
-    setPacs(listPACs())
-    setDirections(listDirections(true))
+  // Chargement initial depuis SharePoint. Le fetch async dans un effet est
+  // autorisé (le setState a lieu dans un callback après await).
+  useEffect(() => {
+    let cancelled = false
+    listPACs()
+      .then(data => { if (!cancelled) setPacs(data) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  /** Recharge la liste depuis SharePoint après création. */
+  const refresh = async () => {
+    setLoading(true)
+    try {
+      setPacs(await listPACs())
+    } finally {
+      setLoading(false)
+    }
   }
 
 
@@ -244,10 +254,11 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
     setFormError(null)
   }
 
-  const submitForm = () => {
+  const submitForm = async () => {
     setFormError(null)
+    setSaving(true)
     try {
-      createPAC({
+      await createPAC({
         sourcePac: form.sourcePac.trim(),
         dateCreation: form.dateCreation,
         intitule: form.intitule.trim(),
@@ -259,14 +270,17 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
         echeance: form.echeance,
         kpi: form.kpi.trim(),
         annee: Number(form.annee) || new Date().getFullYear(),
-        responsable: form.responsable.trim(),
+        responsableName: form.responsableName,
+        responsableEmail: form.responsableEmail,
         statut: form.statut,
         observations: form.observations.trim() || undefined,
       })
-      refresh()
+      await refresh()
       closeForm()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Échec de la création du PAC.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -308,7 +322,7 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
       </div>
 
       {/* ─── Barre de filtres ──────────────────────────────────────── */}
-      <div className="filters">
+      <div className="filters-bar">
         <div className="filter-field" style={{ flex: 1, minWidth: 220 }}>
           <label>Recherche</label>
           <input
@@ -346,24 +360,28 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
             onChange={e => updateFilter('annee', e.target.value)}
           />
         </div>
-        <button type="button" className="btn-search-filters" onClick={applyFilters}>
-          Rechercher
-        </button>
-        <button type="button" className="btn-reset-filters" onClick={resetFilters}>
-          Réinitialiser
-        </button>
+        <div className="filter-actions">
+          <button type="button" className="btn-search-filters" onClick={applyFilters}>
+            Rechercher
+          </button>
+          <button type="button" className="btn-reset-filters" onClick={resetFilters}>
+            Réinitialiser
+          </button>
+        </div>
       </div>
 
       {/* ─── Tableau des PAC ───────────────────────────────────────── */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <p className="loading-text" style={{ marginTop: 16 }}>Chargement des PAC...</p>
+      ) : filtered.length === 0 ? (
         <p className="loading-text" style={{ marginTop: 16 }}>
           {pacs.length === 0
             ? 'Aucun PAC enregistré pour le moment.'
             : 'Aucun PAC ne correspond aux critères.'}
         </p>
       ) : (
-        <div className="table-container" style={{ marginTop: 16 }}>
-          <table className="anomalies-table">
+        <div className="table-wrapper" style={{ marginTop: 16 }}>
+          <table className="data-table anomalies-table">
             <thead>
               <tr>
                 <th>#</th>
@@ -600,11 +618,20 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
                 </div>
                 <div className="form-field">
                   <label htmlFor="pac-resp">Responsable de mise en œuvre</label>
-                  <input
+                  {/* Champ Personne SharePoint → sélecteur Office 365 */}
+                  <UserPicker
                     id="pac-resp"
-                    type="text"
-                    value={form.responsable}
-                    onChange={e => updateForm('responsable', e.target.value)}
+                    selectedName={form.responsableName}
+                    selectedEmail={form.responsableEmail}
+                    onSelect={(name, email) => {
+                      updateForm('responsableName', name)
+                      updateForm('responsableEmail', email)
+                    }}
+                    onClear={() => {
+                      updateForm('responsableName', '')
+                      updateForm('responsableEmail', '')
+                    }}
+                    disabled={saving}
                   />
                 </div>
                 <div className="form-field">
@@ -647,11 +674,11 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
               )}
 
               <div className="modal-actions" style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-cta btn-cta-detail" onClick={closeForm}>
+                <button type="button" className="btn-cta btn-cta-detail" onClick={closeForm} disabled={saving}>
                   Annuler
                 </button>
-                <button type="button" className="btn-cta btn-cta-affect" onClick={submitForm}>
-                  Créer le PAC
+                <button type="button" className="btn-cta btn-cta-affect" onClick={submitForm} disabled={saving}>
+                  {saving ? 'Création...' : 'Créer le PAC'}
                 </button>
               </div>
             </div>
@@ -716,9 +743,6 @@ function PacDetailModal({ pac, onClose }: { pac: Pac; onClose: () => void }) {
             <dt>Actions correctives</dt><dd>{pac.actionsCorrectives || '—'}</dd>
 
             {pac.observations && (<><dt>Observations</dt><dd>{pac.observations}</dd></>)}
-            {pac.derniereEvaluation && (<><dt>Dernière évaluation</dt><dd>{formatDate(pac.derniereEvaluation)}</dd></>)}
-            {pac.nouveauDelai && (<><dt>Nouveau délai proposé</dt><dd>{formatDate(pac.nouveauDelai)}</dd></>)}
-            {pac.meoDcpo && (<><dt>MEO DCPO</dt><dd>{pac.meoDcpo}</dd></>)}
           </dl>
         </div>
       </div>

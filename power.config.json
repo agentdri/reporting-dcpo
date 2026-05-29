@@ -26,7 +26,9 @@
         "dcpo_liste_agences",
         "dcpo_liste_reseaux",
         "dcpo_liste_user",
-        "dcpo_activicte_controller"
+        "dcpo_activicte_controller",
+        "dcpo_liste_plan_controle",
+        "dcpo_liste_plan_action_correctif"
       ],
       "dataSets": {
         "https%253A%252F%252Fafrilandfirstbankcmr.sharepoint.com%252Fsites%252Fwork": {
@@ -45,6 +47,12 @@
             },
             "dcpo_activicte_controller": {
               "tableName": "4551f3c1-6362-4efb-b58b-8a81ad533376"
+            },
+            "dcpo_liste_plan_controle": {
+              "tableName": "1403cb94-d3f7-48e0-97ff-73680685e600"
+            },
+            "dcpo_liste_plan_action_correctif": {
+              "tableName": "c85e3772-8817-4aaa-8dfd-e6f2eaaedb46"
             }
           }
         }

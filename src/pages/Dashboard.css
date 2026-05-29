@@ -307,14 +307,24 @@
   box-shadow: 0 0 0 2px rgba(230, 57, 70, 0.15);
 }
 
+/* Conteneur des boutons d'action de la barre de filtres : garantit un
+   espacement net entre "Rechercher" et "Réinitialiser" (alignés en bas
+   comme les champs grâce à align-items: flex-end du parent .filters-bar). */
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .btn-reset-filters,
 .btn-search-filters {
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 5px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   height: 33px;
+  white-space: nowrap;
 }
 
 .btn-search-filters {
@@ -838,6 +848,11 @@
 /* Agent detail */
 .agent-detail-header {
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .agent-detail-header h3 {
@@ -1673,5 +1688,78 @@
   .pagination-controls,
   .pagination-size {
     justify-content: center;
+  }
+}
+
+/* =====================================================================
+   Bulletin imprimable — Reporting par Agent
+   Section masquée à l'écran, révélée uniquement à l'impression.
+   Même principe que l'impression des bulletins d'anomalies.
+   ===================================================================== */
+
+.agent-print-only {
+  display: none;
+}
+
+.agent-print-header h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: #1a1a2e;
+}
+
+.agent-print-header p {
+  margin: 2px 0;
+  font-size: 12px;
+  color: #333;
+}
+
+.agent-print-section-title {
+  margin: 18px 0 6px;
+  font-size: 14px;
+  color: #1a1a2e;
+  border-bottom: 1px solid #999;
+  padding-bottom: 2px;
+}
+
+.agent-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.agent-print-table th,
+.agent-print-table td {
+  border: 1px solid #999;
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.agent-print-summary {
+  width: auto;
+  min-width: 260px;
+}
+
+.agent-print-summary th {
+  background: #f0f0f0;
+  width: 160px;
+}
+
+@media print {
+  /* On masque toute l'interface applicative pour ne garder que le bulletin */
+  .dashboard-topbar,
+  .dashboard-nav,
+  .content-header,
+  .filters-bar,
+  .stats-cards,
+  .agent-detail-header,
+  .table-wrapper,
+  .pagination,
+  .no-print {
+    display: none !important;
+  }
+  /* On révèle le bulletin imprimable */
+  .agent-print-only {
+    display: block !important;
   }
 }

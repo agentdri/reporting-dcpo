@@ -173,7 +173,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         label: 'Anomalies',
         children: [
           { type: 'leaf', key: 'anomalie', label: 'Liste des anomalies' },
-          { type: 'leaf', key: 'bulletins', label: "Bulletins d'anomalies" },
+          { type: 'leaf', key: 'bulletins', label: "Fiche récapitulatif de l'anomalie" },
         ],
       },
       { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent' },

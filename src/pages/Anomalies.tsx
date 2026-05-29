@@ -2275,7 +2275,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             <div className="modal-body">
               <p className="resolution-intro">
                 Renseignez les actions menées par le contrôleur pour résoudre cette anomalie.
-                Le bulletin sera automatiquement consultable dans le sous-menu « Bulletins d'anomalies » après enregistrement.
+                Le bulletin sera automatiquement consultable dans le sous-menu « Fiche récapitulatif de l'anomalie » après enregistrement.
               </p>
 
               <div className="resolution-grid">
@@ -2468,7 +2468,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               )}
               {(statusValue === 'Resolu' || statusValue === 'Clos') && (
                 <p className="status-hint">
-                  Le bulletin d'anomalie sera automatiquement disponible dans le sous-menu « Bulletins d'anomalies » après enregistrement.
+                  Le bulletin d'anomalie sera automatiquement disponible dans le sous-menu « Fiche récapitulatif de l'anomalie » après enregistrement.
                 </p>
               )}
               {statusError && <p className="status-error" role="alert">{statusError}</p>}

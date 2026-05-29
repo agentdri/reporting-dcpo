@@ -189,7 +189,7 @@ export default function AnomalyBulletins() {
   return (
     <>
       <div className="content-header">
-        <h2>Bulletins d'anomalies</h2>
+        <h2>Fiche récapitulatif de l'anomalie</h2>
         <button className="btn-add" onClick={fetchData} disabled={loading} type="button">
           {loading ? 'Actualisation...' : 'Actualiser'}
         </button>

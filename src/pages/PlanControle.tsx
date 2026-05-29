@@ -9,22 +9,20 @@
  *   - une catégorie (regroupement thématique des contrôles)
  *   - un libellé d'activité
  *   - une fréquence (Quotidienne / Hebdomadaire / Mensuelle / Annuelle)
- *   - un responsable
+ *   - un responsable (champ Personne Office 365)
  *   - des objectifs (qualitatif + chiffré/KPI)
- *   - le planning mensuel (cases Jan-Déc cochées)
  *   - un statut workflow
  *
  * Structure UI :
  *   - Stats cards : Total + compteurs par statut
  *   - Filtres : catégorie, fréquence, responsable, statut, année
- *   - Tableau paginé avec 12 colonnes mois (✓ si planifié)
+ *   - Tableau paginé
  *   - Bouton "Nouveau contrôle" (managers uniquement)
- *   - Modale création (formulaire complet avec checkboxes mois)
+ *   - Modale création
  *   - Modale détail (lecture seule)
  *
- * Persistance : localStorage via src/lib/planControleService.ts. Une fois
- * la liste SharePoint DCPO_PLAN_CONTROLE créée, basculer côté service
- * (le composant React reste inchangé).
+ * Persistance : liste SharePoint DCPO_LISTE_PLAN_CONTROLE via
+ * src/lib/planControleService.ts.
  * ============================================================================
  */
 
@@ -33,18 +31,16 @@ import {
   createControle,
   listControles,
   getControleStatusClass,
-  MOIS,
   PLAN_CONTROLE_CATEGORIES,
-  PLAN_CONTROLE_RESPONSABLES_SUGGESTIONS,
   FREQUENCE_OPTIONS,
   STATUS_OPTIONS,
   type ControleEntry,
   type ControleFrequence,
   type ControleStatus,
-  type MoisCode,
 } from '../lib/planControleService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { UserPicker } from '../components/UserPicker'
 
 
 interface PlanControleProps {
@@ -75,8 +71,8 @@ const EMPTY_FORM = {
   objectif: '',
   objectifChiffre: '',
   frequence: 'Mensuelle' as ControleFrequence,
-  responsable: '',
-  moisPlanifies: [] as MoisCode[],
+  responsableName: '',
+  responsableEmail: '',
   annee: new Date().getFullYear(),
   statut: 'À planifier' as ControleStatus,
 }
@@ -85,20 +81,34 @@ const EMPTY_FORM = {
 export default function PlanControle({ userRole }: PlanControleProps) {
   /* ════════════════════════════════════════════════════════════════════════
    * ÉTATS
-   * Lazy init via useState(() => …) pour éviter le pattern fetch-in-useEffect
-   * (cf. règle react-hooks/set-state-in-effect appliquée dans tout le projet).
    * ════════════════════════════════════════════════════════════════════════ */
 
-  const [controles, setControles] = useState<ControleEntry[]>(() => listControles())
+  const [controles, setControles] = useState<ControleEntry[]>([])
+  const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [selected, setSelected] = useState<ControleEntry | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   /** Permission "créer un contrôle". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
+
+  /* ════════════════════════════════════════════════════════════════════════
+   * CHARGEMENT DEPUIS SHAREPOINT
+   * Le fetch async dans un effet est autorisé (setState dans un callback
+   * après await, pas dans le corps synchrone de l'effet).
+   * ════════════════════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    let cancelled = false
+    listControles()
+      .then(data => { if (!cancelled) setControles(data) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
 
   /* ════════════════════════════════════════════════════════════════════════
@@ -148,7 +158,14 @@ export default function PlanControle({ userRole }: PlanControleProps) {
    * HANDLERS
    * ════════════════════════════════════════════════════════════════════════ */
 
-  const refresh = () => setControles(listControles())
+  const refresh = async () => {
+    setLoading(true)
+    try {
+      setControles(await listControles())
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     setFilters(prev => ({ ...prev, [key]: value }))
@@ -163,19 +180,6 @@ export default function PlanControle({ userRole }: PlanControleProps) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
-  /**
-   * Toggle un mois dans la sélection (checkbox dans le formulaire).
-   * Le tri final est garanti par l'ordre lexicographique des codes '01'..'12'.
-   */
-  const toggleMois = (code: MoisCode) => {
-    setForm(prev => ({
-      ...prev,
-      moisPlanifies: prev.moisPlanifies.includes(code)
-        ? prev.moisPlanifies.filter(m => m !== code)
-        : [...prev.moisPlanifies, code].sort(),
-    }))
-  }
-
   const openForm = () => {
     setForm(EMPTY_FORM)
     setFormError(null)
@@ -186,24 +190,27 @@ export default function PlanControle({ userRole }: PlanControleProps) {
     setFormError(null)
   }
 
-  const submitForm = () => {
+  const submitForm = async () => {
     setFormError(null)
+    setSaving(true)
     try {
-      createControle({
+      await createControle({
         libelle: form.libelle,
         categorie: form.categorie,
         objectif: form.objectif,
         objectifChiffre: form.objectifChiffre,
         frequence: form.frequence,
-        responsable: form.responsable,
-        moisPlanifies: form.moisPlanifies,
+        responsableName: form.responsableName,
+        responsableEmail: form.responsableEmail,
         annee: Number(form.annee) || new Date().getFullYear(),
         statut: form.statut,
       })
-      refresh()
+      await refresh()
       closeForm()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Échec de la création du contrôle.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -248,7 +255,7 @@ export default function PlanControle({ userRole }: PlanControleProps) {
       </div>
 
       {/* ─── Barre de filtres ──────────────────────────────────────── */}
-      <div className="filters">
+      <div className="filters-bar">
         <div className="filter-field" style={{ flex: 1, minWidth: 220 }}>
           <label>Recherche</label>
           <input
@@ -304,24 +311,28 @@ export default function PlanControle({ userRole }: PlanControleProps) {
             onChange={e => updateFilter('annee', e.target.value)}
           />
         </div>
-        <button type="button" className="btn-search-filters" onClick={applyFilters}>
-          Rechercher
-        </button>
-        <button type="button" className="btn-reset-filters" onClick={resetFilters}>
-          Réinitialiser
-        </button>
+        <div className="filter-actions">
+          <button type="button" className="btn-search-filters" onClick={applyFilters}>
+            Rechercher
+          </button>
+          <button type="button" className="btn-reset-filters" onClick={resetFilters}>
+            Réinitialiser
+          </button>
+        </div>
       </div>
 
       {/* ─── Tableau ────────────────────────────────────────────────── */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <p className="loading-text" style={{ marginTop: 16 }}>Chargement des contrôles...</p>
+      ) : filtered.length === 0 ? (
         <p className="loading-text" style={{ marginTop: 16 }}>
           {controles.length === 0
             ? 'Aucun contrôle planifié pour le moment.'
             : 'Aucun contrôle ne correspond aux critères.'}
         </p>
       ) : (
-        <div className="table-container" style={{ marginTop: 16, overflowX: 'auto' }}>
-          <table className="anomalies-table">
+        <div className="table-wrapper" style={{ marginTop: 16 }}>
+          <table className="data-table anomalies-table">
             <thead>
               <tr>
                 <th>#</th>
@@ -329,9 +340,7 @@ export default function PlanControle({ userRole }: PlanControleProps) {
                 <th>Libellé</th>
                 <th>Fréquence</th>
                 <th>Responsable</th>
-                {MOIS.map(m => (
-                  <th key={m.code} style={{ minWidth: 38, textAlign: 'center' }}>{m.label}</th>
-                ))}
+                <th>Année</th>
                 <th>Statut</th>
                 <th>Actions</th>
               </tr>
@@ -344,11 +353,7 @@ export default function PlanControle({ userRole }: PlanControleProps) {
                   <td style={{ maxWidth: 280 }}>{c.libelle}</td>
                   <td>{c.frequence}</td>
                   <td>{c.responsable || '—'}</td>
-                  {MOIS.map(m => (
-                    <td key={m.code} style={{ textAlign: 'center' }}>
-                      {c.moisPlanifies.includes(m.code) ? '✓' : ''}
-                    </td>
-                  ))}
+                  <td>{c.annee}</td>
                   <td>
                     <span className={`manager-pill ${getControleStatusClass(c.statut)}`}>{c.statut}</span>
                   </td>
@@ -430,21 +435,21 @@ export default function PlanControle({ userRole }: PlanControleProps) {
                 </div>
                 <div className="form-field">
                   <label htmlFor="ctrl-resp">Responsable</label>
-                  <input
+                  {/* Champ Personne SharePoint → sélecteur Office 365 */}
+                  <UserPicker
                     id="ctrl-resp"
-                    type="text"
-                    list="resp-suggestions"
-                    value={form.responsable}
-                    onChange={e => updateForm('responsable', e.target.value)}
-                    placeholder="Ex: KAMEDA, Tous les contrôleurs..."
+                    selectedName={form.responsableName}
+                    selectedEmail={form.responsableEmail}
+                    onSelect={(name, email) => {
+                      updateForm('responsableName', name)
+                      updateForm('responsableEmail', email)
+                    }}
+                    onClear={() => {
+                      updateForm('responsableName', '')
+                      updateForm('responsableEmail', '')
+                    }}
+                    disabled={saving}
                   />
-                  {/* Suggestions via datalist : aide à la saisie sans
-                      restreindre à la liste (un nouveau responsable est OK) */}
-                  <datalist id="resp-suggestions">
-                    {PLAN_CONTROLE_RESPONSABLES_SUGGESTIONS.map(r => (
-                      <option key={r} value={r} />
-                    ))}
-                  </datalist>
                 </div>
                 <div className="form-field">
                   <label htmlFor="ctrl-statut">Statut initial</label>
@@ -480,41 +485,6 @@ export default function PlanControle({ userRole }: PlanControleProps) {
                 />
               </div>
 
-              {/* Planning mensuel : grille 12 cases */}
-              <div className="form-field" style={{ marginTop: 8 }}>
-                <label>Mois planifiés</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                  {MOIS.map(m => {
-                    const checked = form.moisPlanifies.includes(m.code)
-                    return (
-                      <label
-                        key={m.code}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          padding: '4px 8px',
-                          border: '1px solid #ddd',
-                          borderRadius: 4,
-                          background: checked ? '#e0f2fe' : '#fff',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          minWidth: 48,
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleMois(m.code)}
-                        />
-                        {m.label}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-
               {formError && (
                 <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
@@ -522,11 +492,11 @@ export default function PlanControle({ userRole }: PlanControleProps) {
               )}
 
               <div className="modal-actions" style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn-cta btn-cta-detail" onClick={closeForm}>
+                <button type="button" className="btn-cta btn-cta-detail" onClick={closeForm} disabled={saving}>
                   Annuler
                 </button>
-                <button type="button" className="btn-cta btn-cta-affect" onClick={submitForm}>
-                  Créer le contrôle
+                <button type="button" className="btn-cta btn-cta-affect" onClick={submitForm} disabled={saving}>
+                  {saving ? 'Création...' : 'Créer le contrôle'}
                 </button>
               </div>
             </div>
@@ -569,14 +539,6 @@ function ControleDetailModal({ entry, onClose }: { entry: ControleEntry; onClose
             </dd>
             <dt>Objectif</dt><dd>{entry.objectif || '—'}</dd>
             <dt>Objectif chiffré</dt><dd>{entry.objectifChiffre || '—'}</dd>
-            <dt>Mois planifiés</dt>
-            <dd>
-              {entry.moisPlanifies.length === 0
-                ? '—'
-                : entry.moisPlanifies
-                    .map(code => MOIS.find(m => m.code === code)?.label ?? code)
-                    .join(', ')}
-            </dd>
           </dl>
         </div>
       </div>
