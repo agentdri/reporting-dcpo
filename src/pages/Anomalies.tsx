@@ -40,6 +40,7 @@ import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGEN
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
+import { formatMontantCompact } from '../lib/formatters'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 
@@ -1315,7 +1316,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
           <span className="stat-label">Clos</span>
         </div>
         <div className="stat-card montant">
-          <span className="stat-value">{filteredItems.reduce((s, i) => s + (i.field_8 ?? 0), 0).toLocaleString()}</span>
+          {/* Format compact (millions au-delà d'1 M) pour éviter que les très
+              gros montants débordent de la carte. */}
+          <span className="stat-value">{formatMontantCompact(filteredItems.reduce((s, i) => s + (i.field_8 ?? 0), 0))}</span>
           <span className="stat-label">Montant total</span>
         </div>
       </div>

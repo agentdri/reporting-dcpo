@@ -48,6 +48,7 @@ import ControllerMyReports from './ControllerMyReports'
 import ControllerReportingList from './ControllerReportingList'
 import PlanControle from './PlanControle'
 import PlanActionCorrectif from './PlanActionCorrectif'
+import UserManagement from './UserManagement'
 import './Dashboard.css'
 
 /**
@@ -110,6 +111,7 @@ type Tab =
   | 'reporting-validation'
   | 'plan-controle'
   | 'plan-action-correctif'
+  | 'user-management'
 
 /**
  * Item de nav simple (feuille de l'arbre).
@@ -207,6 +209,10 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
       { type: 'leaf', key: 'plan-controle', label: 'Plan de Contrôle' },
       { type: 'leaf', key: 'plan-action-correctif', label: "Plan d'Action Correctif" },
     )
+    // Gestion des utilisateurs : réservée aux managers (Chef_Departement / Directeur)
+    if (isManager) {
+      items.push({ type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs' })
+    }
     return items
   }, [isManager, isController])
 
@@ -348,6 +354,9 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
           )}
           {activeTab === 'plan-action-correctif' && (
             <PlanActionCorrectif userName={userName} userEmail={userEmail} userRole={userRole} />
+          )}
+          {activeTab === 'user-management' && (
+            <UserManagement userEmail={userEmail} userRole={userRole} />
           )}
         </div>
       </div>

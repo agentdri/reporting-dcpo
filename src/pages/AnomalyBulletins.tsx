@@ -46,6 +46,7 @@ import {
   type ConsolidatedBulletin,
 } from '../lib/anomalyBulletin'
 import { getAttachmentIcon, getTicketAttachments } from '../lib/ticketAttachments'
+import { formatMontantCompact } from '../lib/formatters'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import './AnomalyBulletins.css'
@@ -213,7 +214,8 @@ export default function AnomalyBulletins() {
           <span className="stat-label">Délai moyen</span>
         </div>
         <div className="stat-card montant">
-          <span className="stat-value">{stats.totalMontant.toLocaleString('fr-FR')}</span>
+          {/* Format compact (millions au-delà d'1 M) pour éviter le débordement. */}
+          <span className="stat-value">{formatMontantCompact(stats.totalMontant)}</span>
           <span className="stat-label">Montant cumulé</span>
         </div>
       </div>
@@ -420,7 +422,7 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
         aria-labelledby="bulletin-modal-title"
       >
         <header className="bulletin-modal-header">
-          <div>
+          <div className="bulletin-modal-title-block">
             <span className="bulletin-modal-num">{bulletin.numero}</span>
             <h2 id="bulletin-modal-title">{bulletin.titre}</h2>
           </div>

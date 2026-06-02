@@ -223,9 +223,16 @@
   justify-content: space-between;
   padding: clamp(14px, 2.5vw, 20px) clamp(16px, 3vw, 26px);
   gap: 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   border-bottom: 1px solid #eee;
   background: #fafafa;
+}
+
+/* Bloc titre : prend l'espace disponible et peut rétrécir (min-width:0) pour
+   que le titre s'enroule SANS pousser les boutons sur une nouvelle ligne. */
+.bulletin-modal-title-block {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .bulletin-modal-header h2 {
@@ -249,6 +256,7 @@
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .bulletin-modal-actions .btn-link {
@@ -278,6 +286,7 @@
   }
   .bulletin-modal-header {
     padding: 14px 16px;
+    flex-wrap: wrap;
   }
   .bulletin-modal-actions {
     width: 100%;
@@ -406,45 +415,50 @@
   font-style: italic;
 }
 
-/* Timeline */
+/* Timeline — affichage en COLONNES (étapes côte à côte sous forme de cartes).
+   Grille responsive : autant de colonnes que la largeur le permet, repli
+   automatique sur plusieurs rangées si l'espace manque. */
 .bulletin-timeline {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 16px;
-  position: relative;
-}
-
-.bulletin-timeline::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 5px;
-  width: 2px;
-  background: #e0e0e0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
 }
 
 .timeline-item {
   position: relative;
-  padding: 6px 0 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-top: 3px solid #e0e0e0;
+  border-radius: 8px;
 }
 
 .timeline-dot {
-  position: absolute;
-  left: -14px;
-  top: 10px;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: #e63946;
   border: 2px solid #fff;
   box-shadow: 0 0 0 2px #e63946;
+  margin-bottom: 6px;
 }
 
+/* Couleur par type d'étape : appliquée au point ET à la bordure haute de la carte */
+.timeline-declaration { border-top-color: #1d4ed8; }
 .timeline-declaration .timeline-dot { background: #1d4ed8; box-shadow: 0 0 0 2px #1d4ed8; }
+.timeline-opening { border-top-color: #f59e0b; }
 .timeline-opening .timeline-dot { background: #f59e0b; box-shadow: 0 0 0 2px #f59e0b; }
+.timeline-regularization { border-top-color: #3b82f6; }
 .timeline-regularization .timeline-dot { background: #3b82f6; box-shadow: 0 0 0 2px #3b82f6; }
+.timeline-closure { border-top-color: #10b981; }
 .timeline-closure .timeline-dot { background: #10b981; box-shadow: 0 0 0 2px #10b981; }
+.timeline-log { border-top-color: #8b5cf6; }
 .timeline-log .timeline-dot { background: #8b5cf6; box-shadow: 0 0 0 2px #8b5cf6; }
 
 .timeline-label {

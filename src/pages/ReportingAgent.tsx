@@ -36,6 +36,7 @@ import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGEN
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { formatMontantCompact } from '../lib/formatters'
 
 /** Nettoie un texte HTML pour ne garder que le contenu textuel (DOMParser). */
 function stripHtml(html: string): string {
@@ -499,7 +500,8 @@ export default function ReportingAgent() {
               <span className="stat-label">Total anomalies</span>
             </div>
             <div className="stat-card en-cours">
-              <span className="stat-value">{filteredItems.reduce((s, i) => s + (i.field_8 ?? 0), 0).toLocaleString()}</span>
+              {/* Format compact (millions au-delà d'1 M) pour éviter le débordement. */}
+              <span className="stat-value">{formatMontantCompact(filteredItems.reduce((s, i) => s + (i.field_8 ?? 0), 0))}</span>
               <span className="stat-label">Montant total</span>
             </div>
           </div>
