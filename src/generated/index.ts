@@ -6,6 +6,7 @@
 // Models
 export * as CommonModels from './models/CommonModels';
 export * as DCPO_ACTIVICTE_CONTROLLERModel from './models/DCPO_ACTIVICTE_CONTROLLERModel';
+export * as DCPO_EVALUATION_PLAN_CONTROLEModel from './models/DCPO_EVALUATION_PLAN_CONTROLEModel';
 export * as DCPO_LISTE_AGENCESModel from './models/DCPO_LISTE_AGENCESModel';
 export * as DCPO_LISTE_ANORMALIEModel from './models/DCPO_LISTE_ANORMALIEModel';
 export * as DCPO_LISTE_PLAN_ACTION_CORRECTIFModel from './models/DCPO_LISTE_PLAN_ACTION_CORRECTIFModel';
@@ -16,6 +17,7 @@ export * as Office365UsersModel from './models/Office365UsersModel';
 
 // Services
 export * from './services/DCPO_ACTIVICTE_CONTROLLERService';
+export * from './services/DCPO_EVALUATION_PLAN_CONTROLEService';
 export * from './services/DCPO_LISTE_AGENCESService';
 export * from './services/DCPO_LISTE_ANORMALIEService';
 export * from './services/DCPO_LISTE_PLAN_ACTION_CORRECTIFService';

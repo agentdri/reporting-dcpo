@@ -33,6 +33,7 @@ import type {
   DCPO_LISTE_PLAN_CONTROLERead,
   DCPO_LISTE_PLAN_CONTROLEWrite,
 } from '../generated/models/DCPO_LISTE_PLAN_CONTROLEModel'
+import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -63,6 +64,11 @@ export interface ControleEntry {
   responsableEmail: string  // email (pour écriture Person)
   annee: number
   statut: ControleStatus
+  /**
+   * Pièces jointes décodées depuis le champ urlPieceJointe (multi-URLs
+   * séparées par " | "). Reconstruit à la lecture pour l'affichage UI.
+   */
+  attachments?: { name: string; url: string }[]
   createdAt: string
   updatedAt: string
 }
@@ -138,6 +144,12 @@ function fromItem(item: DCPO_LISTE_PLAN_CONTROLERead): ControleEntry {
   // pas dans la liste connue, on retombe sur une valeur par défaut sûre.
   const freq = item.field_2 as ControleFrequence
   const statut = item.field_5 as ControleStatus
+  // Pièces jointes : parsing du champ urlPieceJointe (multi-URLs " | ")
+  const attachmentUrls = parseUrlList(item.urlPieceJointe)
+  const attachments = attachmentUrls.map(url => ({
+    name: getFileNameFromUrl(url),
+    url,
+  }))
   return {
     id: String(item.ID),
     libelle: item.Title ?? '',
@@ -149,6 +161,7 @@ function fromItem(item: DCPO_LISTE_PLAN_CONTROLERead): ControleEntry {
     objectifChiffre: item.field_7 ?? '',
     responsable: item.responsable?.DisplayName ?? '',
     responsableEmail: item.responsable?.Email ?? '',
+    attachments,
     createdAt: item.Created ?? '',
     updatedAt: item.Modified ?? '',
   }
@@ -219,6 +232,74 @@ export async function createControle(input: CreateControleInput): Promise<Contro
     throw new Error(res.error?.message ?? 'Échec de la création du contrôle.')
   }
   return fromItem(res.data)
+}
+
+/**
+ * Met à jour un contrôle existant (champs métier — pas les pièces jointes).
+ *
+ * Pour ajouter une PJ, utiliser `appendPlanControleAttachmentUrls`.
+ *
+ * @returns Le contrôle rechargé après update, ou undefined en cas d'erreur.
+ */
+export async function updateControle(id: string, input: CreateControleInput): Promise<ControleEntry | undefined> {
+  const payload: Record<string, unknown> = {
+    Title: input.libelle.trim(),
+    field_1: input.categorie,
+    field_2: input.frequence,
+    field_3: input.annee,
+    field_5: input.statut,
+    field_6: input.objectif.trim(),
+    field_7: input.objectifChiffre.trim(),
+  }
+  if (input.responsableEmail) {
+    payload.responsable = {
+      '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+      Claims: toClaims(input.responsableEmail),
+    }
+  }
+  try {
+    await DCPO_LISTE_PLAN_CONTROLEService.update(
+      id,
+      payload as Partial<Omit<DCPO_LISTE_PLAN_CONTROLEWrite, 'ID'>>,
+    )
+  } catch (err) {
+    console.error('updateControle error', err)
+    return undefined
+  }
+  return getControle(id)
+}
+
+/**
+ * Ajoute (concatène) une ou plusieurs URLs de PJ au champ `urlPieceJointe`
+ * du contrôle, sans écraser les existantes.
+ *
+ * Même mécanique que appendPacAttachmentUrls : lecture, concat via appendUrl
+ * (dédoublonne + sépare par " | "), réécriture.
+ */
+export async function appendPlanControleAttachmentUrls(controleId: string, newUrls: string[]): Promise<void> {
+  const cleanUrls = newUrls.filter(u => !!u && u.trim().length > 0)
+  if (cleanUrls.length === 0) return
+
+  let existing = ''
+  try {
+    const res = await DCPO_LISTE_PLAN_CONTROLEService.get(controleId)
+    existing = res.data?.urlPieceJointe ?? ''
+  } catch (err) {
+    console.error('appendPlanControleAttachmentUrls: échec lecture item', err)
+  }
+
+  const concatenated = cleanUrls.reduce(
+    (acc, url) => appendUrl(acc, url),
+    existing,
+  )
+
+  try {
+    await DCPO_LISTE_PLAN_CONTROLEService.update(controleId, {
+      urlPieceJointe: concatenated,
+    } as Partial<Omit<DCPO_LISTE_PLAN_CONTROLEWrite, 'ID'>>)
+  } catch (err) {
+    console.error('appendPlanControleAttachmentUrls: échec update item', err)
+  }
 }
 
 

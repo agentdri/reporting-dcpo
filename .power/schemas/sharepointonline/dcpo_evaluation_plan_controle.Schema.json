@@ -1,17 +1,12 @@
 {
-  "name": "c85e3772-8817-4aaa-8dfd-e6f2eaaedb46",
-  "title": "DCPO_LISTE_PLAN_ACTION_CORRECTIF",
+  "name": "e83670b2-d813-40da-a244-7fb0e2b642bf",
+  "title": "DCPO_EVALUATION_PLAN_CONTROLE",
   "x-ms-permission": "read-write",
   "x-ms-capabilities": {
     "sortRestrictions": {
       "sortable": true,
       "unsortableProperties": [
-        "field_3",
-        "field_4",
-        "field_5",
-        "field_6",
-        "field_7",
-        "field_13",
+        "observations",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -33,13 +28,7 @@
     "filterRestrictions": {
       "filterable": true,
       "nonFilterableProperties": [
-        "field_3",
-        "field_4",
-        "field_5",
-        "field_6",
-        "field_7",
-        "field_13",
-        "urlPiecesJointes",
+        "observations",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -98,7 +87,7 @@
           }
         },
         "Title": {
-          "title": "Title",
+          "title": "Titre",
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc",
@@ -110,85 +99,15 @@
           },
           "maxLength": 255
         },
-        "field_1": {
-          "title": "sourcePAC",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_2": {
-          "title": "dateOuverture",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "field_3": {
-          "title": "descriptionProbleme",
+        "observations": {
+          "title": "observations",
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "none"
         },
-        "field_4": {
-          "title": "causeImmediate",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "none"
-        },
-        "field_5": {
-          "title": "causeRacine",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "none"
-        },
-        "field_6": {
-          "title": "actionsCorrectives",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "none"
-        },
-        "field_7": {
-          "title": "directionsConcernees",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "none"
-        },
-        "field_8": {
-          "title": "echeances",
-          "type": "string",
-          "format": "date-time",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "gt",
-              "ge",
-              "lt",
-              "le",
-              "ne"
-            ]
-          }
-        },
-        "field_9": {
-          "title": "annee",
+        "plan_controle_id": {
+          "title": "plan_controle_id",
+          "description": "l'id du plan de contrôle",
           "type": "number",
           "format": "double",
           "x-ms-permission": "read-write",
@@ -206,8 +125,9 @@
           "maximum": 1.7976931348623157e+308,
           "minimum": -1.7976931348623157e+308
         },
-        "field_11": {
-          "title": "statutInitial",
+        "periode": {
+          "title": "periode",
+          "description": "la période du plan de contrôle ",
           "type": "string",
           "x-ms-permission": "read-write",
           "x-ms-sort": "asc,desc",
@@ -218,131 +138,6 @@
             ]
           },
           "maxLength": 255
-        },
-        "field_12": {
-          "title": "KPI",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "field_13": {
-          "title": "ObservationsInitiale",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "none"
-        },
-        "responsableMiseEnOeuvre#Claims": {
-          "title": "responsableMiseEnOeuvre Claims",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "responsableMiseEnOeuvre": {
-          "title": "responsableMiseEnOeuvre",
-          "description": "Le responsable du plan d'action correctif",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "Claims": {
-              "title": "Claims",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "051275d7-5187-40eb-ad7c-537b4e47e47d"
-                },
-                "value-path": "Claims",
-                "value-title": "DisplayName",
-                "value-collection": "value"
-              }
-            },
-            "DisplayName": {
-              "title": "DisplayName",
-              "type": "string",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "Title"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Email": {
-              "title": "Email",
-              "type": "string",
-              "format": "email",
-              "x-ms-permission": "read-only",
-              "x-ms-capabilities": {
-                "x-ms-sp": {
-                  "OdataQueryName": "EMail"
-                },
-                "filterFunctions": [
-                  "eq",
-                  "startswith"
-                ]
-              }
-            },
-            "Picture": {
-              "title": "Picture",
-              "type": "string",
-              "format": "uri",
-              "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/work",
-              "x-ms-media-base-url": "https://afrilandfirstbankcmr.sharepoint.com/sites/work",
-              "x-ms-permission": "read-only"
-            },
-            "Department": {
-              "title": "Department",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "JobTitle": {
-              "title": "JobTitle",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "DisplayName",
-            "subtitleProperty": "Email",
-            "thumbnailProperty": "Picture"
-          }
-        },
-        "urlPiecesJointes": {
-          "title": "urlPieceJointe",
-          "description": "l'url de la pièce jointe de la liste",
-          "type": "string",
-          "format": "uri",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc"
         },
         "OData__ColorTag": {
           "title": "Balise de couleur",
@@ -839,14 +634,6 @@
         }
       },
       "x-ms-relationships": {
-        "responsableMiseEnOeuvre": {
-          "targetEntity": "responsableMiseEnOeuvre",
-          "referentialConstraints": {
-            "responsableMiseEnOeuvre#Claims": {
-              "referencedProperty": "Claims"
-            }
-          }
-        },
         "Author": {
           "targetEntity": "Author",
           "referentialConstraints": {
@@ -875,74 +662,30 @@
       "x-ms-displayFormat": {
         "propertiesDisplayOrder": [
           "Title",
-          "field_1",
-          "field_2",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_11",
-          "field_12",
-          "field_13",
-          "responsableMiseEnOeuvre",
-          "urlPiecesJointes",
+          "observations",
+          "plan_controle_id",
+          "periode",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
           "Title",
-          "field_1",
-          "field_2",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_11",
-          "field_12",
-          "field_13",
-          "responsableMiseEnOeuvre",
-          "ID",
-          "urlPiecesJointes"
+          "observations",
+          "plan_controle_id",
+          "periode"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
-          "field_1",
-          "field_2",
-          "field_3",
-          "field_4",
-          "field_5",
-          "field_6",
-          "field_7",
-          "field_8",
-          "field_9",
-          "field_11",
-          "field_12",
-          "field_13",
-          "responsableMiseEnOeuvre",
-          "ID",
-          "urlPiecesJointes"
+          "observations",
+          "plan_controle_id",
+          "periode"
         ]
       }
     }
   },
   "referencedEntities": {
-    "responsableMiseEnOeuvre": {
-      "lookupEndpoint": {
-        "path": "/tables/c85e3772-8817-4aaa-8dfd-e6f2eaaedb46/entities/responsableMiseEnOeuvre",
-        "capabilities": {
-          "searchable": true,
-          "requiresSearch": false
-        }
-      }
-    },
     "Author": {
       "lookupEndpoint": {
-        "path": "/tables/c85e3772-8817-4aaa-8dfd-e6f2eaaedb46/entities/Author",
+        "path": "/tables/e83670b2-d813-40da-a244-7fb0e2b642bf/entities/Author",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -951,7 +694,7 @@
     },
     "Editor": {
       "lookupEndpoint": {
-        "path": "/tables/c85e3772-8817-4aaa-8dfd-e6f2eaaedb46/entities/Editor",
+        "path": "/tables/e83670b2-d813-40da-a244-7fb0e2b642bf/entities/Editor",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -960,7 +703,7 @@
     },
     "4651e8f2-38c9-4ad0-8def-41f743f76f30": {
       "lookupEndpoint": {
-        "path": "/tables/c85e3772-8817-4aaa-8dfd-e6f2eaaedb46/entities/%257bContentType%257d",
+        "path": "/tables/e83670b2-d813-40da-a244-7fb0e2b642bf/entities/%257bContentType%257d",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -968,5 +711,5 @@
       }
     }
   },
-  "webUrl": "https://afrilandfirstbankcmr.sharepoint.com/sites/work/Lists/DCPO_LISTE_PLAN_ACTION_CORRECTIF/AllItems.aspx"
+  "webUrl": "https://afrilandfirstbankcmr.sharepoint.com/sites/work/Lists/DCPO_EVALUATION_PLAN_CONTROLE/AllItems.aspx"
 }

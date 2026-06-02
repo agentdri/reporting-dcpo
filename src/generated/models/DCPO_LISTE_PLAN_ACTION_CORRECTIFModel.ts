@@ -49,6 +49,7 @@ export interface DCPO_LISTE_PLAN_ACTION_CORRECTIFBase {
   field_12?: string;
   field_13?: string;
   "responsableMiseEnOeuvre#Claims"?: string;
+  urlPiecesJointes?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   Modified?: string;

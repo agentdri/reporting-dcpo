@@ -29,6 +29,8 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   createControle,
+  updateControle,
+  appendPlanControleAttachmentUrls,
   listControles,
   getControleStatusClass,
   PLAN_CONTROLE_CATEGORIES,
@@ -41,6 +43,11 @@ import {
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
+import {
+  uploadPlanControleAttachment,
+  getAttachmentIcon,
+  getAttachmentIconType,
+} from '../lib/ticketAttachments'
 
 
 interface PlanControleProps {
@@ -78,7 +85,7 @@ const EMPTY_FORM = {
 }
 
 
-export default function PlanControle({ userRole }: PlanControleProps) {
+export default function PlanControle({ userEmail, userRole }: PlanControleProps) {
   /* ════════════════════════════════════════════════════════════════════════
    * ÉTATS
    * ════════════════════════════════════════════════════════════════════════ */
@@ -89,9 +96,20 @@ export default function PlanControle({ userRole }: PlanControleProps) {
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [selected, setSelected] = useState<ControleEntry | null>(null)
   const [showForm, setShowForm] = useState(false)
+  /**
+   * ID du contrôle en cours d'édition (null = mode création).
+   * Une seule modale sert aux deux modes.
+   */
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  /**
+   * Pièce jointe optionnelle. À la création comme à la modification : uploadée
+   * via Power Automate APRÈS création/update de l'item SP (le workflow a
+   * besoin de l'ID), puis l'URL renvoyée est ajoutée au champ urlPieceJointe.
+   */
+  const [attachment, setAttachment] = useState<File | null>(null)
 
   /** Permission "créer un contrôle". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
@@ -115,9 +133,27 @@ export default function PlanControle({ userRole }: PlanControleProps) {
    * FILTRAGE + PAGINATION + STATS
    * ════════════════════════════════════════════════════════════════════════ */
 
-  /** Liste filtrée côté client (toutes les colonnes sont en mémoire). */
+  /**
+   * Liste filtrée côté client (toutes les colonnes sont en mémoire).
+   *
+   * Restriction de visibilité par rôle :
+   *   - Controleur → ne voit QUE les contrôles dont il est responsable
+   *     (responsableEmail = userEmail, case-insensitive)
+   *   - Manager (Chef_Departement / Directeur) → voit tout
+   *
+   * Le filtre rôle est appliqué AVANT les filtres de la barre de recherche
+   * pour que les compteurs/stats reflètent uniquement ce que l'utilisateur
+   * a réellement le droit de voir.
+   */
   const filtered = useMemo(() => {
+    const myEmail = userEmail?.toLowerCase()
+    const restrictToMine = userRole === 'Controleur'
     return controles.filter(c => {
+      // ─── Garde de visibilité par rôle (cf. doc ci-dessus) ─────────────
+      if (restrictToMine) {
+        if (!myEmail || c.responsableEmail.toLowerCase() !== myEmail) return false
+      }
+      // ─── Filtres de la barre de recherche ────────────────────────────
       if (appliedFilters.categorie && c.categorie !== appliedFilters.categorie) return false
       if (appliedFilters.frequence && c.frequence !== appliedFilters.frequence) return false
       if (appliedFilters.statut && c.statut !== appliedFilters.statut) return false
@@ -133,7 +169,7 @@ export default function PlanControle({ userRole }: PlanControleProps) {
       }
       return true
     })
-  }, [controles, appliedFilters])
+  }, [controles, appliedFilters, userRole, userEmail])
 
   /** Stats globales (sur la liste filtrée). */
   const stats = useMemo(() => ({
@@ -180,21 +216,56 @@ export default function PlanControle({ userRole }: PlanControleProps) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
 
+  /** Ouvre le formulaire en mode CRÉATION. */
   const openForm = () => {
+    setEditingId(null)
     setForm(EMPTY_FORM)
+    setAttachment(null)
     setFormError(null)
     setShowForm(true)
   }
+
+  /** Ouvre le formulaire en mode ÉDITION pré-rempli depuis un contrôle. */
+  const openEdit = (ctrl: ControleEntry) => {
+    setEditingId(ctrl.id)
+    setForm({
+      libelle: ctrl.libelle,
+      categorie: ctrl.categorie,
+      objectif: ctrl.objectif,
+      objectifChiffre: ctrl.objectifChiffre,
+      frequence: ctrl.frequence,
+      responsableName: ctrl.responsable,
+      responsableEmail: ctrl.responsableEmail,
+      annee: ctrl.annee,
+      statut: ctrl.statut,
+    })
+    setAttachment(null)
+    setFormError(null)
+    setShowForm(true)
+    // Ferme la modale détail pour laisser la place à la modale édition.
+    setSelected(null)
+  }
+
   const closeForm = () => {
     setShowForm(false)
+    setEditingId(null)
+    setAttachment(null)
     setFormError(null)
   }
 
+  /**
+   * Crée OU met à jour le contrôle (selon editingId), puis enchaîne l'upload
+   * de la pièce jointe et la persistance de son URL dans le champ
+   * `urlPieceJointe` via `appendPlanControleAttachmentUrls`.
+   *
+   * Si la création/update réussit mais l'upload échoue, on garde la modale
+   * ouverte avec un message d'erreur — l'item existe déjà en SP, pas de rollback.
+   */
   const submitForm = async () => {
     setFormError(null)
     setSaving(true)
     try {
-      await createControle({
+      const input = {
         libelle: form.libelle,
         categorie: form.categorie,
         objectif: form.objectif,
@@ -204,11 +275,36 @@ export default function PlanControle({ userRole }: PlanControleProps) {
         responsableEmail: form.responsableEmail,
         annee: Number(form.annee) || new Date().getFullYear(),
         statut: form.statut,
-      })
+      }
+
+      const saved = editingId
+        ? await updateControle(editingId, input)
+        : await createControle(input)
+
+      if (!saved?.id) {
+        throw new Error(editingId ? 'Échec de la mise à jour.' : 'Échec de la création.')
+      }
+
+      // Upload optionnel via workflow Power Automate + persistance de l'URL.
+      if (attachment && saved.id) {
+        try {
+          const uploadedUrl = await uploadPlanControleAttachment(saved.id, attachment, 'Visite')
+          if (uploadedUrl) {
+            await appendPlanControleAttachmentUrls(saved.id, [uploadedUrl])
+          }
+        } catch (uploadErr) {
+          const detail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          console.error('Échec upload pièce jointe Plan de Contrôle', uploadErr)
+          setFormError(`Le contrôle a été enregistré mais la pièce jointe a échoué : ${detail}`)
+          await refresh()
+          return  // garde la modale ouverte
+        }
+      }
+
       await refresh()
       closeForm()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Échec de la création du contrôle.')
+      setFormError(err instanceof Error ? err.message : 'Échec de l\'enregistrement du contrôle.')
     } finally {
       setSaving(false)
     }
@@ -376,7 +472,11 @@ export default function PlanControle({ userRole }: PlanControleProps) {
 
       {/* ─── Modale détail ──────────────────────────────────────────── */}
       {selected && (
-        <ControleDetailModal entry={selected} onClose={() => setSelected(null)} />
+        <ControleDetailModal
+          entry={selected}
+          onClose={() => setSelected(null)}
+          onEdit={canManage ? () => openEdit(selected) : undefined}
+        />
       )}
 
       {/* ─── Modale création ───────────────────────────────────────── */}
@@ -384,7 +484,7 @@ export default function PlanControle({ userRole }: PlanControleProps) {
         <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)' }}>
             <div className="modal-header">
-              <h2>Nouveau contrôle</h2>
+              <h2>{editingId ? 'Modifier le contrôle' : 'Nouveau contrôle'}</h2>
               <button className="modal-close" onClick={closeForm}>&times;</button>
             </div>
             <div className="modal-body">
@@ -485,6 +585,22 @@ export default function PlanControle({ userRole }: PlanControleProps) {
                 />
               </div>
 
+              {/* Pièce jointe optionnelle — uploadée après création via Power
+                  Automate (workflow PLAN_CONTROLE_ATTACHMENT_API_URL). Attache
+                  le fichier à l'item SharePoint nouvellement créé. */}
+              <div className="form-field" style={{ marginTop: 8 }}>
+                <label htmlFor="ctrl-attachment">Pièce jointe (optionnel)</label>
+                <input
+                  id="ctrl-attachment"
+                  type="file"
+                  onChange={e => setAttachment(e.target.files?.[0] ?? null)}
+                  disabled={saving}
+                />
+                {attachment && (
+                  <span className="selected-email">📎 {attachment.name}</span>
+                )}
+              </div>
+
               {formError && (
                 <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
@@ -496,7 +612,9 @@ export default function PlanControle({ userRole }: PlanControleProps) {
                   Annuler
                 </button>
                 <button type="button" className="btn-cta btn-cta-affect" onClick={submitForm} disabled={saving}>
-                  {saving ? 'Création...' : 'Créer le contrôle'}
+                  {saving
+                    ? (editingId ? 'Enregistrement...' : 'Création...')
+                    : (editingId ? 'Enregistrer' : 'Créer le contrôle')}
                 </button>
               </div>
             </div>
@@ -509,21 +627,38 @@ export default function PlanControle({ userRole }: PlanControleProps) {
 
 
 /* ══════════════════════════════════════════════════════════════════════════
- * MODALE DÉTAIL (lecture seule)
+ * MODALE DÉTAIL (lecture seule + bouton Modifier + pièces jointes)
+ *
+ * Le bouton Modifier n'apparaît que si `onEdit` est fourni — décision prise
+ * côté parent en fonction du rôle (canManage).
  * ══════════════════════════════════════════════════════════════════════════ */
 
-function ControleDetailModal({ entry, onClose }: { entry: ControleEntry; onClose: () => void }) {
+interface ControleDetailModalProps {
+  entry: ControleEntry
+  onClose: () => void
+  /** Callback pour basculer en mode édition (undefined = bouton masqué). */
+  onEdit?: () => void
+}
+
+function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const attachments = entry.attachments ?? []
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(640px, 100%)' }}>
-        <div className="modal-header">
-          <h2>Détail du contrôle</h2>
+        <div className="modal-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ flex: 1 }}>Détail du contrôle</h2>
+          {onEdit && (
+            <button type="button" className="btn-cta btn-cta-detail" onClick={onEdit}>
+              ✎ Modifier
+            </button>
+          )}
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
@@ -540,6 +675,30 @@ function ControleDetailModal({ entry, onClose }: { entry: ControleEntry; onClose
             <dt>Objectif</dt><dd>{entry.objectif || '—'}</dd>
             <dt>Objectif chiffré</dt><dd>{entry.objectifChiffre || '—'}</dd>
           </dl>
+
+          {/* Pièces jointes — icônes selon extension, lien externe vers le fichier */}
+          <div className="detail-attachments" style={{ marginTop: 16 }}>
+            <h3 style={{ marginBottom: 8 }}>Pièces jointes</h3>
+            {attachments.length === 0 ? (
+              <p className="loading-text">Aucune pièce jointe.</p>
+            ) : (
+              <ul className="detail-attachments-list">
+                {attachments.map((att, i) => {
+                  const iconType = getAttachmentIconType(att.name)
+                  return (
+                    <li key={i} className="detail-attachment-item">
+                      <span aria-hidden="true" style={{ fontSize: 24, width: 56, textAlign: 'center', flexShrink: 0 }}>
+                        {getAttachmentIcon(iconType)}
+                      </span>
+                      <a href={att.url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8', textDecoration: 'none', fontWeight: 600, wordBreak: 'break-all' }}>
+                        {att.name}
+                      </a>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </div>

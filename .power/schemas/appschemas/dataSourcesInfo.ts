@@ -866,6 +866,119 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "dcpo_evaluation_plan_controle": {
+    "tableId": "e83670b2-d813-40da-a244-7fb0e2b642bf",
+    "version": "",
+    "primaryKey": "ID",
+    "dataSourceType": "Connector",
+    "apis": {
+      "GetAuthor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/e83670b2d81340daa2447fb0e2b642bf/entities/Author",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "GetEditor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/e83670b2d81340daa2447fb0e2b642bf/entities/Editor",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "Get4651e8f238c94ad08def41f743f76f30": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/e83670b2d81340daa2447fb0e2b642bf/entities/4651e8f238c94ad08def41f743f76f30",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      }
+    }
+  },
   "dcpo_liste_agences": {
     "tableId": "8cf95a36-74a4-45cf-892d-51b5306ee36c",
     "version": "",

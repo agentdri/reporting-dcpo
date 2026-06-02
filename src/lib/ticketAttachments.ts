@@ -98,6 +98,20 @@ export const ATTACHMENT_API_URL =
 export const ACTIVITY_ATTACHMENT_API_URL =
   'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/092b4922268f439eb5cdbc77960a2875/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=txQA9pHc3e3Qb5ziRPWlG7uTiWIy1LuGFm0obmZBbS0'
 
+/**
+ * Endpoint Power Automate dédié aux pièces jointes du Plan de Contrôle
+ * (liste DCPO_LISTE_PLAN_CONTROLE). Workflow indépendant de ceux ci-dessus.
+ */
+export const PLAN_CONTROLE_ATTACHMENT_API_URL =
+  'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/cc6b39a566b64d0aadd786e92ccb77d0/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=TmPz_HfScrWpBJym-7vh5trjQf3DP7jYXMED8l3PDMc'
+
+/**
+ * Endpoint Power Automate dédié aux pièces jointes du Plan d'Action Correctif
+ * (liste DCPO_LISTE_PLAN_ACTION_CORRECTIF). Workflow indépendant.
+ */
+export const PAC_ATTACHMENT_API_URL =
+  'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/7b31444423c94e6083979d95929f1992/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=sLe6L6-bAw6dp1V56TrljC8gVebCwVVnWcqJXys1GCY'
+
 
 /* ──────────────────────────────────────────────────────────────────────────
  * SECTION 3 — UTILITAIRES BAS-NIVEAU
@@ -463,6 +477,70 @@ export async function uploadActivityAttachment(
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Echec upload piece jointe activite (${response.status}): ${errorText}`)
+  }
+  const data: UploadResponse = await response.json()
+  return data.attachmentUrl
+}
+
+/**
+ * Upload une pièce jointe à un item de la liste DCPO_LISTE_PLAN_CONTROLE.
+ * Workflow Power Automate dédié (PLAN_CONTROLE_ATTACHMENT_API_URL).
+ *
+ * Le fichier est attaché à l'item SharePoint via la collection {Attachments}
+ * native (alimentée par le workflow). Le workflow retourne aussi l'URL
+ * absolue de la pièce jointe — la liste n'a pas de champ texte custom pour
+ * la stocker, mais l'URL reste accessible via {Attachments} à la lecture.
+ *
+ * @param itemId - ID SharePoint du contrôle cible
+ * @param file - File issu d'un <input type="file">
+ * @param choise - Catégorie métier (défaut 'Visite' — selon attente du workflow)
+ * @returns URL absolue de la pièce jointe (ou undefined si réponse vide)
+ */
+export async function uploadPlanControleAttachment(
+  itemId: string,
+  file: File,
+  choise: string = 'Visite',
+): Promise<string | undefined> {
+  const fileContent = await fileToBase64(file)
+  const response = await postWorkflowWithRetry(PLAN_CONTROLE_ATTACHMENT_API_URL, {
+    fileName: file.name,
+    fileContent,
+    Choise: choise,
+    idItem: itemId,
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Echec upload piece jointe plan de controle (${response.status}): ${errorText}`)
+  }
+  const data: UploadResponse = await response.json()
+  return data.attachmentUrl
+}
+
+/**
+ * Upload une pièce jointe à un item de la liste DCPO_LISTE_PLAN_ACTION_CORRECTIF.
+ * Workflow Power Automate dédié (PAC_ATTACHMENT_API_URL). Même mécanique que
+ * uploadPlanControleAttachment ci-dessus, juste un endpoint différent.
+ *
+ * @param itemId - ID SharePoint du PAC cible
+ * @param file - File issu d'un <input type="file">
+ * @param choise - Catégorie métier (défaut 'Visite' — selon attente du workflow)
+ * @returns URL absolue de la pièce jointe (ou undefined si réponse vide)
+ */
+export async function uploadPacAttachment(
+  itemId: string,
+  file: File,
+  choise: string = 'Visite',
+): Promise<string | undefined> {
+  const fileContent = await fileToBase64(file)
+  const response = await postWorkflowWithRetry(PAC_ATTACHMENT_API_URL, {
+    fileName: file.name,
+    fileContent,
+    Choise: choise,
+    idItem: itemId,
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Echec upload piece jointe PAC (${response.status}): ${errorText}`)
   }
   const data: UploadResponse = await response.json()
   return data.attachmentUrl

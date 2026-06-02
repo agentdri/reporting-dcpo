@@ -36,6 +36,7 @@ import type {
   DCPO_LISTE_PLAN_ACTION_CORRECTIFRead,
   DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite,
 } from '../generated/models/DCPO_LISTE_PLAN_ACTION_CORRECTIFModel'
+import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -75,6 +76,12 @@ export interface Pac {
   responsableEmail: string     // email (écriture Person)
   statut: PacStatus
   observations?: string
+  /**
+   * Pièces jointes décodées depuis le champ urlPiecesJointes (multi-URLs
+   * séparées par " | ", cf. helper appendUrl/parseUrlList). Reconstruit à
+   * la lecture pour faciliter l'affichage côté UI.
+   */
+  attachments?: { name: string; url: string }[]
   createdAt: string
   updatedAt: string
 }
@@ -194,6 +201,13 @@ function toDateOnly(raw: string | undefined): string {
 /** Construit un Pac depuis un item SharePoint. */
 function fromItem(item: DCPO_LISTE_PLAN_ACTION_CORRECTIFRead): Pac {
   const statut = item.field_11 as PacStatus
+  // Pièces jointes : le champ urlPiecesJointes (multi-URLs concaténées par
+  // " | ") est parsé puis transformé en { name, url }[] pour l'affichage UI.
+  const attachmentUrls = parseUrlList(item.urlPiecesJointes)
+  const attachments = attachmentUrls.map(url => ({
+    name: getFileNameFromUrl(url),
+    url,
+  }))
   return {
     id: String(item.ID),
     intitule: item.Title ?? '',
@@ -211,6 +225,7 @@ function fromItem(item: DCPO_LISTE_PLAN_ACTION_CORRECTIFRead): Pac {
     observations: item.field_13 || undefined,
     responsable: item.responsableMiseEnOeuvre?.DisplayName ?? '',
     responsableEmail: item.responsableMiseEnOeuvre?.Email ?? '',
+    attachments,
     createdAt: item.Created ?? '',
     updatedAt: item.Modified ?? '',
   }
@@ -288,6 +303,96 @@ export async function createPAC(input: CreatePacInput): Promise<Pac> {
     throw new Error(res.error?.message ?? 'Échec de la création du PAC.')
   }
   return fromItem(res.data)
+}
+
+/**
+ * Met à jour un PAC existant (champs métier — pas les pièces jointes).
+ *
+ * Pour la modification des pièces jointes, utiliser `appendPacAttachmentUrls`
+ * (ajout) — la suppression de PJ n'est pas exposée ici.
+ *
+ * @returns Le PAC rechargé après update, ou undefined en cas d'erreur réseau.
+ */
+export async function updatePAC(id: string, input: CreatePacInput): Promise<Pac | undefined> {
+  const payload: Record<string, unknown> = {
+    Title: input.intitule.trim(),
+    field_1: input.sourcePac.trim(),
+    field_2: input.dateCreation,
+    field_3: input.descriptionProbleme.trim(),
+    field_4: input.causeImmediate.trim(),
+    field_5: input.causeRacine.trim(),
+    field_6: input.actionsCorrectives.trim(),
+    field_7: input.directionsConcernees.join(';'),
+    field_8: input.echeance,
+    field_9: input.annee,
+    field_11: input.statut,
+    field_12: input.kpi.trim(),
+    field_13: input.observations?.trim() ?? '',
+  }
+  if (input.responsableEmail) {
+    payload.responsableMiseEnOeuvre = {
+      '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+      Claims: toClaims(input.responsableEmail),
+    }
+  }
+  try {
+    await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.update(
+      id,
+      payload as Partial<Omit<DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite, 'ID'>>,
+    )
+  } catch (err) {
+    console.error('updatePAC error', err)
+    return undefined
+  }
+  return getPAC(id)
+}
+
+/**
+ * Ajoute (concatène) une ou plusieurs URLs de pièces jointes au champ
+ * `urlPiecesJointes` du PAC, sans écraser celles existantes.
+ *
+ * Même pattern que pour les anomalies (cf. appendUrl) : les URLs sont
+ * concaténées par " | " dans le champ texte SP. Le helper appendUrl gère
+ * le dédoublonnage et la mise en forme.
+ *
+ * Étapes :
+ *   1. Lire l'item courant pour récupérer la valeur existante
+ *   2. Pour chaque nouvelle URL, l'ajouter via appendUrl (dédoublonnage auto)
+ *   3. Mettre à jour SharePoint avec la chaîne concaténée
+ *
+ * @param pacId ID SharePoint du PAC cible
+ * @param newUrls URLs à ajouter (typiquement celles retournées par l'upload
+ *                Power Automate)
+ */
+export async function appendPacAttachmentUrls(pacId: string, newUrls: string[]): Promise<void> {
+  const cleanUrls = newUrls.filter(u => !!u && u.trim().length > 0)
+  if (cleanUrls.length === 0) return
+
+  // 1. Lire l'item pour préserver les URLs déjà stockées.
+  let existing = ''
+  try {
+    const res = await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.get(pacId)
+    existing = res.data?.urlPiecesJointes ?? ''
+  } catch (err) {
+    console.error('appendPacAttachmentUrls: échec lecture item', err)
+    // On continue avec une chaîne vide — pire cas : on perd l'ancien, mais
+    // c'est mieux que de ne pas écrire les nouvelles.
+  }
+
+  // 2. Concaténer chaque URL via appendUrl (dédoublonne et formate).
+  const concatenated = cleanUrls.reduce(
+    (acc, url) => appendUrl(acc, url),
+    existing,
+  )
+
+  // 3. Persister la nouvelle valeur en SharePoint.
+  try {
+    await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.update(pacId, {
+      urlPiecesJointes: concatenated,
+    } as Partial<Omit<DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite, 'ID'>>)
+  } catch (err) {
+    console.error('appendPacAttachmentUrls: échec update item', err)
+  }
 }
 
 

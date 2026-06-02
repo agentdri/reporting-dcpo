@@ -27,6 +27,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   createPAC,
+  updatePAC,
+  appendPacAttachmentUrls,
   listDirections,
   listPACs,
   getDirectionLabel,
@@ -39,6 +41,7 @@ import {
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
+import { uploadPacAttachment, getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
 
 
 /**
@@ -98,7 +101,7 @@ function formatDate(d: string | undefined): string {
 }
 
 
-export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifProps) {
+export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionCorrectifProps) {
   /* ════════════════════════════════════════════════════════════════════════
    * ÉTATS
    * ════════════════════════════════════════════════════════════════════════ */
@@ -114,14 +117,26 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(EMPTY_FILTERS)
   /** PAC sélectionné pour la modale de détail (null = fermée). */
   const [selected, setSelected] = useState<Pac | null>(null)
-  /** Affichage du formulaire de création (toggle). */
+  /** Affichage du formulaire (création ou édition selon `editingId`). */
   const [showForm, setShowForm] = useState(false)
-  /** Snapshot des champs en cours de saisie dans le formulaire de création. */
+  /**
+   * ID du PAC en cours d'édition (null = mode création).
+   * Une seule modale sert aux deux modes — le label et l'action submit
+   * s'adaptent en fonction de cet ID.
+   */
+  const [editingId, setEditingId] = useState<string | null>(null)
+  /** Snapshot des champs en cours de saisie dans le formulaire. */
   const [form, setForm] = useState(EMPTY_FORM)
   /** Erreur de soumission affichée sous le formulaire. */
   const [formError, setFormError] = useState<string | null>(null)
   /** True pendant la sauvegarde d'un nouveau PAC. */
   const [saving, setSaving] = useState(false)
+  /**
+   * Pièce jointe optionnelle attachée au PAC à la création.
+   * Uploadée via Power Automate (uploadPacAttachment) APRÈS la création de
+   * l'item SP, car le workflow a besoin de l'ID du record pour attacher.
+   */
+  const [attachment, setAttachment] = useState<File | null>(null)
 
   /** Permission "créer / éditer un PAC". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
@@ -156,9 +171,27 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
    * FILTRAGE + PAGINATION + STATS
    * ════════════════════════════════════════════════════════════════════════ */
 
-  /** PAC après application des filtres (côté client, pas d'OData ici). */
+  /**
+   * PAC après application des filtres (côté client, pas d'OData ici).
+   *
+   * Restriction de visibilité par rôle :
+   *   - Controleur → ne voit QUE les PAC dont il est le responsable de mise
+   *     en œuvre (responsableEmail = userEmail, case-insensitive)
+   *   - Manager (Chef_Departement / Directeur) → voit tout
+   *
+   * Le filtre rôle est appliqué AVANT les filtres de recherche pour que
+   * les compteurs/stats reflètent uniquement ce que l'utilisateur a réellement
+   * le droit de voir.
+   */
   const filtered = useMemo(() => {
+    const myEmail = userEmail?.toLowerCase()
+    const restrictToMine = userRole === 'Controleur'
     return pacs.filter(p => {
+      // ─── Garde de visibilité par rôle ─────────────────────────────────
+      if (restrictToMine) {
+        if (!myEmail || p.responsableEmail.toLowerCase() !== myEmail) return false
+      }
+      // ─── Filtres de la barre de recherche ────────────────────────────
       if (appliedFilters.statut && p.statut !== appliedFilters.statut) return false
       if (appliedFilters.direction && !p.directionsConcernees.includes(appliedFilters.direction)) return false
       if (appliedFilters.annee && String(p.annee) !== appliedFilters.annee) return false
@@ -175,7 +208,7 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
       }
       return true
     })
-  }, [pacs, appliedFilters])
+  }, [pacs, appliedFilters, userRole, userEmail])
 
   /** Stats globales pour les cards (recalculées sur la liste filtrée). */
   const stats = useMemo(() => ({
@@ -244,21 +277,67 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
     }))
   }
 
+  /** Ouvre le formulaire en mode CRÉATION (champs vides). */
   const openForm = () => {
+    setEditingId(null)
     setForm(EMPTY_FORM)
+    setAttachment(null)
     setFormError(null)
     setShowForm(true)
   }
+
+  /**
+   * Ouvre le formulaire en mode ÉDITION (champs pré-remplis depuis un PAC).
+   * Le picker UserPicker prend en charge un nom/email pré-rempli via le
+   * composant UserPickerEdit (props `initialName` / `initialEmail`).
+   */
+  const openEdit = (pac: Pac) => {
+    setEditingId(pac.id)
+    setForm({
+      sourcePac: pac.sourcePac,
+      dateCreation: pac.dateCreation,
+      intitule: pac.intitule,
+      descriptionProbleme: pac.descriptionProbleme,
+      causeImmediate: pac.causeImmediate,
+      causeRacine: pac.causeRacine,
+      actionsCorrectives: pac.actionsCorrectives,
+      directionsConcernees: pac.directionsConcernees,
+      echeance: pac.echeance,
+      kpi: pac.kpi,
+      annee: pac.annee,
+      responsableName: pac.responsable,
+      responsableEmail: pac.responsableEmail,
+      statut: pac.statut,
+      observations: pac.observations ?? '',
+    })
+    setAttachment(null)
+    setFormError(null)
+    setShowForm(true)
+    // On ferme la modale détail pour que la modale édition soit lisible.
+    setSelected(null)
+  }
+
   const closeForm = () => {
     setShowForm(false)
+    setEditingId(null)
+    setAttachment(null)
     setFormError(null)
   }
 
+  /**
+   * Crée OU met à jour le PAC en SharePoint, puis enchaîne (si applicable)
+   * l'upload Power Automate de la pièce jointe + persistance de son URL
+   * dans le champ `urlPiecesJointes` via `appendPacAttachmentUrls`.
+   *
+   * Comportement en cas d'échec d'upload :
+   *   - Le PAC est déjà créé/modifié en SP → pas de rollback
+   *   - On affiche un avertissement et on garde la modale ouverte
+   */
   const submitForm = async () => {
     setFormError(null)
     setSaving(true)
     try {
-      await createPAC({
+      const input = {
         sourcePac: form.sourcePac.trim(),
         dateCreation: form.dateCreation,
         intitule: form.intitule.trim(),
@@ -274,11 +353,39 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
         responsableEmail: form.responsableEmail,
         statut: form.statut,
         observations: form.observations.trim() || undefined,
-      })
+      }
+
+      // Création OU édition selon editingId
+      const saved = editingId
+        ? await updatePAC(editingId, input)
+        : await createPAC(input)
+
+      if (!saved?.id) {
+        throw new Error(editingId ? 'Échec de la mise à jour.' : 'Échec de la création.')
+      }
+
+      // Upload optionnel de la pièce jointe via le workflow Power Automate dédié.
+      // L'URL renvoyée est ensuite concaténée dans le champ urlPiecesJointes
+      // (multi-URLs séparées par " | ", idem anomalies).
+      if (attachment && saved.id) {
+        try {
+          const uploadedUrl = await uploadPacAttachment(saved.id, attachment, 'Visite')
+          if (uploadedUrl) {
+            await appendPacAttachmentUrls(saved.id, [uploadedUrl])
+          }
+        } catch (uploadErr) {
+          const detail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          console.error('Échec upload pièce jointe PAC', uploadErr)
+          setFormError(`Le PAC a été enregistré mais la pièce jointe a échoué : ${detail}`)
+          await refresh()
+          return  // on garde la modale ouverte
+        }
+      }
+
       await refresh()
       closeForm()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Échec de la création du PAC.')
+      setFormError(err instanceof Error ? err.message : 'Échec de l\'enregistrement du PAC.')
     } finally {
       setSaving(false)
     }
@@ -431,7 +538,11 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
 
       {/* ─── Modale de détail (lecture seule) ──────────────────────── */}
       {selected && (
-        <PacDetailModal pac={selected} onClose={() => setSelected(null)} />
+        <PacDetailModal
+          pac={selected}
+          onClose={() => setSelected(null)}
+          onEdit={canManage ? () => openEdit(selected) : undefined}
+        />
       )}
 
       {/* ─── Modale de création ────────────────────────────────────── */}
@@ -439,7 +550,7 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
         <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)' }}>
             <div className="modal-header">
-              <h2>Nouveau Plan d'Action Correctif</h2>
+              <h2>{editingId ? 'Modifier le PAC' : "Nouveau Plan d'Action Correctif"}</h2>
               <button className="modal-close" onClick={closeForm}>&times;</button>
             </div>
             <div className="modal-body">
@@ -667,6 +778,22 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
                 />
               </div>
 
+              {/* Pièce jointe optionnelle — uploadée après création via Power
+                  Automate (workflow PAC_ATTACHMENT_API_URL). Attache le fichier
+                  à l'item SharePoint nouvellement créé. */}
+              <div className="form-field" style={{ marginTop: 8 }}>
+                <label htmlFor="pac-attachment">Pièce jointe (optionnel)</label>
+                <input
+                  id="pac-attachment"
+                  type="file"
+                  onChange={e => setAttachment(e.target.files?.[0] ?? null)}
+                  disabled={saving}
+                />
+                {attachment && (
+                  <span className="selected-email">📎 {attachment.name}</span>
+                )}
+              </div>
+
               {formError && (
                 <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
@@ -678,7 +805,9 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
                   Annuler
                 </button>
                 <button type="button" className="btn-cta btn-cta-affect" onClick={submitForm} disabled={saving}>
-                  {saving ? 'Création...' : 'Créer le PAC'}
+                  {saving
+                    ? (editingId ? 'Enregistrement...' : 'Création...')
+                    : (editingId ? 'Enregistrer' : 'Créer le PAC')}
                 </button>
               </div>
             </div>
@@ -693,12 +822,20 @@ export default function PlanActionCorrectif({ userRole }: PlanActionCorrectifPro
 /* ══════════════════════════════════════════════════════════════════════════
  * MODALE DÉTAIL (lecture seule)
  *
- * Affiche TOUS les champs d'un PAC y compris ceux non gérés à la création
- * (dernière évaluation, nouveau délai, MEO DCPO) — ces champs seront édités
- * dans une itération ultérieure via un mode édition.
+ * Affiche tous les champs du PAC + ses pièces jointes. Si l'utilisateur a
+ * les droits manager (cf. canManage côté parent), le prop `onEdit` est
+ * fourni et un bouton "Modifier" est affiché en header pour ouvrir le
+ * formulaire en mode édition.
  * ══════════════════════════════════════════════════════════════════════════ */
 
-function PacDetailModal({ pac, onClose }: { pac: Pac; onClose: () => void }) {
+interface PacDetailModalProps {
+  pac: Pac
+  onClose: () => void
+  /** Callback pour basculer en mode édition (undefined = bouton masqué). */
+  onEdit?: () => void
+}
+
+function PacDetailModal({ pac, onClose, onEdit }: PacDetailModalProps) {
   // Escape ferme la modale (cohérent avec les autres modales du projet)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -706,11 +843,19 @@ function PacDetailModal({ pac, onClose }: { pac: Pac; onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const attachments = pac.attachments ?? []
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)' }}>
-        <div className="modal-header">
-          <h2>Détail du PAC</h2>
+        <div className="modal-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ flex: 1 }}>Détail du PAC</h2>
+          {/* Bouton Modifier : visible uniquement si onEdit fourni (manager). */}
+          {onEdit && (
+            <button type="button" className="btn-cta btn-cta-detail" onClick={onEdit}>
+              ✎ Modifier
+            </button>
+          )}
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
@@ -744,6 +889,30 @@ function PacDetailModal({ pac, onClose }: { pac: Pac; onClose: () => void }) {
 
             {pac.observations && (<><dt>Observations</dt><dd>{pac.observations}</dd></>)}
           </dl>
+
+          {/* Pièces jointes — icônes selon extension, lien externe vers le fichier */}
+          <div className="detail-attachments" style={{ marginTop: 16 }}>
+            <h3 style={{ marginBottom: 8 }}>Pièces jointes</h3>
+            {attachments.length === 0 ? (
+              <p className="loading-text">Aucune pièce jointe.</p>
+            ) : (
+              <ul className="detail-attachments-list">
+                {attachments.map((att, i) => {
+                  const iconType = getAttachmentIconType(att.name)
+                  return (
+                    <li key={i} className="detail-attachment-item">
+                      <span aria-hidden="true" style={{ fontSize: 24, width: 56, textAlign: 'center', flexShrink: 0 }}>
+                        {getAttachmentIcon(iconType)}
+                      </span>
+                      <a href={att.url} target="_blank" rel="noreferrer" style={{ color: '#1d4ed8', textDecoration: 'none', fontWeight: 600, wordBreak: 'break-all' }}>
+                        {att.name}
+                      </a>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </div>

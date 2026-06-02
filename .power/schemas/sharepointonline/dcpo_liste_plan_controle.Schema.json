@@ -31,6 +31,7 @@
       "nonFilterableProperties": [
         "field_6",
         "field_7",
+        "urlPieceJointe",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -268,6 +269,14 @@
             "subtitleProperty": "Email",
             "thumbnailProperty": "Picture"
           }
+        },
+        "urlPieceJointe": {
+          "title": "urlPieceJointe",
+          "description": "l'url de la pièce jointe de la liste",
+          "type": "string",
+          "format": "uri",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc"
         },
         "OData__ColorTag": {
           "title": "Balise de couleur",
@@ -807,6 +816,7 @@
           "field_6",
           "field_7",
           "responsable",
+          "urlPieceJointe",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -817,7 +827,9 @@
           "field_5",
           "field_6",
           "field_7",
-          "responsable"
+          "responsable",
+          "ID",
+          "urlPieceJointe"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -827,7 +839,9 @@
           "field_5",
           "field_6",
           "field_7",
-          "responsable"
+          "responsable",
+          "ID",
+          "urlPieceJointe"
         ]
       }
     }

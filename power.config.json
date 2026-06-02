@@ -28,7 +28,8 @@
         "dcpo_liste_user",
         "dcpo_activicte_controller",
         "dcpo_liste_plan_controle",
-        "dcpo_liste_plan_action_correctif"
+        "dcpo_liste_plan_action_correctif",
+        "dcpo_evaluation_plan_controle"
       ],
       "dataSets": {
         "https%253A%252F%252Fafrilandfirstbankcmr.sharepoint.com%252Fsites%252Fwork": {
@@ -53,6 +54,9 @@
             },
             "dcpo_liste_plan_action_correctif": {
               "tableName": "c85e3772-8817-4aaa-8dfd-e6f2eaaedb46"
+            },
+            "dcpo_evaluation_plan_controle": {
+              "tableName": "e83670b2-d813-40da-a244-7fb0e2b642bf"
             }
           }
         }
