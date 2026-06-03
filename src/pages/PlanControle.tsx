@@ -33,12 +33,17 @@ import {
   appendPlanControleAttachmentUrls,
   listControles,
   getControleStatusClass,
+  createEvaluation,
+  listEvaluationsForControle,
+  getPeriodeInputType,
+  formatPeriodeLabel,
   PLAN_CONTROLE_CATEGORIES,
   FREQUENCE_OPTIONS,
   STATUS_OPTIONS,
   type ControleEntry,
   type ControleFrequence,
   type ControleStatus,
+  type ControleEvaluation,
 } from '../lib/planControleService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
@@ -110,6 +115,22 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
    * besoin de l'ID), puis l'URL renvoyée est ajoutée au champ urlPieceJointe.
    */
   const [attachment, setAttachment] = useState<File | null>(null)
+
+  /* ─── États de la modale ÉVALUATION ─────────────────────────────────────
+   * Une seule modale gère :
+   *   - le formulaire de saisie (observations + période)
+   *   - l'affichage des évaluations passées du contrôle (historique)
+   * Elle s'ouvre via le bouton "Évaluation" dans les actions du tableau. */
+  /** Contrôle ciblé par la modale d'évaluation (null = modale fermée). */
+  const [evalTarget, setEvalTarget] = useState<ControleEntry | null>(null)
+  /** Évaluations existantes du contrôle ciblé (rechargées à l'ouverture). */
+  const [evalHistory, setEvalHistory] = useState<ControleEvaluation[]>([])
+  /** Champs du formulaire d'évaluation. */
+  const [evalForm, setEvalForm] = useState({ periode: '', observations: '' })
+  /** True pendant la sauvegarde de l'évaluation. */
+  const [evalSaving, setEvalSaving] = useState(false)
+  /** Erreur affichée dans la modale (validation ou réseau). */
+  const [evalError, setEvalError] = useState<string | null>(null)
 
   /** Permission "créer un contrôle". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
@@ -251,6 +272,83 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
     setEditingId(null)
     setAttachment(null)
     setFormError(null)
+  }
+
+  /* ─── Handlers de la modale ÉVALUATION ────────────────────────────────── */
+
+  /**
+   * Ouvre la modale d'évaluation pour un contrôle donné :
+   *   1. Charge l'historique des évaluations existantes (filtre serveur sur
+   *      plan_controle_id)
+   *   2. Reset le formulaire à vide
+   *
+   * L'historique est chargé en arrière-plan ; pendant ce temps, evalHistory
+   * reste vide et l'utilisateur peut déjà commencer à saisir.
+   */
+  const openEvaluation = async (ctrl: ControleEntry) => {
+    setEvalTarget(ctrl)
+    setEvalForm({ periode: '', observations: '' })
+    setEvalError(null)
+    setEvalHistory([])
+    try {
+      const history = await listEvaluationsForControle(ctrl.id)
+      setEvalHistory(history)
+    } catch (err) {
+      console.error('openEvaluation: échec chargement historique', err)
+    }
+  }
+
+  /** Ferme la modale d'évaluation et reset tous ses états. */
+  const closeEvaluation = () => {
+    setEvalTarget(null)
+    setEvalForm({ periode: '', observations: '' })
+    setEvalHistory([])
+    setEvalError(null)
+    setEvalSaving(false)
+  }
+
+  /**
+   * Crée une évaluation pour le contrôle ciblé.
+   *
+   * Règles métier :
+   *   - la période est obligatoire (sinon l'évaluation perd son sens temporel)
+   *   - les observations sont obligatoires (sinon l'évaluation est vide)
+   *
+   * Après succès : on recharge l'historique et on vide le formulaire — la
+   * modale reste ouverte pour permettre de saisir une autre évaluation sur
+   * une autre période sans avoir à rouvrir.
+   */
+  const submitEvaluation = async () => {
+    if (!evalTarget?.id) return
+    setEvalError(null)
+
+    if (!evalForm.periode.trim()) {
+      setEvalError('La période est obligatoire.')
+      return
+    }
+    if (!evalForm.observations.trim()) {
+      setEvalError('Les observations sont obligatoires.')
+      return
+    }
+
+    setEvalSaving(true)
+    try {
+      await createEvaluation({
+        planControleId: Number(evalTarget.id),
+        periode: evalForm.periode.trim(),
+        observations: evalForm.observations.trim(),
+      })
+      // Recharger l'historique pour que la nouvelle évaluation apparaisse en haut.
+      const history = await listEvaluationsForControle(evalTarget.id)
+      setEvalHistory(history)
+      // Reset du formulaire pour permettre une saisie successive
+      setEvalForm({ periode: '', observations: '' })
+    } catch (err) {
+      console.error('submitEvaluation error', err)
+      setEvalError(err instanceof Error ? err.message : "Échec de l'enregistrement de l'évaluation.")
+    } finally {
+      setEvalSaving(false)
+    }
   }
 
   /**
@@ -454,9 +552,14 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                     <span className={`manager-pill ${getControleStatusClass(c.statut)}`}>{c.statut}</span>
                   </td>
                   <td>
-                    <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(c)}>
-                      Détail
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(c)}>
+                        Détail
+                      </button>
+                      <button type="button" className="btn-cta btn-cta-affect" onClick={() => openEvaluation(c)}>
+                        Évaluation
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -476,6 +579,25 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
           entry={selected}
           onClose={() => setSelected(null)}
           onEdit={canManage ? () => openEdit(selected) : undefined}
+        />
+      )}
+
+      {/* ─── Modale ÉVALUATION ─────────────────────────────────────── */}
+      {/* Permet de créer une évaluation pour un contrôle.
+            - Le picker de période s'adapte à la fréquence du contrôle
+              (jour / semaine / mois / année).
+            - L'historique des évaluations existantes est listé en bas
+              pour donner du contexte au manager. */}
+      {evalTarget && (
+        <EvaluationModal
+          target={evalTarget}
+          history={evalHistory}
+          form={evalForm}
+          setForm={setEvalForm}
+          saving={evalSaving}
+          error={evalError}
+          onClose={closeEvaluation}
+          onSubmit={submitEvaluation}
         />
       )}
 
@@ -696,6 +818,202 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
                     </li>
                   )
                 })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * MODALE ÉVALUATION
+ *
+ * Affiche en haut le formulaire de création d'une nouvelle évaluation
+ * (avec un picker de période adapté à la fréquence du contrôle parent),
+ * et en bas la liste des évaluations existantes pour ce contrôle.
+ *
+ * Pattern de période :
+ *   - Quotidienne  → <input type="date">  → 'YYYY-MM-DD'
+ *   - Hebdomadaire → <input type="week">  → 'YYYY-Www' (ISO week)
+ *   - Mensuelle    → <input type="month"> → 'YYYY-MM'
+ *   - Annuelle     → <input type="number"> → 'YYYY'
+ *
+ * On stocke la valeur brute du picker pour un round-trip sans ambiguïté.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+interface EvaluationModalProps {
+  target: ControleEntry
+  history: ControleEvaluation[]
+  form: { periode: string; observations: string }
+  setForm: (next: { periode: string; observations: string }) => void
+  saving: boolean
+  error: string | null
+  onClose: () => void
+  onSubmit: () => void
+}
+
+function EvaluationModal({
+  target,
+  history,
+  form,
+  setForm,
+  saving,
+  error,
+  onClose,
+  onSubmit,
+}: EvaluationModalProps) {
+  // Type d'input HTML pour le picker de période, déterminé une fois par
+  // la fréquence du contrôle parent (immutable pendant la session modale).
+  const periodeInputType = getPeriodeInputType(target.frequence)
+
+  // Escape ferme la modale (cohérence avec les autres modales du projet)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Bornes raisonnables pour le picker de période :
+  //   - Pour 'number' (Annuelle), on cadre entre 2020 et 2099
+  //   - Pour les autres, on laisse libre (les bornes natives suffisent)
+  const yearMin = 2020
+  const yearMax = 2099
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal"
+        onClick={e => e.stopPropagation()}
+        style={{ width: 'min(640px, 100%)' }}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="modal-header">
+          <h2>Évaluation du contrôle</h2>
+          <button className="modal-close" onClick={onClose} aria-label="Fermer">&times;</button>
+        </div>
+        <div className="modal-body">
+          {/* Rappel du contrôle ciblé (lecture seule) */}
+          <dl className="detail-grid" style={{ marginBottom: 12 }}>
+            <dt>Libellé</dt><dd><strong>{target.libelle}</strong></dd>
+            <dt>Catégorie</dt><dd>{target.categorie || '—'}</dd>
+            <dt>Fréquence</dt><dd>{target.frequence}</dd>
+            <dt>Responsable</dt><dd>{target.responsable || '—'}</dd>
+          </dl>
+
+          {/* Formulaire de nouvelle évaluation */}
+          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Nouvelle évaluation</h3>
+
+          {/* Picker de période — type d'input adapté à la fréquence */}
+          <div className="form-field" style={{ marginBottom: 8 }}>
+            <label htmlFor="eval-periode">
+              Période *
+              <span style={{ fontSize: 11, color: '#888', marginLeft: 6 }}>
+                ({target.frequence})
+              </span>
+            </label>
+            {periodeInputType === 'number' ? (
+              <input
+                id="eval-periode"
+                type="number"
+                min={yearMin}
+                max={yearMax}
+                step={1}
+                value={form.periode}
+                placeholder="Ex: 2026"
+                onChange={e => setForm({ ...form, periode: e.target.value })}
+                disabled={saving}
+              />
+            ) : (
+              <input
+                id="eval-periode"
+                type={periodeInputType}
+                value={form.periode}
+                onChange={e => setForm({ ...form, periode: e.target.value })}
+                disabled={saving}
+              />
+            )}
+          </div>
+
+          {/* Observations */}
+          <div className="form-field" style={{ marginBottom: 8 }}>
+            <label htmlFor="eval-obs">Observations *</label>
+            <textarea
+              id="eval-obs"
+              rows={4}
+              value={form.observations}
+              onChange={e => setForm({ ...form, observations: e.target.value })}
+              placeholder="Constat, anomalies relevées, points d'attention..."
+              disabled={saving}
+            />
+          </div>
+
+          {error && (
+            <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+              {error}
+            </p>
+          )}
+
+          <div
+            className="modal-actions"
+            style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}
+          >
+            <button
+              type="button"
+              className="btn-cta btn-cta-detail"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Fermer
+            </button>
+            <button
+              type="button"
+              className="btn-cta btn-cta-affect"
+              onClick={onSubmit}
+              disabled={saving}
+            >
+              {saving ? 'Enregistrement...' : "Enregistrer l'évaluation"}
+            </button>
+          </div>
+
+          {/* Historique des évaluations existantes du contrôle */}
+          <div style={{ marginTop: 20 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>
+              Historique des évaluations ({history.length})
+            </h3>
+            {history.length === 0 ? (
+              <p className="loading-text">Aucune évaluation enregistrée pour le moment.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {history.map(ev => (
+                  <li
+                    key={ev.id}
+                    style={{
+                      padding: '8px 10px',
+                      border: '1px solid #eee',
+                      borderLeft: '3px solid #1d4ed8',
+                      borderRadius: 6,
+                      background: '#fafafa',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                      <strong>{formatPeriodeLabel(ev.periode, target.frequence)}</strong>
+                      {ev.createdAt && (
+                        <span style={{ color: '#888' }}>
+                          {new Date(ev.createdAt).toLocaleDateString('fr-FR')}
+                        </span>
+                      )}
+                    </div>
+                    {ev.observations && (
+                      <div style={{ marginTop: 4, fontSize: 13, color: '#444', whiteSpace: 'pre-wrap' }}>
+                        {ev.observations}
+                      </div>
+                    )}
+                  </li>
+                ))}
               </ul>
             )}
           </div>

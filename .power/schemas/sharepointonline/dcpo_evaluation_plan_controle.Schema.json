@@ -29,6 +29,7 @@
       "filterable": true,
       "nonFilterableProperties": [
         "observations",
+        "urlPieceJointe",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -138,6 +139,14 @@
             ]
           },
           "maxLength": 255
+        },
+        "urlPieceJointe": {
+          "title": "urlPieceJointe",
+          "description": "l'url de la pièce jointe du contrôle",
+          "type": "string",
+          "format": "uri",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc"
         },
         "OData__ColorTag": {
           "title": "Balise de couleur",
@@ -665,19 +674,22 @@
           "observations",
           "plan_controle_id",
           "periode",
+          "urlPieceJointe",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
           "Title",
           "observations",
           "plan_controle_id",
-          "periode"
+          "periode",
+          "urlPieceJointe"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
           "observations",
           "plan_controle_id",
-          "periode"
+          "periode",
+          "urlPieceJointe"
         ]
       }
     }

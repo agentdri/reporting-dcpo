@@ -33,6 +33,11 @@ import type {
   DCPO_LISTE_PLAN_CONTROLERead,
   DCPO_LISTE_PLAN_CONTROLEWrite,
 } from '../generated/models/DCPO_LISTE_PLAN_CONTROLEModel'
+import { DCPO_EVALUATION_PLAN_CONTROLEService } from '../generated/services/DCPO_EVALUATION_PLAN_CONTROLEService'
+import type {
+  DCPO_EVALUATION_PLAN_CONTROLERead,
+  DCPO_EVALUATION_PLAN_CONTROLEWrite,
+} from '../generated/models/DCPO_EVALUATION_PLAN_CONTROLEModel'
 import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
 
 
@@ -304,7 +309,171 @@ export async function appendPlanControleAttachmentUrls(controleId: string, newUr
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * SECTION 5 — HELPERS UI
+ * SECTION 5 — ÉVALUATIONS DU PLAN DE CONTRÔLE
+ *
+ * Liste SharePoint DCPO_EVALUATION_PLAN_CONTROLE — une évaluation
+ * correspond à l'exécution PÉRIODIQUE d'un contrôle sur une période donnée
+ * (jour / semaine / mois / année selon la fréquence du contrôle parent).
+ *
+ * Mapping des colonnes :
+ *   ┌──────────────────┬────────────────────┬──────────────────────────────┐
+ *   │ Title            │ titre (libellé évaluation) │ ex: "Évaluation 2026-05" │
+ *   │ observations     │ observations       │ texte libre                  │
+ *   │ plan_controle_id │ planControleId     │ FK vers le contrôle parent   │
+ *   │ periode          │ periode            │ format dépend de la fréq.    │
+ *   └──────────────────┴────────────────────┴──────────────────────────────┘
+ *
+ * Format de `periode` stocké en SP, en fonction de la fréquence du contrôle :
+ *   - Quotidienne  → "2026-05-15"  (input type=date)
+ *   - Hebdomadaire → "2026-W22"    (input type=week, ISO week)
+ *   - Mensuelle    → "2026-05"     (input type=month)
+ *   - Annuelle     → "2026"        (input number / texte)
+ *
+ * On stocke la valeur brute du champ HTML pour un round-trip lisible côté
+ * SharePoint (un manager qui ouvre l'item peut comprendre la période sans
+ * formatage spécial).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Évaluation d'un contrôle (vue front). */
+export interface ControleEvaluation {
+  id: string
+  titre: string
+  planControleId: number
+  periode: string          // format dépend de la fréquence du contrôle parent
+  observations: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Input pour créer une évaluation. */
+export interface CreateEvaluationInput {
+  planControleId: number
+  periode: string
+  observations: string
+  titre?: string  // facultatif — défaut auto-généré depuis la période
+}
+
+/** Mapping item SP → ControleEvaluation. */
+function fromEvaluationItem(item: DCPO_EVALUATION_PLAN_CONTROLERead): ControleEvaluation {
+  return {
+    id: String(item.ID),
+    titre: item.Title ?? '',
+    planControleId: item.plan_controle_id ?? 0,
+    periode: item.periode ?? '',
+    observations: item.observations ?? '',
+    createdAt: item.Created ?? '',
+    updatedAt: item.Modified ?? '',
+  }
+}
+
+/**
+ * Liste les évaluations d'un contrôle donné (les plus récentes d'abord).
+ *
+ * Filtre serveur sur `plan_controle_id` pour limiter la charge réseau.
+ */
+export async function listEvaluationsForControle(controleId: string | number): Promise<ControleEvaluation[]> {
+  const idNum = Number(controleId)
+  if (!Number.isFinite(idNum)) return []
+  try {
+    const res = await DCPO_EVALUATION_PLAN_CONTROLEService.getAll({
+      filter: `plan_controle_id eq ${idNum}`,
+      orderBy: ['Created desc'],
+    })
+    if (!res.data) return []
+    return res.data.map(fromEvaluationItem)
+  } catch (err) {
+    console.error('listEvaluationsForControle error', err)
+    return []
+  }
+}
+
+/**
+ * Crée une évaluation pour un contrôle.
+ *
+ * Le `Title` SP est obligatoire — si pas fourni, on génère un libellé par
+ * défaut "Évaluation <periode>" pour qu'un manager voie tout de suite à quoi
+ * correspond l'item dans l'UI SharePoint.
+ */
+export async function createEvaluation(input: CreateEvaluationInput): Promise<ControleEvaluation> {
+  if (!input.planControleId) throw new Error('Contrôle parent manquant.')
+  if (!input.periode.trim()) throw new Error('La période est obligatoire.')
+
+  const title = (input.titre ?? '').trim() || `Évaluation ${input.periode}`
+
+  const payload: Record<string, unknown> = {
+    Title: title,
+    plan_controle_id: input.planControleId,
+    periode: input.periode.trim(),
+    observations: input.observations.trim(),
+  }
+
+  const res = await DCPO_EVALUATION_PLAN_CONTROLEService.create(
+    payload as Omit<DCPO_EVALUATION_PLAN_CONTROLEWrite, 'ID'>,
+  )
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'Échec de la création de l\'évaluation.')
+  }
+  return fromEvaluationItem(res.data)
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 6 — HELPERS UI
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Type d'input HTML adapté à la fréquence d'un contrôle.
+ * Permet à la modale d'évaluation de proposer le bon picker.
+ */
+export function getPeriodeInputType(frequence: ControleFrequence): 'date' | 'week' | 'month' | 'number' {
+  switch (frequence) {
+    case 'Quotidienne': return 'date'
+    case 'Hebdomadaire': return 'week'
+    case 'Mensuelle': return 'month'
+    case 'Annuelle': return 'number'
+  }
+}
+
+/**
+ * Formatte un libellé de période lisible selon la fréquence.
+ *   - Quotidienne  : "Jour 15/05/2026"
+ *   - Hebdomadaire : "Semaine 22 - 2026"
+ *   - Mensuelle    : "Mai 2026"
+ *   - Annuelle     : "Année 2026"
+ *
+ * Fallback : renvoie la valeur brute si le parsing échoue.
+ */
+export function formatPeriodeLabel(periode: string, frequence?: ControleFrequence): string {
+  if (!periode) return '—'
+  try {
+    if (frequence === 'Quotidienne' || /^\d{4}-\d{2}-\d{2}$/.test(periode)) {
+      const d = new Date(periode)
+      if (!Number.isNaN(d.getTime())) return `Jour ${d.toLocaleDateString('fr-FR')}`
+    }
+    if (frequence === 'Hebdomadaire' || /^\d{4}-W\d{2}$/i.test(periode)) {
+      const m = periode.match(/^(\d{4})-W(\d{2})$/i)
+      if (m) return `Semaine ${m[2]} - ${m[1]}`
+    }
+    if (frequence === 'Mensuelle' || /^\d{4}-\d{2}$/.test(periode)) {
+      const m = periode.match(/^(\d{4})-(\d{2})$/)
+      if (m) {
+        const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+        const monthIdx = parseInt(m[2], 10) - 1
+        if (monthIdx >= 0 && monthIdx < 12) return `${months[monthIdx]} ${m[1]}`
+      }
+    }
+    if (frequence === 'Annuelle' || /^\d{4}$/.test(periode)) {
+      return `Année ${periode}`
+    }
+  } catch {
+    /* fallback */
+  }
+  return periode
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 7 — HELPERS UI (statut)
  * ────────────────────────────────────────────────────────────────────────── */
 
 /** Mappe un statut vers une classe CSS (pastilles manager-pill). */

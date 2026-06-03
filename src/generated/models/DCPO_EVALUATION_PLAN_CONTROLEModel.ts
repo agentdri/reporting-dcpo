@@ -29,6 +29,7 @@ export interface DCPO_EVALUATION_PLAN_CONTROLEBase {
   observations?: string;
   plan_controle_id?: number;
   periode?: string;
+  urlPieceJointe?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   Modified?: string;
