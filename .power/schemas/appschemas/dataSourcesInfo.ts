@@ -1310,6 +1310,119 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "dcpo_liste_direction": {
+    "tableId": "1e16182d-57a8-4b0c-9466-b9f1bb1fdb4a",
+    "version": "",
+    "primaryKey": "ID",
+    "dataSourceType": "Connector",
+    "apis": {
+      "GetAuthor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/1e16182d57a84b0c9466b9f1bb1fdb4a/entities/Author",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "GetEditor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/1e16182d57a84b0c9466b9f1bb1fdb4a/entities/Editor",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "Get4651e8f238c94ad08def41f743f76f30": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/1e16182d57a84b0c9466b9f1bb1fdb4a/entities/4651e8f238c94ad08def41f743f76f30",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      }
+    }
+  },
   "dcpo_liste_plan_action_correctif": {
     "tableId": "c85e3772-8817-4aaa-8dfd-e6f2eaaedb46",
     "version": "",

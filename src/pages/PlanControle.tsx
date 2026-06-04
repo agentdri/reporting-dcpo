@@ -30,10 +30,12 @@ import { useMemo, useState, useEffect } from 'react'
 import {
   createControle,
   updateControle,
+  updateControleResponsable,
   appendPlanControleAttachmentUrls,
   listControles,
   getControleStatusClass,
   createEvaluation,
+  appendEvaluationAttachmentUrls,
   listEvaluationsForControle,
   getPeriodeInputType,
   formatPeriodeLabel,
@@ -50,6 +52,7 @@ import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
 import {
   uploadPlanControleAttachment,
+  uploadEvaluationAttachment,
   getAttachmentIcon,
   getAttachmentIconType,
 } from '../lib/ticketAttachments'
@@ -131,6 +134,25 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
   const [evalSaving, setEvalSaving] = useState(false)
   /** Erreur affichée dans la modale (validation ou réseau). */
   const [evalError, setEvalError] = useState<string | null>(null)
+  /**
+   * Pièce jointe optionnelle d'une évaluation. Uploadée via Power Automate
+   * APRÈS création de l'évaluation (le workflow a besoin de l'ID de l'item),
+   * puis l'URL renvoyée est ajoutée au champ urlPieceJointe.
+   */
+  const [evalAttachment, setEvalAttachment] = useState<File | null>(null)
+
+  /* ─── États de la modale AFFECTATION ────────────────────────────────────
+   * Permet à un manager de changer rapidement la personne responsable d'un
+   * contrôle sans rouvrir le formulaire d'édition complet. */
+  /** Contrôle ciblé par la modale d'affectation (null = modale fermée). */
+  const [affectTarget, setAffectTarget] = useState<ControleEntry | null>(null)
+  /** Personne sélectionnée dans le picker (nom + email). */
+  const [affectSelectedName, setAffectSelectedName] = useState('')
+  const [affectSelectedEmail, setAffectSelectedEmail] = useState('')
+  /** True pendant l'enregistrement de la nouvelle affectation côté SharePoint. */
+  const [affectSaving, setAffectSaving] = useState(false)
+  /** Erreur affichée dans la modale (validation ou réseau). */
+  const [affectError, setAffectError] = useState<string | null>(null)
 
   /** Permission "créer un contrôle". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
@@ -288,6 +310,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
   const openEvaluation = async (ctrl: ControleEntry) => {
     setEvalTarget(ctrl)
     setEvalForm({ periode: '', observations: '' })
+    setEvalAttachment(null)
     setEvalError(null)
     setEvalHistory([])
     try {
@@ -302,6 +325,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
   const closeEvaluation = () => {
     setEvalTarget(null)
     setEvalForm({ periode: '', observations: '' })
+    setEvalAttachment(null)
     setEvalHistory([])
     setEvalError(null)
     setEvalSaving(false)
@@ -333,21 +357,105 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
 
     setEvalSaving(true)
     try {
-      await createEvaluation({
+      const created = await createEvaluation({
         planControleId: Number(evalTarget.id),
         periode: evalForm.periode.trim(),
         observations: evalForm.observations.trim(),
       })
+
+      // Upload optionnel de la pièce jointe via le workflow Power Automate dédié
+      // (même mécanique que pour les anomalies / contrôles / PAC) :
+      //   1. uploadEvaluationAttachment encode en base64 + POST au workflow
+      //   2. Le workflow attache le fichier à l'item SP et renvoie son URL
+      //   3. appendEvaluationAttachmentUrls concatène cette URL dans le champ
+      //      urlPieceJointe (multi-URLs séparées par " | ")
+      if (evalAttachment && created?.id) {
+        try {
+          const uploadedUrl = await uploadEvaluationAttachment(created.id, evalAttachment, 'Visite')
+          if (uploadedUrl) {
+            await appendEvaluationAttachmentUrls(created.id, [uploadedUrl])
+          }
+        } catch (uploadErr) {
+          const detail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          console.error('Échec upload pièce jointe évaluation', uploadErr)
+          // L'évaluation est déjà créée → on recharge l'historique pour la
+          // refléter, mais on garde la modale ouverte avec le message d'erreur
+          // pour que l'utilisateur sache que la PJ a échoué.
+          const history = await listEvaluationsForControle(evalTarget.id)
+          setEvalHistory(history)
+          setEvalError(`L'évaluation a été créée mais la pièce jointe a échoué : ${detail}`)
+          return
+        }
+      }
+
       // Recharger l'historique pour que la nouvelle évaluation apparaisse en haut.
       const history = await listEvaluationsForControle(evalTarget.id)
       setEvalHistory(history)
       // Reset du formulaire pour permettre une saisie successive
       setEvalForm({ periode: '', observations: '' })
+      setEvalAttachment(null)
     } catch (err) {
       console.error('submitEvaluation error', err)
       setEvalError(err instanceof Error ? err.message : "Échec de l'enregistrement de l'évaluation.")
     } finally {
       setEvalSaving(false)
+    }
+  }
+
+  /* ─── Handlers de la modale AFFECTATION ──────────────────────────────── */
+
+  /**
+   * Ouvre la modale d'affectation pour un contrôle.
+   *
+   * Initialise le picker avec la personne actuellement assignée (s'il y en a
+   * une) — l'utilisateur peut cliquer "Changer" pour la remplacer.
+   */
+  const openAffectation = (ctrl: ControleEntry) => {
+    setAffectTarget(ctrl)
+    setAffectSelectedName(ctrl.responsable)
+    setAffectSelectedEmail(ctrl.responsableEmail)
+    setAffectError(null)
+  }
+
+  /** Ferme la modale d'affectation et reset tous ses états. */
+  const closeAffectation = () => {
+    setAffectTarget(null)
+    setAffectSelectedName('')
+    setAffectSelectedEmail('')
+    setAffectError(null)
+    setAffectSaving(false)
+  }
+
+  /**
+   * Enregistre la nouvelle affectation côté SharePoint, puis rafraîchit la
+   * liste pour que le tableau reflète immédiatement le changement.
+   *
+   * Garde-fou : on refuse une affectation sans email valide (le champ Person
+   * SP nécessite un Claims valide).
+   */
+  const submitAffectation = async () => {
+    if (!affectTarget?.id) return
+    setAffectError(null)
+    if (!affectSelectedEmail.trim()) {
+      setAffectError("Sélectionnez d'abord une personne.")
+      return
+    }
+    setAffectSaving(true)
+    try {
+      const updated = await updateControleResponsable(affectTarget.id, affectSelectedEmail.trim())
+      if (!updated) {
+        setAffectError("Échec de l'affectation. Réessayer.")
+        return
+      }
+      // Refresh complet de la liste pour que la nouvelle affectation apparaisse
+      const refreshed = await listControles()
+      setControles(refreshed)
+      closeAffectation()
+    } catch (err) {
+      console.error('submitAffectation error', err)
+      setAffectError(err instanceof Error ? err.message : "Échec de l'affectation.")
+    } finally {
+      setAffectSaving(false)
     }
   }
 
@@ -552,13 +660,21 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                     <span className={`manager-pill ${getControleStatusClass(c.statut)}`}>{c.statut}</span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(c)}>
                         Détail
                       </button>
                       <button type="button" className="btn-cta btn-cta-affect" onClick={() => openEvaluation(c)}>
                         Évaluation
                       </button>
+                      {/* Bouton "Affectation" : réservé aux managers (canManage).
+                          Un Controleur consulte ses contrôles mais ne peut pas
+                          réassigner la personne responsable. */}
+                      {canManage && (
+                        <button type="button" className="btn-cta btn-cta-affect" onClick={() => openAffectation(c)}>
+                          Affectation
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -594,11 +710,88 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
           history={evalHistory}
           form={evalForm}
           setForm={setEvalForm}
+          attachment={evalAttachment}
+          setAttachment={setEvalAttachment}
           saving={evalSaving}
           error={evalError}
           onClose={closeEvaluation}
           onSubmit={submitEvaluation}
         />
+      )}
+
+      {/* ─── Modale AFFECTATION ────────────────────────────────────── */}
+      {/* Workflow rapide pour changer le responsable d'un contrôle sans
+          rouvrir le formulaire d'édition complet. Réservé aux managers
+          (le bouton qui ouvre cette modale n'est rendu que si canManage).
+          Le picker est pré-rempli avec la personne déjà affectée pour
+          éviter de saisir un changement par erreur. */}
+      {affectTarget && (
+        <div className="modal-overlay" onClick={closeAffectation}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)' }}>
+            <div className="modal-header">
+              <h2>Affecter un responsable</h2>
+              <button className="modal-close" onClick={closeAffectation} aria-label="Fermer">&times;</button>
+            </div>
+            <div className="modal-body">
+              {/* Rappel du contrôle ciblé (lecture seule) */}
+              <dl className="detail-grid" style={{ marginBottom: 12 }}>
+                <dt>Contrôle</dt><dd><strong>{affectTarget.libelle}</strong></dd>
+                <dt>Catégorie</dt><dd>{affectTarget.categorie || '—'}</dd>
+                <dt>Responsable actuel</dt>
+                <dd>
+                  {affectTarget.responsable
+                    ? <>{affectTarget.responsable}<span style={{ color: '#888', fontSize: 12 }}> ({affectTarget.responsableEmail})</span></>
+                    : '—'}
+                </dd>
+              </dl>
+
+              <div className="form-field" style={{ marginBottom: 8 }}>
+                <label htmlFor="affect-user">Nouveau responsable *</label>
+                <UserPicker
+                  id="affect-user"
+                  selectedName={affectSelectedName}
+                  selectedEmail={affectSelectedEmail}
+                  onSelect={(name, email) => {
+                    setAffectSelectedName(name)
+                    setAffectSelectedEmail(email)
+                    setAffectError(null)
+                  }}
+                  onClear={() => {
+                    setAffectSelectedName('')
+                    setAffectSelectedEmail('')
+                  }}
+                  disabled={affectSaving}
+                  placeholder="Rechercher une personne Office 365..."
+                />
+              </div>
+
+              {affectError && (
+                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                  {affectError}
+                </p>
+              )}
+
+              <div className="modal-actions" style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-detail"
+                  onClick={closeAffectation}
+                  disabled={affectSaving}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-affect"
+                  onClick={submitAffectation}
+                  disabled={affectSaving || !affectSelectedEmail.trim()}
+                >
+                  {affectSaving ? 'Affectation...' : "Valider l'affectation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ─── Modale création ───────────────────────────────────────── */}
@@ -849,6 +1042,9 @@ interface EvaluationModalProps {
   history: ControleEvaluation[]
   form: { periode: string; observations: string }
   setForm: (next: { periode: string; observations: string }) => void
+  /** Pièce jointe optionnelle (uploadée après création de l'évaluation). */
+  attachment: File | null
+  setAttachment: (file: File | null) => void
   saving: boolean
   error: string | null
   onClose: () => void
@@ -860,6 +1056,8 @@ function EvaluationModal({
   history,
   form,
   setForm,
+  attachment,
+  setAttachment,
   saving,
   error,
   onClose,
@@ -951,6 +1149,22 @@ function EvaluationModal({
             />
           </div>
 
+          {/* Pièce jointe optionnelle — uploadée après création via Power
+              Automate (workflow EVALUATION_ATTACHMENT_API_URL). L'URL renvoyée
+              est ensuite ajoutée au champ urlPieceJointe de l'évaluation. */}
+          <div className="form-field" style={{ marginBottom: 8 }}>
+            <label htmlFor="eval-attachment">Pièce jointe (optionnel)</label>
+            <input
+              id="eval-attachment"
+              type="file"
+              onChange={e => setAttachment(e.target.files?.[0] ?? null)}
+              disabled={saving}
+            />
+            {attachment && (
+              <span className="selected-email">📎 {attachment.name}</span>
+            )}
+          </div>
+
           {error && (
             <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
               {error}
@@ -1011,6 +1225,27 @@ function EvaluationModal({
                       <div style={{ marginTop: 4, fontSize: 13, color: '#444', whiteSpace: 'pre-wrap' }}>
                         {ev.observations}
                       </div>
+                    )}
+                    {/* PJ de l'évaluation : icône + lien externe par fichier */}
+                    {ev.attachments && ev.attachments.length > 0 && (
+                      <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {ev.attachments.map((att, i) => {
+                          const iconType = getAttachmentIconType(att.name)
+                          return (
+                            <li key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <span aria-hidden="true">{getAttachmentIcon(iconType)}</span>
+                              <a
+                                href={att.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ color: '#1d4ed8', fontSize: 12, wordBreak: 'break-all' }}
+                              >
+                                {att.name}
+                              </a>
+                            </li>
+                          )
+                        })}
+                      </ul>
                     )}
                   </li>
                 ))}

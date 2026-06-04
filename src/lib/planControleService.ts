@@ -240,6 +240,40 @@ export async function createControle(input: CreateControleInput): Promise<Contro
 }
 
 /**
+ * Met à jour UNIQUEMENT le responsable d'un contrôle (affectation rapide).
+ *
+ * Cas d'usage : workflow "Affecter" depuis le tableau — un manager change
+ * la personne responsable sans avoir à rouvrir le formulaire d'édition
+ * complet.
+ *
+ * @param id - ID SharePoint du contrôle
+ * @param email - Email de la nouvelle personne responsable (format
+ *                'jdoe@afrilandfirstbank.com' — le format Claims est ajouté ici)
+ * @returns Le contrôle rechargé après update, ou undefined en cas d'erreur.
+ */
+export async function updateControleResponsable(
+  id: string,
+  email: string,
+): Promise<ControleEntry | undefined> {
+  if (!email) return undefined
+  try {
+    await DCPO_LISTE_PLAN_CONTROLEService.update(
+      id,
+      {
+        responsable: {
+          '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+          Claims: toClaims(email),
+        },
+      } as never,
+    )
+  } catch (err) {
+    console.error('updateControleResponsable error', err)
+    return undefined
+  }
+  return getControle(id)
+}
+
+/**
  * Met à jour un contrôle existant (champs métier — pas les pièces jointes).
  *
  * Pour ajouter une PJ, utiliser `appendPlanControleAttachmentUrls`.
@@ -341,6 +375,12 @@ export interface ControleEvaluation {
   planControleId: number
   periode: string          // format dépend de la fréquence du contrôle parent
   observations: string
+  /**
+   * Pièces jointes décodées depuis le champ urlPieceJointe (multi-URLs
+   * séparées par " | ", idem anomalies / contrôles). Reconstruit à la
+   * lecture pour faciliter l'affichage côté UI.
+   */
+  attachments?: { name: string; url: string }[]
   createdAt: string
   updatedAt: string
 }
@@ -355,12 +395,19 @@ export interface CreateEvaluationInput {
 
 /** Mapping item SP → ControleEvaluation. */
 function fromEvaluationItem(item: DCPO_EVALUATION_PLAN_CONTROLERead): ControleEvaluation {
+  // Pièces jointes : parsing du champ urlPieceJointe (multi-URLs " | ")
+  const attachmentUrls = parseUrlList(item.urlPieceJointe)
+  const attachments = attachmentUrls.map(url => ({
+    name: getFileNameFromUrl(url),
+    url,
+  }))
   return {
     id: String(item.ID),
     titre: item.Title ?? '',
     planControleId: item.plan_controle_id ?? 0,
     periode: item.periode ?? '',
     observations: item.observations ?? '',
+    attachments,
     createdAt: item.Created ?? '',
     updatedAt: item.Modified ?? '',
   }
@@ -414,6 +461,39 @@ export async function createEvaluation(input: CreateEvaluationInput): Promise<Co
     throw new Error(res.error?.message ?? 'Échec de la création de l\'évaluation.')
   }
   return fromEvaluationItem(res.data)
+}
+
+/**
+ * Ajoute (concatène) une ou plusieurs URLs de PJ au champ `urlPieceJointe`
+ * d'une évaluation, sans écraser les existantes.
+ *
+ * Pattern identique aux autres lists : lecture → concat via appendUrl
+ * (dédoublonne + sépare par " | ") → réécriture.
+ */
+export async function appendEvaluationAttachmentUrls(evaluationId: string, newUrls: string[]): Promise<void> {
+  const cleanUrls = newUrls.filter(u => !!u && u.trim().length > 0)
+  if (cleanUrls.length === 0) return
+
+  let existing = ''
+  try {
+    const res = await DCPO_EVALUATION_PLAN_CONTROLEService.get(evaluationId)
+    existing = res.data?.urlPieceJointe ?? ''
+  } catch (err) {
+    console.error('appendEvaluationAttachmentUrls: échec lecture item', err)
+  }
+
+  const concatenated = cleanUrls.reduce(
+    (acc, url) => appendUrl(acc, url),
+    existing,
+  )
+
+  try {
+    await DCPO_EVALUATION_PLAN_CONTROLEService.update(evaluationId, {
+      urlPieceJointe: concatenated,
+    } as Partial<Omit<DCPO_EVALUATION_PLAN_CONTROLEWrite, 'ID'>>)
+  } catch (err) {
+    console.error('appendEvaluationAttachmentUrls: échec update item', err)
+  }
 }
 
 

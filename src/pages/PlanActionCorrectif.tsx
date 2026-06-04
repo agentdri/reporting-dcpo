@@ -29,15 +29,17 @@ import {
   createPAC,
   updatePAC,
   appendPacAttachmentUrls,
-  listDirections,
   listPACs,
-  getDirectionLabel,
   getPacStatusClass,
   PAC_STATUS_OPTIONS,
-  type Direction,
   type Pac,
   type PacStatus,
 } from '../lib/pacService'
+import {
+  listDirections,
+  getDirectionLabelFromList,
+  type Direction,
+} from '../lib/directionService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
@@ -108,8 +110,16 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
 
   /** Liste des PAC (chargée depuis SharePoint). */
   const [pacs, setPacs] = useState<Pac[]>([])
-  /** Liste des directions actives (référentiel local, synchrone). */
-  const [directions] = useState<Direction[]>(() => listDirections(true))
+  /**
+   * Référentiel des directions, chargé depuis la liste SharePoint
+   * DCPO_LISTE_DIRECTION (cf. directionService).
+   *
+   * Démarre vide ; le useEffect d'init le remplit dès la résolution de
+   * listDirections(). Tant qu'il est vide, le picker de directions affiche
+   * un état "Aucune direction configurée" et les chips PAC affichent les
+   * sigles bruts (fallback géré par getDirectionLabelFromList).
+   */
+  const [directions, setDirections] = useState<Direction[]>([])
   const [loading, setLoading] = useState(true)
   /** Filtres en cours de saisie (binding inputs). */
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
@@ -148,11 +158,15 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
 
   // Chargement initial depuis SharePoint. Le fetch async dans un effet est
   // autorisé (le setState a lieu dans un callback après await).
+  // On charge PAC et directions en parallèle — pas de dépendance entre eux,
+  // et le démarrage est plus rapide qu'en séquence.
   useEffect(() => {
     let cancelled = false
     listPACs()
       .then(data => { if (!cancelled) setPacs(data) })
       .finally(() => { if (!cancelled) setLoading(false) })
+    listDirections()
+      .then(data => { if (!cancelled) setDirections(data) })
     return () => { cancelled = true }
   }, [])
 
@@ -454,7 +468,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
           <select value={filters.direction} onChange={e => updateFilter('direction', e.target.value)}>
             <option value="">Toutes</option>
             {directions.map(d => (
-              <option key={d.code} value={d.code}>{d.code} — {d.libelle}</option>
+              <option key={d.sigle} value={d.sigle}>{d.sigle} — {d.libelle}</option>
             ))}
           </select>
         </div>
@@ -540,6 +554,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
       {selected && (
         <PacDetailModal
           pac={selected}
+          directions={directions}
           onClose={() => setSelected(null)}
           onEdit={canManage ? () => openEdit(selected) : undefined}
         />
@@ -654,10 +669,10 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                           : '— Ajouter une direction —'}
                       </option>
                       {directions
-                        .filter(d => !form.directionsConcernees.includes(d.code))
+                        .filter(d => !form.directionsConcernees.includes(d.sigle))
                         .map(d => (
-                          <option key={d.code} value={d.code}>
-                            {d.code} — {d.libelle}
+                          <option key={d.sigle} value={d.sigle}>
+                            {d.sigle} — {d.libelle}
                           </option>
                         ))}
                     </select>
@@ -665,7 +680,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                     {form.directionsConcernees.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                         {form.directionsConcernees.map(code => {
-                          const dir = directions.find(d => d.code === code)
+                          const dir = directions.find(d => d.sigle === code)
                           return (
                             <span
                               key={code}
@@ -830,12 +845,14 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
 
 interface PacDetailModalProps {
   pac: Pac
+  /** Référentiel des directions pour résoudre les libellés à partir des sigles. */
+  directions: Direction[]
   onClose: () => void
   /** Callback pour basculer en mode édition (undefined = bouton masqué). */
   onEdit?: () => void
 }
 
-function PacDetailModal({ pac, onClose, onEdit }: PacDetailModalProps) {
+function PacDetailModal({ pac, directions, onClose, onEdit }: PacDetailModalProps) {
   // Escape ferme la modale (cohérent avec les autres modales du projet)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -874,7 +891,7 @@ function PacDetailModal({ pac, onClose, onEdit }: PacDetailModalProps) {
                 ? '—'
                 : pac.directionsConcernees.map(c => (
                     <span key={c} className="ticket-tag" style={{ marginRight: 6 }}>
-                      {c} — {getDirectionLabel(c)}
+                      {c} — {getDirectionLabelFromList(directions, c)}
                     </span>
                   ))}
             </dd>

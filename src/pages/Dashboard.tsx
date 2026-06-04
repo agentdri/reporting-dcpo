@@ -49,6 +49,7 @@ import ControllerReportingList from './ControllerReportingList'
 import PlanControle from './PlanControle'
 import PlanActionCorrectif from './PlanActionCorrectif'
 import UserManagement from './UserManagement'
+import DirectionManagement from './DirectionManagement'
 import './Dashboard.css'
 
 /**
@@ -112,6 +113,7 @@ type Tab =
   | 'plan-controle'
   | 'plan-action-correctif'
   | 'user-management'
+  | 'config-directions'  // Groupe Configuration → Directions (référentiel)
 
 /**
  * Item de nav simple (feuille de l'arbre).
@@ -212,6 +214,24 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
     // Gestion des utilisateurs : réservée aux managers (Chef_Departement / Directeur)
     if (isManager) {
       items.push({ type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs' })
+    }
+    // Groupe "Configuration" : référentiels métier (directions, et plus tard
+    // d'autres ressources). Réservé aux managers — restriction d'accès au
+    // référentiel partagé pour éviter les modifications anarchiques.
+    //
+    // Pour ajouter un nouveau référentiel (ex: catégories, types d'anomalies) :
+    //   1. Étendre le type Tab en haut de ce fichier
+    //   2. Ajouter une `leaf` dans children: ci-dessous
+    //   3. Ajouter le rendu conditionnel correspondant en bas du composant
+    if (isManager) {
+      items.push({
+        type: 'group',
+        key: 'configuration',
+        label: 'Configuration',
+        children: [
+          { type: 'leaf', key: 'config-directions', label: 'Directions' },
+        ],
+      })
     }
     return items
   }, [isManager, isController])
@@ -358,6 +378,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
           {activeTab === 'user-management' && (
             <UserManagement userEmail={userEmail} userRole={userRole} />
           )}
+          {activeTab === 'config-directions' && <DirectionManagement />}
         </div>
       </div>
     </div>

@@ -46,12 +46,11 @@ import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments
 /** Statut workflow d'un PAC (colonne field_11). */
 export type PacStatus = 'Exécutée' | 'En cours' | 'Non Exécutée'
 
-/** Direction concernée (référentiel local, pas de liste SharePoint dédiée). */
-export interface Direction {
-  code: string
-  libelle: string
-  actif: boolean
-}
+// Note : le type `Direction` et la gestion CRUD du référentiel des directions
+// sont désormais dans src/lib/directionService.ts (liste SharePoint dédiée
+// DCPO_LISTE_DIRECTION). Les PAC stockent toujours des sigles dans
+// directionsConcernees ; la résolution des libellés se fait côté composant
+// avec la liste pré-chargée.
 
 /**
  * Représentation d'un Plan d'Action Correctif.
@@ -107,78 +106,7 @@ export interface CreatePacInput {
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * SECTION 2 — RÉFÉRENTIEL DES DIRECTIONS (localStorage / constante)
- *
- * Pas de liste SharePoint dédiée → on garde les directions côté client.
- * Pour préconfigurer, éditer DEFAULT_DIRECTIONS. Pour modifier dynamiquement,
- * utiliser upsertDirection / deactivateDirection (persistés en localStorage).
- * ────────────────────────────────────────────────────────────────────────── */
-
-const STORAGE_KEY_DIRECTIONS = 'reportingDCPO.directions.v1'
-
-const DEFAULT_DIRECTIONS: Direction[] = [
-  { code: 'DJC', libelle: 'Direction Juridique et Conformité', actif: true },
-  { code: 'DCE', libelle: 'Direction Commercial Entreprises', actif: true },
-  { code: 'DSI', libelle: 'Direction des Systèmes d\'Information', actif: true },
-]
-
-const readDirections = (): Direction[] => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY_DIRECTIONS)
-    return raw ? (JSON.parse(raw) as Direction[]) : []
-  } catch {
-    return []
-  }
-}
-
-const writeDirections = (dirs: Direction[]): void => {
-  try {
-    window.localStorage.setItem(STORAGE_KEY_DIRECTIONS, JSON.stringify(dirs))
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Liste les directions (initialise avec DEFAULT_DIRECTIONS au premier accès). */
-export function listDirections(activeOnly: boolean = true): Direction[] {
-  const all = readDirections()
-  if (all.length === 0) {
-    writeDirections(DEFAULT_DIRECTIONS)
-    return activeOnly ? DEFAULT_DIRECTIONS.filter(d => d.actif) : DEFAULT_DIRECTIONS
-  }
-  const filtered = activeOnly ? all.filter(d => d.actif) : all
-  return [...filtered].sort((a, b) => a.code.localeCompare(b.code))
-}
-
-/** Crée ou met à jour une direction (clé = code). */
-export function upsertDirection(direction: Direction): void {
-  const all = readDirections()
-  const idx = all.findIndex(d => d.code === direction.code)
-  if (idx >= 0) all[idx] = direction
-  else all.push(direction)
-  writeDirections(all)
-}
-
-/** Désactive une direction (soft delete). */
-export function deactivateDirection(code: string): void {
-  const all = readDirections()
-  const idx = all.findIndex(d => d.code === code)
-  if (idx >= 0) {
-    all[idx] = { ...all[idx], actif: false }
-    writeDirections(all)
-  }
-}
-
-/** Résout le libellé d'un code de direction (fallback = code). */
-export function getDirectionLabel(code: string): string {
-  const all = readDirections()
-  const source = all.length > 0 ? all : DEFAULT_DIRECTIONS
-  return source.find(d => d.code === code)?.libelle ?? code
-}
-
-
-/* ──────────────────────────────────────────────────────────────────────────
- * SECTION 3 — MAPPING SHAREPOINT ↔ DOMAINE (PAC)
+ * SECTION 2 — MAPPING SHAREPOINT ↔ DOMAINE (PAC)
  * ────────────────────────────────────────────────────────────────────────── */
 
 /** Format SharePoint Claims pour un champ Personne. */
