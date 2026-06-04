@@ -350,12 +350,18 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                   <th>Temps occupé</th>
                   <th>Statut journée</th>
                   <th>Statut</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {group.reports.map(r => (
-                  <tr key={r.id}>
+                  <tr
+                    key={r.id}
+                    className="row-clickable"
+                    onClick={() => setSelected(r)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r) } }}
+                  >
                     <td>{formatDateTime(r.submittedAt)}</td>
                     <td>{formatHours(r.totalHeures)}</td>
                     <td>{r.tempsOccupe}%</td>
@@ -366,11 +372,6 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                           : r.statut === 'Valider' ? 'manager-pill-realise'
                             : 'manager-pill-reporte'
                       }`}>{r.statut}</span>
-                    </td>
-                    <td>
-                      <div className="manager-actions-cell">
-                        <button className="btn-detail" type="button" onClick={() => setSelected(r)}>Détail</button>
-                      </div>
                     </td>
                   </tr>
                 ))}

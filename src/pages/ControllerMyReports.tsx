@@ -483,14 +483,20 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
                 <th>Temps occupé</th>
                 <th>Statut journée</th>
                 <th>Statut</th>
-                <th>Actions</th>
+                <th>Lignes</th>
                 <th>Soumis le</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
               {pagedReports.map(r => (
-                <tr key={r.id}>
+                <tr
+                  key={r.id}
+                  className="row-clickable"
+                  onClick={() => setSelected(r)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r) } }}
+                >
                   <td><strong>{formatDate(r.date)}</strong></td>
                   <td>{formatHours(r.totalHeures)}</td>
                   <td>{r.tempsOccupe}%</td>
@@ -502,15 +508,6 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
                   </td>
                   <td>{(r.lines ?? []).length}</td>
                   <td>{formatDateTime(r.submittedAt)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn-detail"
-                      onClick={() => setSelected(r)}
-                    >
-                      Détail
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>

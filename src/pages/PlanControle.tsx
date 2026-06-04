@@ -37,6 +37,9 @@ import {
   createEvaluation,
   appendEvaluationAttachmentUrls,
   listEvaluationsForControle,
+  listAllEvaluations,
+  computeEvaluationProgress,
+  getExpectedEvaluationsPerYear,
   getPeriodeInputType,
   formatPeriodeLabel,
   PLAN_CONTROLE_CATEGORIES,
@@ -50,6 +53,7 @@ import {
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
+import { ProgressBar } from '../components/ProgressBar'
 import {
   uploadPlanControleAttachment,
   uploadEvaluationAttachment,
@@ -100,6 +104,16 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
 
   const [controles, setControles] = useState<ControleEntry[]>([])
   const [loading, setLoading] = useState(true)
+  /**
+   * Map planControleId → nombre d'évaluations effectuées pour ce contrôle.
+   * Sert au calcul du taux d'évolution affiché dans le tableau.
+   *
+   * On charge TOUTES les évaluations en une seule requête au montage pour
+   * éviter N appels (un par contrôle). Le compte est ensuite construit en
+   * mémoire — adapté pour des volumes < 5000 évaluations (limite SP par
+   * défaut). Si on dépasse, basculer sur une agrégation côté serveur.
+   */
+  const [evaluationCounts, setEvaluationCounts] = useState<Map<number, number>>(new Map())
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [selected, setSelected] = useState<ControleEntry | null>(null)
@@ -165,9 +179,22 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
 
   useEffect(() => {
     let cancelled = false
+    // Chargement parallèle : contrôles + toutes les évaluations en une fois.
+    // Les évaluations alimentent le compteur affiché dans la colonne
+    // "Taux d'évolution" du tableau.
     listControles()
       .then(data => { if (!cancelled) setControles(data) })
       .finally(() => { if (!cancelled) setLoading(false) })
+    listAllEvaluations()
+      .then(evals => {
+        if (cancelled) return
+        const map = new Map<number, number>()
+        for (const ev of evals) {
+          if (!ev.planControleId) continue
+          map.set(ev.planControleId, (map.get(ev.planControleId) ?? 0) + 1)
+        }
+        setEvaluationCounts(map)
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -644,12 +671,25 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                 <th>Responsable</th>
                 <th>Année</th>
                 <th>Statut</th>
+                <th>Taux d'évolution</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {pagedControles.map((c, i) => (
-                <tr key={c.id}>
+              {pagedControles.map((c, i) => {
+                // Nb d'évaluations effectuées pour ce contrôle (compteur préchargé).
+                const evalCount = evaluationCounts.get(Number(c.id)) ?? 0
+                const expected = getExpectedEvaluationsPerYear(c.frequence)
+                const pct = computeEvaluationProgress(c.frequence, evalCount)
+                return (
+                <tr
+                  key={c.id}
+                  className="row-clickable"
+                  onClick={() => setSelected(c)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(c) } }}
+                >
                   <td>{pagination.start + i + 1}</td>
                   <td style={{ maxWidth: 200 }}>{c.categorie}</td>
                   <td style={{ maxWidth: 280 }}>{c.libelle}</td>
@@ -659,11 +699,18 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                   <td>
                     <span className={`manager-pill ${getControleStatusClass(c.statut)}`}>{c.statut}</span>
                   </td>
-                  <td>
+                  <td style={{ minWidth: 130 }}>
+                    {/* Taux = évaluations effectuées / attendues sur l'année (par fréquence) */}
+                    <ProgressBar
+                      value={pct}
+                      label={`${evalCount}/${expected}`}
+                      title={`${pct}% — ${evalCount} évaluation(s) sur ${expected} attendue(s) (${c.frequence.toLowerCase()})`}
+                    />
+                  </td>
+                  {/* La cellule Actions stoppe la propagation du clic pour
+                      éviter d'ouvrir le détail quand on clique sur un bouton. */}
+                  <td onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(c)}>
-                        Détail
-                      </button>
                       <button type="button" className="btn-cta btn-cta-affect" onClick={() => openEvaluation(c)}>
                         Évaluation
                       </button>
@@ -678,7 +725,8 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           <Pagination

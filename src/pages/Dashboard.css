@@ -568,6 +568,43 @@
   background: rgba(230, 57, 70, 0.04);
 }
 
+/* Lignes cliquables (tableau → ouverture du détail au clic).
+   Sélecteur générique pour couvrir tous les tableaux (data-table,
+   manager-table, anomalies-table, etc.). */
+tr.row-clickable {
+  cursor: pointer;
+}
+tr.row-clickable:hover {
+  background: rgba(29, 78, 216, 0.06);
+}
+
+/* Barre de progression réutilisable (cf. components/ProgressBar.tsx) */
+.progress-bar {
+  position: relative;
+  width: 100%;
+  min-width: 90px;
+  height: 18px;
+  background: #f1f5f9;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+.progress-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.progress-bar-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a1a2e;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
 .btn-affect,
 .btn-detail {
   padding: 5px 12px;

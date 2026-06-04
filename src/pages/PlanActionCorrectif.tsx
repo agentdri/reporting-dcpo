@@ -591,7 +591,14 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
             </thead>
             <tbody>
               {pagedPacs.map((p, i) => (
-                <tr key={p.id}>
+                <tr
+                  key={p.id}
+                  className="row-clickable"
+                  onClick={() => setSelected(p)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(p) } }}
+                >
                   <td>{pagination.start + i + 1}</td>
                   <td>{p.sourcePac || '—'}</td>
                   <td>{formatDate(p.dateCreation)}</td>
@@ -606,11 +613,10 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                   <td>
                     <span className={`manager-pill ${getPacStatusClass(p.statut)}`}>{p.statut}</span>
                   </td>
-                  <td>
+                  {/* Stop propagation : éviter d'ouvrir le détail en cliquant
+                      sur un bouton d'action de la cellule. */}
+                  <td onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(p)}>
-                        Détail
-                      </button>
                       {/* Bouton "Affectation" : réservé aux managers (canManage).
                           Un Controleur consulte les PAC mais ne peut pas
                           réassigner le responsable. */}

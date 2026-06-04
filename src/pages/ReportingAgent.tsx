@@ -521,12 +521,18 @@ export default function ReportingAgent() {
                     <th>Resolu</th>
                     <th>Clos</th>
                     <th>Montant total</th>
-                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedAgents.map(agent => (
-                    <tr key={agent.email}>
+                    <tr
+                      key={agent.email}
+                      className="row-clickable"
+                      onClick={() => openAgentDetail(agent.email)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAgentDetail(agent.email) } }}
+                    >
                       <td><strong>{agent.displayName}</strong></td>
                       <td>{agent.email}</td>
                       <td><strong>{agent.total}</strong></td>
@@ -535,11 +541,6 @@ export default function ReportingAgent() {
                       <td>{agent.resolu}</td>
                       <td>{agent.clos}</td>
                       <td>{agent.montantTotal.toLocaleString()}</td>
-                      <td>
-                        <button className="btn-affect" onClick={() => openAgentDetail(agent.email)}>
-                          Detail
-                        </button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>

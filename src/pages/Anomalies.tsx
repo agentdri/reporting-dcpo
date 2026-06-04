@@ -1687,7 +1687,14 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             </thead>
             <tbody>
               {pagedItems.map((item, index) => (
-                <tr key={item.ID}>
+                <tr
+                  key={item.ID}
+                  className="row-clickable"
+                  onClick={() => setDetailItem(item)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailItem(item) } }}
+                >
                   <td className="col-ticket">
                     <span
                       className={`ticket-badge ${statusBadgeClass(item.field_10)}`}
@@ -1722,11 +1729,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                       <td className="col-collapsible">{item.field_9 ? new Date(item.field_9).toLocaleDateString('fr-FR') : '—'}</td>
                     </>
                   )}
-                  <td className="col-actions">
+                  {/* La cellule Actions stoppe la propagation du clic pour
+                      ne pas ouvrir le détail quand on clique sur un bouton. */}
+                  <td className="col-actions" onClick={e => e.stopPropagation()}>
                     <div className="actions-col">
-                      <button type="button" className="btn-cta btn-cta-detail" onClick={() => setDetailItem(item)}>
-                        Détail
-                      </button>
                       {/* Bouton "Affecter" : réservé aux managers (cf. canAffect).
                           Un Controleur ne voit pas ce bouton — il consulte mais
                           ne peut pas réassigner l'anomalie. */}

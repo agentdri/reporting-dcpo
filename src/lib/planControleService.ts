@@ -435,6 +435,54 @@ export async function listEvaluationsForControle(controleId: string | number): P
 }
 
 /**
+ * Liste TOUTES les évaluations (utilisé pour le calcul du taux d'évolution
+ * en bloc côté Plan de Contrôle — évite N requêtes serveur).
+ *
+ * Filtre serveur optionnel sur l'année pour limiter la charge si la liste
+ * grossit. L'année est matchée contre la chaîne `periode` (qui peut être
+ * 'YYYY', 'YYYY-MM', 'YYYY-MM-DD' ou 'YYYY-Www' — tous commencent par
+ * l'année).
+ */
+export async function listAllEvaluations(year?: number): Promise<ControleEvaluation[]> {
+  try {
+    const options: { filter?: string; orderBy: string[] } = { orderBy: ['Created desc'] }
+    if (year && Number.isFinite(year)) {
+      options.filter = `startswith(periode, '${year}')`
+    }
+    const res = await DCPO_EVALUATION_PLAN_CONTROLEService.getAll(options)
+    if (!res.data) return []
+    return res.data.map(fromEvaluationItem)
+  } catch (err) {
+    console.error('listAllEvaluations error', err)
+    return []
+  }
+}
+
+/**
+ * Nombre d'évaluations attendues sur une année pour une fréquence donnée.
+ * Sert de dénominateur pour calculer le taux d'évolution.
+ */
+export function getExpectedEvaluationsPerYear(frequence: ControleFrequence): number {
+  switch (frequence) {
+    case 'Quotidienne': return 365
+    case 'Hebdomadaire': return 52
+    case 'Mensuelle': return 12
+    case 'Annuelle': return 1
+  }
+}
+
+/**
+ * Calcule le taux d'évolution (%) d'un contrôle = nb évaluations faites
+ * divisé par nb attendu pour la fréquence, capé à 100.
+ */
+export function computeEvaluationProgress(frequence: ControleFrequence, count: number): number {
+  const expected = getExpectedEvaluationsPerYear(frequence)
+  if (expected <= 0) return 0
+  const pct = (count / expected) * 100
+  return Math.max(0, Math.min(100, Math.round(pct)))
+}
+
+/**
  * Crée une évaluation pour un contrôle.
  *
  * Le `Title` SP est obligatoire — si pas fourni, on génère un libellé par
