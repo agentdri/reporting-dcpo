@@ -241,6 +241,40 @@ export async function createPAC(input: CreatePacInput): Promise<Pac> {
  *
  * @returns Le PAC rechargé après update, ou undefined en cas d'erreur réseau.
  */
+/**
+ * Met à jour UNIQUEMENT le responsable d'un PAC (affectation rapide).
+ *
+ * Cas d'usage : workflow "Affectation" depuis le tableau — un manager change
+ * la personne responsable de mise en œuvre sans avoir à rouvrir le formulaire
+ * d'édition complet.
+ *
+ * @param id - ID SharePoint du PAC
+ * @param email - Email de la nouvelle personne responsable (format
+ *                'jdoe@afrilandfirstbank.com' — le format Claims est ajouté ici)
+ * @returns Le PAC rechargé après update, ou undefined en cas d'erreur.
+ */
+export async function updatePacResponsable(
+  id: string,
+  email: string,
+): Promise<Pac | undefined> {
+  if (!email) return undefined
+  try {
+    await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.update(
+      id,
+      {
+        responsableMiseEnOeuvre: {
+          '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+          Claims: toClaims(email),
+        },
+      } as never,
+    )
+  } catch (err) {
+    console.error('updatePacResponsable error', err)
+    return undefined
+  }
+  return getPAC(id)
+}
+
 export async function updatePAC(id: string, input: CreatePacInput): Promise<Pac | undefined> {
   const payload: Record<string, unknown> = {
     Title: input.intitule.trim(),

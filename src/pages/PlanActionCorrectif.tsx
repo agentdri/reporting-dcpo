@@ -28,6 +28,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   createPAC,
   updatePAC,
+  updatePacResponsable,
   appendPacAttachmentUrls,
   listPACs,
   getPacStatusClass,
@@ -148,6 +149,19 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
    */
   const [attachment, setAttachment] = useState<File | null>(null)
 
+  /* ─── États de la modale AFFECTATION ────────────────────────────────────
+   * Permet à un manager de changer rapidement le responsable de mise en œuvre
+   * d'un PAC sans rouvrir le formulaire d'édition complet. */
+  /** PAC ciblé par la modale d'affectation (null = modale fermée). */
+  const [affectTarget, setAffectTarget] = useState<Pac | null>(null)
+  /** Personne sélectionnée dans le picker (nom + email). */
+  const [affectSelectedName, setAffectSelectedName] = useState('')
+  const [affectSelectedEmail, setAffectSelectedEmail] = useState('')
+  /** True pendant l'enregistrement de la nouvelle affectation côté SharePoint. */
+  const [affectSaving, setAffectSaving] = useState(false)
+  /** Erreur affichée dans la modale (validation ou réseau). */
+  const [affectError, setAffectError] = useState<string | null>(null)
+
   /** Permission "créer / éditer un PAC". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
 
@@ -177,6 +191,65 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
       setPacs(await listPACs())
     } finally {
       setLoading(false)
+    }
+  }
+
+
+  /* ════════════════════════════════════════════════════════════════════════
+   * HANDLERS — MODALE AFFECTATION (changer le responsable)
+   * ════════════════════════════════════════════════════════════════════════ */
+
+  /**
+   * Ouvre la modale d'affectation pour un PAC.
+   *
+   * Pré-remplit le picker avec la personne actuellement assignée — l'utilisateur
+   * peut cliquer "Changer" pour la remplacer (évite la confusion sur qui est
+   * affecté actuellement).
+   */
+  const openAffectation = (pac: Pac) => {
+    setAffectTarget(pac)
+    setAffectSelectedName(pac.responsable)
+    setAffectSelectedEmail(pac.responsableEmail)
+    setAffectError(null)
+  }
+
+  /** Ferme la modale d'affectation et reset ses états. */
+  const closeAffectation = () => {
+    setAffectTarget(null)
+    setAffectSelectedName('')
+    setAffectSelectedEmail('')
+    setAffectError(null)
+    setAffectSaving(false)
+  }
+
+  /**
+   * Enregistre la nouvelle affectation côté SharePoint, puis rafraîchit la
+   * liste pour que le tableau reflète immédiatement le changement.
+   *
+   * Garde-fou : on refuse une affectation sans email valide (le champ Person
+   * SP nécessite un Claims valide).
+   */
+  const submitAffectation = async () => {
+    if (!affectTarget?.id) return
+    setAffectError(null)
+    if (!affectSelectedEmail.trim()) {
+      setAffectError("Sélectionnez d'abord une personne.")
+      return
+    }
+    setAffectSaving(true)
+    try {
+      const updated = await updatePacResponsable(affectTarget.id, affectSelectedEmail.trim())
+      if (!updated) {
+        setAffectError("Échec de l'affectation. Réessayer.")
+        return
+      }
+      await refresh()
+      closeAffectation()
+    } catch (err) {
+      console.error('submitAffectation error', err)
+      setAffectError(err instanceof Error ? err.message : "Échec de l'affectation.")
+    } finally {
+      setAffectSaving(false)
     }
   }
 
@@ -534,9 +607,19 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                     <span className={`manager-pill ${getPacStatusClass(p.statut)}`}>{p.statut}</span>
                   </td>
                   <td>
-                    <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(p)}>
-                      Détail
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn-cta btn-cta-detail" onClick={() => setSelected(p)}>
+                        Détail
+                      </button>
+                      {/* Bouton "Affectation" : réservé aux managers (canManage).
+                          Un Controleur consulte les PAC mais ne peut pas
+                          réassigner le responsable. */}
+                      {canManage && (
+                        <button type="button" className="btn-cta btn-cta-affect" onClick={() => openAffectation(p)}>
+                          Affectation
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -558,6 +641,80 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
           onClose={() => setSelected(null)}
           onEdit={canManage ? () => openEdit(selected) : undefined}
         />
+      )}
+
+      {/* ─── Modale AFFECTATION ────────────────────────────────────── */}
+      {/* Workflow rapide pour changer le responsable de mise en œuvre d'un PAC
+          sans rouvrir le formulaire d'édition complet. Réservé aux managers
+          (le bouton qui ouvre cette modale n'est rendu que si canManage).
+          Le picker est pré-rempli avec la personne déjà affectée. */}
+      {affectTarget && (
+        <div className="modal-overlay" onClick={closeAffectation}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)' }}>
+            <div className="modal-header">
+              <h2>Affecter un responsable</h2>
+              <button className="modal-close" onClick={closeAffectation} aria-label="Fermer">&times;</button>
+            </div>
+            <div className="modal-body">
+              {/* Rappel du PAC ciblé (lecture seule) */}
+              <dl className="detail-grid" style={{ marginBottom: 12 }}>
+                <dt>PAC</dt><dd><strong>{affectTarget.intitule}</strong></dd>
+                <dt>Source</dt><dd>{affectTarget.sourcePac || '—'}</dd>
+                <dt>Responsable actuel</dt>
+                <dd>
+                  {affectTarget.responsable
+                    ? <>{affectTarget.responsable}<span style={{ color: '#888', fontSize: 12 }}> ({affectTarget.responsableEmail})</span></>
+                    : '—'}
+                </dd>
+              </dl>
+
+              <div className="form-field" style={{ marginBottom: 8 }}>
+                <label htmlFor="pac-affect-user">Nouveau responsable *</label>
+                <UserPicker
+                  id="pac-affect-user"
+                  selectedName={affectSelectedName}
+                  selectedEmail={affectSelectedEmail}
+                  onSelect={(name, email) => {
+                    setAffectSelectedName(name)
+                    setAffectSelectedEmail(email)
+                    setAffectError(null)
+                  }}
+                  onClear={() => {
+                    setAffectSelectedName('')
+                    setAffectSelectedEmail('')
+                  }}
+                  disabled={affectSaving}
+                  placeholder="Rechercher une personne Office 365..."
+                />
+              </div>
+
+              {affectError && (
+                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                  {affectError}
+                </p>
+              )}
+
+              <div className="modal-actions" style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-detail"
+                  onClick={closeAffectation}
+                  disabled={affectSaving}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-affect"
+                  onClick={submitAffectation}
+                  disabled={affectSaving || !affectSelectedEmail.trim()}
+                >
+                  {affectSaving ? 'Affectation...' : "Valider l'affectation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ─── Modale de création ────────────────────────────────────── */}
