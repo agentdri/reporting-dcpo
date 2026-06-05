@@ -37,6 +37,13 @@ import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESE
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { formatMontantCompact } from '../lib/formatters'
+import {
+  listControles,
+  listAllEvaluations,
+  getExpectedEvaluationsPerYear,
+  type ControleEntry,
+} from '../lib/planControleService'
+import { listPACs, type Pac } from '../lib/pacService'
 
 /** Nettoie un texte HTML pour ne garder que le contenu textuel (DOMParser). */
 function stripHtml(html: string): string {
@@ -69,6 +76,159 @@ interface AgentStats {
   clos: number
   montantTotal: number
   anomalies: DCPO_LISTE_ANORMALIERead[]
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * BULLETIN — FICHE DE NOTATION DU CONTROLEUR
+ *
+ * Structure inspirée du format métier Excel (cf. ticket utilisateur 2026-06-05) :
+ *   Plusieurs SECTIONS thématiques, chacune contenant des lignes critère
+ *   avec colonnes : Prévu / Réalisé / Écart, et une ligne TAUX DE CONFORMITE
+ *   en bas qui agrège les totaux.
+ *
+ * Sections couvertes ici :
+ *   1. Surveillance des anomalies  (par classification)
+ *   2. Surveillance des contrôles  (1 ligne par plan de contrôle assigné)
+ *   3. Surveillance des PAC        (1 ligne par PAC assigné)
+ *
+ * Sémantique des colonnes :
+ *   - Prévu     : objectif quantitatif (anomalies déclarées ; nb évaluations
+ *                 attendues sur l'année selon la fréquence ; 1 par PAC)
+ *   - Réalisé   : résultat effectif (anomalies clos+resolu ; évaluations
+ *                 effectivement faites ; 1 si PAC Exécutée)
+ *   - Écart     : Réalisé − Prévu (négatif = retard, 0 = à l'objectif)
+ *
+ * Le score % d'une section = (TOTAL Réalisé / TOTAL Prévu) × 100, capé à 100.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Une ligne du bulletin (critère + métriques). */
+interface BulletinRow {
+  critere: string
+  prevu: number
+  realise: number
+  ecart: number
+}
+
+/** Une section complète du bulletin. */
+interface BulletinSection {
+  titre: string
+  rows: BulletinRow[]
+  totalPrevu: number
+  totalRealise: number
+  totalEcart: number
+  /** Score % (0-100) — ratio Réalisé/Prévu, capé. 0 si rien à faire. */
+  score: number
+}
+
+/** Calcule un score % à partir des totaux de section (capé à 100). */
+function computeSectionScore(totalPrevu: number, totalRealise: number): number {
+  if (totalPrevu <= 0) return 0
+  return Math.max(0, Math.min(100, Math.round((totalRealise / totalPrevu) * 100)))
+}
+
+/** Construit une section à partir d'une liste de lignes (calcul des totaux). */
+function buildSection(titre: string, rows: BulletinRow[]): BulletinSection {
+  const totalPrevu = rows.reduce((s, r) => s + r.prevu, 0)
+  const totalRealise = rows.reduce((s, r) => s + r.realise, 0)
+  const totalEcart = totalRealise - totalPrevu
+  return {
+    titre,
+    rows,
+    totalPrevu,
+    totalRealise,
+    totalEcart,
+    score: computeSectionScore(totalPrevu, totalRealise),
+  }
+}
+
+/**
+ * Construit la section "Surveillance des anomalies" pour un agent.
+ *
+ * Critères = classifications (Operationnel / Fraude / Commercial) + une
+ * ligne "Autres / non classées" si l'agent a des anomalies sans classif.
+ *
+ *   Prévu   = anomalies déclarées par l'agent
+ *   Réalisé = celles qui sont Resolu ou Clos
+ *   Écart   = Réalisé − Prévu (négatif = anomalies en cours)
+ */
+function buildAnomaliesSection(anomalies: DCPO_LISTE_ANORMALIERead[]): BulletinSection {
+  const classifications = ['Operationnel', 'Fraude', 'Commercial']
+  const rows: BulletinRow[] = []
+  for (const classif of classifications) {
+    const subset = anomalies.filter(a => a.field_5 === classif)
+    if (subset.length === 0) continue
+    const realise = subset.filter(a => a.field_10 === 'Resolu' || a.field_10 === 'Clos').length
+    rows.push({
+      critere: classif,
+      prevu: subset.length,
+      realise,
+      ecart: realise - subset.length,
+    })
+  }
+  // Anomalies sans classification reconnue → "Autres"
+  const autres = anomalies.filter(a => !classifications.includes(a.field_5 ?? ''))
+  if (autres.length > 0) {
+    const realise = autres.filter(a => a.field_10 === 'Resolu' || a.field_10 === 'Clos').length
+    rows.push({
+      critere: 'Autres / non classées',
+      prevu: autres.length,
+      realise,
+      ecart: realise - autres.length,
+    })
+  }
+  return buildSection('SURVEILLANCE DES ANOMALIES', rows)
+}
+
+/**
+ * Construit la section "Surveillance des plans de contrôle" pour un agent.
+ *
+ * Critères = chaque contrôle dont l'agent est responsable.
+ *   Prévu   = nb évaluations attendues sur l'année (selon la fréquence)
+ *   Réalisé = nb évaluations effectivement faites (compteur préchargé)
+ *   Écart   = Réalisé − Prévu
+ */
+function buildControlesSection(
+  agentEmail: string,
+  controles: ControleEntry[],
+  evaluationCounts: Map<number, number>,
+): BulletinSection {
+  const me = agentEmail.toLowerCase()
+  const mine = controles.filter(c => c.responsableEmail.toLowerCase() === me)
+  const rows: BulletinRow[] = mine.map(c => {
+    const prevu = getExpectedEvaluationsPerYear(c.frequence)
+    const realise = evaluationCounts.get(Number(c.id)) ?? 0
+    return {
+      critere: c.libelle,
+      prevu,
+      realise,
+      ecart: realise - prevu,
+    }
+  })
+  return buildSection('SURVEILLANCE DES PLANS DE CONTRÔLE', rows)
+}
+
+/**
+ * Construit la section "Surveillance des plans d'action correctif" pour un agent.
+ *
+ * Critères = chaque PAC dont l'agent est responsable de mise en œuvre.
+ *   Prévu   = 1 (chaque PAC est une tâche à exécuter)
+ *   Réalisé = 1 si statut === 'Exécutée', sinon 0
+ *   Écart   = Réalisé − Prévu
+ */
+function buildPACsSection(agentEmail: string, pacs: Pac[]): BulletinSection {
+  const me = agentEmail.toLowerCase()
+  const mine = pacs.filter(p => p.responsableEmail.toLowerCase() === me)
+  const rows: BulletinRow[] = mine.map(p => {
+    const realise = p.statut === 'Exécutée' ? 1 : 0
+    return {
+      critere: p.intitule,
+      prevu: 1,
+      realise,
+      ecart: realise - 1,
+    }
+  })
+  return buildSection('SURVEILLANCE DES PLANS D\'ACTION CORRECTIF', rows)
 }
 
 /** Critères de filtrage du module — tous appliqués côté client. */
@@ -142,6 +302,16 @@ export default function ReportingAgent() {
   const [reseaux, setReseaux] = useState<DCPO_LISTE_RESEAUXRead[]>([])
   const [loading, setLoading] = useState(true)
   /**
+   * Données auxiliaires utilisées pour construire le bulletin de notation
+   * agent (cf. buildAnomaliesSection / buildControlesSection / buildPACsSection).
+   *
+   * Chargées en parallèle au montage — pas bloquantes pour l'affichage du
+   * tableau principal (qui ne dépend que de `items`).
+   */
+  const [allControles, setAllControles] = useState<ControleEntry[]>([])
+  const [allPacs, setAllPacs] = useState<Pac[]>([])
+  const [evaluationCounts, setEvaluationCounts] = useState<Map<number, number>>(new Map())
+  /**
    * Agent sélectionné pour la vue détail.
    *   - null  : vue principale (tableau de tous les agents)
    *   - email : vue détail de cet agent (toutes ses anomalies)
@@ -158,14 +328,29 @@ export default function ReportingAgent() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [anomRes, agencesRes, reseauxRes] = await Promise.all([
+        // Chargement parallèle : 6 sources (anomalies, agences, réseaux,
+        // contrôles, PAC, évaluations). Tout pour rendre le bulletin agent
+        // complet sans appels supplémentaires lors de l'impression.
+        const [anomRes, agencesRes, reseauxRes, controlesRes, pacsRes, evalsRes] = await Promise.all([
           DCPO_LISTE_ANORMALIEService.getAll(),
           DCPO_LISTE_AGENCESService.getAll(),
           DCPO_LISTE_RESEAUXService.getAll(),
+          listControles(),
+          listPACs(),
+          listAllEvaluations(),
         ])
         if (anomRes.data) setItems(anomRes.data)
         if (agencesRes.data) setAgences(agencesRes.data)
         if (reseauxRes.data) setReseaux(reseauxRes.data)
+        setAllControles(controlesRes)
+        setAllPacs(pacsRes)
+        // Agrégation des évaluations en compteur par planControleId
+        const map = new Map<number, number>()
+        for (const ev of evalsRes) {
+          if (!ev.planControleId) continue
+          map.set(ev.planControleId, (map.get(ev.planControleId) ?? 0) + 1)
+        }
+        setEvaluationCounts(map)
       } catch (err) {
         console.error('Erreur chargement reporting', err)
       } finally {
@@ -382,6 +567,32 @@ export default function ReportingAgent() {
       montantTotal: a.reduce((s, i) => s + (i.field_8 ?? 0), 0),
     }
   }, [detailFilteredAnomalies])
+
+  /**
+   * Bulletin agent — 3 sections + score global.
+   *
+   * Construit uniquement quand un agent est sélectionné (sinon null) pour
+   * éviter le calcul inutile sur la vue principale.
+   *
+   * Sections :
+   *   1. Anomalies (par classification, basé sur la liste filtrée détail)
+   *   2. Plans de contrôle (1 ligne par contrôle dont l'agent est responsable)
+   *   3. PAC (1 ligne par PAC dont l'agent est responsable de mise en œuvre)
+   *
+   * Score global = moyenne pondérée des scores de section (poids = totalPrevu).
+   */
+  const bulletinSections = useMemo(() => {
+    if (!selectedStats) return null
+    const anomaliesSection = buildAnomaliesSection(detailFilteredAnomalies)
+    const controlesSection = buildControlesSection(selectedStats.email, allControles, evaluationCounts)
+    const pacsSection = buildPACsSection(selectedStats.email, allPacs)
+
+    const totalPrevu = anomaliesSection.totalPrevu + controlesSection.totalPrevu + pacsSection.totalPrevu
+    const totalRealise = anomaliesSection.totalRealise + controlesSection.totalRealise + pacsSection.totalRealise
+    const scoreGlobal = computeSectionScore(totalPrevu, totalRealise)
+
+    return { anomaliesSection, controlesSection, pacsSection, totalPrevu, totalRealise, scoreGlobal }
+  }, [selectedStats, detailFilteredAnomalies, allControles, evaluationCounts, allPacs])
 
   const detailPagination = usePagination({
     total: detailFilteredAnomalies.length,
@@ -717,71 +928,117 @@ export default function ReportingAgent() {
           </div>
           )}
 
-          {/* ─── BULLETIN IMPRIMABLE ──────────────────────────────────────
+          {/* ─── BULLETIN IMPRIMABLE — Fiche de notation du contrôleur ───
               Masqué à l'écran (.agent-print-only → display:none), affiché
-              uniquement à l'impression via @media print. Contient : identité
-              agent + synthèse + anomalies (NON paginées, contrairement au
-              tableau écran). Reflète les filtres détail appliqués → sans
-              filtre = bulletin complet de l'agent. */}
+              uniquement à l'impression via @media print.
+
+              Format inspiré du fichier Excel métier : 3 sections de
+              surveillance (Anomalies / Plans de Contrôle / PAC) avec lignes
+              critère + colonnes Prévu/Réalisé/Écart + ligne "TAUX DE
+              CONFORMITE" par section + score global en bas. */}
           <div className="agent-print-only">
             <div className="agent-print-header">
-              <h1>Bulletin d'anomalies</h1>
-              <p>
-                Agent : <strong>{selectedStats.displayName}</strong>
-                {selectedStats.email ? ` (${selectedStats.email})` : ''}
+              <h1>FICHE DE NOTATION DU CONTROLEUR</h1>
+              <p style={{ textAlign: 'center', color: '#c0392b' }}>
+                Édité le {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
               </p>
-              <p>Édité le {new Date().toLocaleDateString('fr-FR')}</p>
+              <p>
+                <strong>{selectedStats.displayName}</strong>
+                {selectedStats.email ? ` — ${selectedStats.email}` : ''}
+              </p>
             </div>
 
-            <h2 className="agent-print-section-title">Synthèse</h2>
-            <table className="agent-print-table agent-print-summary">
-              <tbody>
-                <tr><th>Total anomalies</th><td>{detailStats.total}</td></tr>
-                <tr><th>Ouvert</th><td>{detailStats.ouvert}</td></tr>
-                <tr><th>En cours</th><td>{detailStats.enCours}</td></tr>
-                <tr><th>Résolu</th><td>{detailStats.resolu}</td></tr>
-                <tr><th>Clos</th><td>{detailStats.clos}</td></tr>
-                <tr><th>Montant total</th><td>{detailStats.montantTotal.toLocaleString('fr-FR')}</td></tr>
-              </tbody>
-            </table>
-
-            <h2 className="agent-print-section-title">
-              Détail des anomalies ({detailStats.total})
-            </h2>
-            <table className="agent-print-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Déclarant</th>
-                  <th>Cause</th>
-                  <th>Classification</th>
-                  <th>Agence</th>
-                  <th>Réseau</th>
-                  <th>Montant</th>
-                  <th>Date régul.</th>
-                  <th>Statut</th>
-                  <th>Personne affectée</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detailFilteredAnomalies.map(item => (
-                  <tr key={item.ID}>
-                    <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString('fr-FR') : '-'}</td>
-                    <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
-                    <td>{item.field_4 ? stripHtml(item.field_4) : '-'}</td>
-                    <td>{item.field_5 ?? '-'}</td>
-                    <td>{agences.find(a => String(a.ID) === item.field_6)?.Title ?? item.field_6 ?? '-'}</td>
-                    <td>{reseaux.find(r => String(r.ID) === item.field_7)?.field_1 ?? item.field_7 ?? '-'}</td>
-                    <td>{item.field_8?.toLocaleString('fr-FR') ?? '-'}</td>
-                    <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString('fr-FR') : '-'}</td>
-                    <td>{item.field_10 ?? '-'}</td>
-                    <td>{item.personneAffecter?.DisplayName ?? '-'}</td>
-                  </tr>
+            {bulletinSections && (
+              <>
+                {/* Une section par domaine (anomalies, contrôles, PAC).
+                    Affichée même vide pour matérialiser visuellement le
+                    périmètre couvert par le bulletin. */}
+                {[
+                  bulletinSections.anomaliesSection,
+                  bulletinSections.controlesSection,
+                  bulletinSections.pacsSection,
+                ].map(section => (
+                  <BulletinSectionTable key={section.titre} section={section} />
                 ))}
-              </tbody>
-            </table>
+
+                {/* Score global = ratio Réalisé / Prévu sur l'ensemble des
+                    sections (capé à 100). C'est le "TAUX DE CONFORMITE
+                    GLOBAL" du contrôleur. */}
+                <h2 className="agent-print-section-title">SCORE GLOBAL</h2>
+                <table className="agent-print-table agent-print-summary">
+                  <tbody>
+                    <tr><th>Total prévu</th><td>{bulletinSections.totalPrevu}</td></tr>
+                    <tr><th>Total réalisé</th><td>{bulletinSections.totalRealise}</td></tr>
+                    <tr><th>Écart</th><td>{bulletinSections.totalRealise - bulletinSections.totalPrevu}</td></tr>
+                    <tr><th>Score</th><td><strong>{bulletinSections.scoreGlobal}%</strong></td></tr>
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         </>
+      )}
+    </>
+  )
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * COMPOSANT — Tableau d'une section du bulletin
+ *
+ * Rend une section dans le format métier :
+ *   - Titre de section (bandeau)
+ *   - En-tête : Critères | Prévu | Réalisé | Écart
+ *   - Lignes critère
+ *   - Ligne TAUX DE CONFORMITE (totaux)
+ *   - Score % à droite du titre
+ *
+ * Affiche un message neutre si la section n'a aucune ligne (cas d'un agent
+ * sans contrôle assigné par exemple).
+ * ══════════════════════════════════════════════════════════════════════════ */
+function BulletinSectionTable({ section }: { section: BulletinSection }) {
+  return (
+    <>
+      <h2 className="agent-print-section-title bulletin-section-title">
+        <span>{section.titre}</span>
+        <span className="bulletin-score">Score : {section.score}%</span>
+      </h2>
+      {section.rows.length === 0 ? (
+        <p style={{ fontSize: 11, color: '#666', margin: '4px 0 8px' }}>
+          Aucun élément pour cette section.
+        </p>
+      ) : (
+        <table className="agent-print-table bulletin-section-table">
+          <thead>
+            <tr>
+              <th>CRITERES DE NOTATION</th>
+              <th style={{ width: 70, textAlign: 'center' }}>Prévu</th>
+              <th style={{ width: 70, textAlign: 'center' }}>Réalisé</th>
+              <th style={{ width: 70, textAlign: 'center' }}>Écart</th>
+            </tr>
+          </thead>
+          <tbody>
+            {section.rows.map((r, idx) => (
+              <tr key={idx}>
+                <td>{r.critere}</td>
+                <td style={{ textAlign: 'center' }}>{r.prevu}</td>
+                <td style={{ textAlign: 'center' }}>{r.realise}</td>
+                <td style={{ textAlign: 'center', color: r.ecart < 0 ? '#c0392b' : '#10b981' }}>
+                  {r.ecart > 0 ? `+${r.ecart}` : r.ecart}
+                </td>
+              </tr>
+            ))}
+            {/* Ligne totale "TAUX DE CONFORMITE" — fond contrasté, gras */}
+            <tr className="bulletin-section-total">
+              <th>TAUX DE CONFORMITE</th>
+              <th style={{ textAlign: 'center' }}>{section.totalPrevu}</th>
+              <th style={{ textAlign: 'center' }}>{section.totalRealise}</th>
+              <th style={{ textAlign: 'center', color: section.totalEcart < 0 ? '#c0392b' : '#10b981' }}>
+                {section.totalEcart > 0 ? `+${section.totalEcart}` : section.totalEcart}
+              </th>
+            </tr>
+          </tbody>
+        </table>
       )}
     </>
   )

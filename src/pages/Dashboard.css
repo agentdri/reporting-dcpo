@@ -1782,6 +1782,47 @@ tr.row-clickable:hover {
   width: 160px;
 }
 
+/* ─── Bulletin de notation du contrôleur (format Excel métier) ────────── */
+/* Titre de section : bandeau noir, libellé blanc + score à droite */
+.bulletin-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a1a2e;
+  color: #fff;
+  padding: 5px 10px;
+  border: none;
+  margin: 14px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.bulletin-section-title .bulletin-score {
+  background: #fff;
+  color: #1a1a2e;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.bulletin-section-table {
+  margin-top: 0;
+}
+/* En-tête de tableau de section : gris foncé pour démarquer du bandeau */
+.bulletin-section-table thead th {
+  background: #3a3a52;
+  color: #fff;
+  font-weight: 600;
+}
+/* Ligne TAUX DE CONFORMITE : rouge corporate + gras italique */
+.bulletin-section-total th {
+  background: #fff;
+  color: #c0392b;
+  font-weight: 700;
+  font-style: italic;
+  border-top: 2px solid #c0392b;
+}
+
 @media print {
   /* On masque toute l'interface applicative pour ne garder que le bulletin */
   .dashboard-topbar,
