@@ -211,13 +211,9 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
       { type: 'leaf', key: 'plan-controle', label: 'Plan de Contrôle' },
       { type: 'leaf', key: 'plan-action-correctif', label: "Plan d'Action Correctif" },
     )
-    // Gestion des utilisateurs : réservée aux managers (Chef_Departement / Directeur)
-    if (isManager) {
-      items.push({ type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs' })
-    }
-    // Groupe "Configuration" : référentiels métier (directions, et plus tard
-    // d'autres ressources). Réservé aux managers — restriction d'accès au
-    // référentiel partagé pour éviter les modifications anarchiques.
+    // Groupe "Configuration" : référentiels métier + gestion des accès.
+    // Réservé aux managers (Chef_Departement / Directeur) — restriction
+    // d'accès aux paramètres partagés pour éviter les modifications anarchiques.
     //
     // Pour ajouter un nouveau référentiel (ex: catégories, types d'anomalies) :
     //   1. Étendre le type Tab en haut de ce fichier
@@ -230,6 +226,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         label: 'Configuration',
         children: [
           { type: 'leaf', key: 'config-directions', label: 'Directions' },
+          { type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs' },
         ],
       })
     }
