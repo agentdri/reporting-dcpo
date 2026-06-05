@@ -3,7 +3,8 @@
  * REPORTING PAR AGENT — STATISTIQUES PAR AUTEUR D'ANOMALIE
  * ============================================================================
  *
- * Vue agrégée des anomalies regroupées par AGENT (= auteur_anormalie).
+ * Vue agrégée des anomalies regroupées par AGENT (= personneAffecter,
+ * c'est-à-dire le contrôleur à qui l'anomalie a été assignée).
  *
  * Use case : un manager veut voir combien d'anomalies chaque agent
  * (commercial, opérationnel) a déclarées, leur répartition par statut,
@@ -444,11 +445,15 @@ export default function ReportingAgent() {
   }, [items, appliedFilters])
 
   /**
-   * Étape 2 — agrégation des items filtrés par AGENT (auteur_anormalie).
+   * Étape 2 — agrégation des items filtrés par AGENT.
+   *
+   * /!\ Sémantique métier : l'"agent" ici est le CONTRÔLEUR AFFECTÉ à
+   * l'anomalie (champ `personneAffecter`), pas l'auteur qui l'a déclarée.
+   * Cette vue mesure la CHARGE de chaque contrôleur — pas qui a signalé quoi.
    *
    * Algorithme :
    *   - Map<email, AgentStats> alimentée en un seul passage
-   *   - Skip les items sans email auteur (orphelins)
+   *   - Skip les items sans personne affectée (anomalies non assignées)
    *   - Pour chaque item : créer le bucket si absent, accumuler les compteurs
    *
    * Map (vs objet) : permet une recherche O(1) par email + itération facile
@@ -457,8 +462,8 @@ export default function ReportingAgent() {
   const agentMap = useMemo(() => {
     const map = new Map<string, AgentStats>()
     filteredItems.forEach(item => {
-      const email = item.auteur_anormalie?.Email ?? ''
-      const name = item.auteur_anormalie?.DisplayName ?? 'Inconnu'
+      const email = item.personneAffecter?.Email ?? ''
+      const name = item.personneAffecter?.DisplayName ?? 'Inconnu'
       if (!email) return
 
       if (!map.has(email)) {
@@ -724,7 +729,7 @@ export default function ReportingAgent() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Agent</th>
+                    <th>Personne affectée</th>
                     <th>Email</th>
                     <th>Total</th>
                     <th>Ouvert</th>
