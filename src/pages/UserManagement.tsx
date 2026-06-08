@@ -350,13 +350,25 @@ export default function UserManagement({ userEmail, userRole }: UserManagementPr
 
     setFormSaving(true)
     try {
-      const payload: Partial<Omit<DCPO_LISTE_USERWrite, 'ID'>> = {
+      /**
+       * Format d'écriture du champ Choice `fonction` :
+       *
+       * Le typage généré (DCPO_LISTE_USERWrite) déclare `fonction?: string`,
+       * mais en pratique le connecteur SharePoint persiste le champ Choice
+       * SEULEMENT si on lui passe l'objet `{ Value: "..." }`. Un string brut
+       * est interprété comme @odata.type et la valeur est perdue → la colonne
+       * apparaît vide en lecture.
+       *
+       * On cast via `unknown` (puis `never` au call site) pour contourner le
+       * typage trop restrictif. Pattern identique à celui utilisé pour les
+       * champs Personne (cf. confirmAffect dans Anomalies.tsx).
+       */
+      const payload = {
         Title: nom,
         nom,
         Email: email,
-        // fonction est typé comme string côté Write (Choice SP)
-        fonction,
-      }
+        fonction: { Value: fonction },
+      } as unknown as Partial<Omit<DCPO_LISTE_USERWrite, 'ID'>>
       if (editingId) {
         await DCPO_LISTE_USERService.update(editingId, payload)
       } else {
