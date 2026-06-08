@@ -132,10 +132,60 @@ interface UploadResponse {
  * HELPERS DE FORMATAGE (UTILISÉS DANS LE COMPOSANT)
  * ────────────────────────────────────────────────────────────────────────── */
 
-/** Nettoie un texte HTML pour ne garder que le texte (DOMParser robuste). */
+/**
+ * Nettoie un texte HTML pour ne garder que le texte, en PRÉSERVANT les
+ * sauts de ligne sémantiques (paragraphes, <br>, items de liste).
+ *
+ * Pourquoi : `textContent` natif colle les blocs sans séparation, ce qui
+ * produit "Cause immédiate : RAS Cause racine : ..." au lieu d'une mise
+ * en forme lisible.
+ *
+ * Étapes :
+ *   1. Insérer un '\n' avant les balises de fermeture/sauts blocks-level
+ *      pour matérialiser le saut visuel.
+ *   2. Extraire le textContent → on a maintenant des vrais retours à la ligne.
+ *   3. Heuristique métier : si le texte contient les libellés de section
+ *      d'une description anomalie (Cause immédiate, Cause racine, Actions
+ *      menées, Observations) collés sans séparation, on les remet sur des
+ *      lignes distinctes.
+ *   4. Compactage : remplace les enchaînements de 3+ newlines par 2 pour
+ *      éviter de trop espacer.
+ */
 function stripHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  return doc.body.textContent?.trim() ?? ''
+  if (!html) return ''
+  // Étape 1 : matérialiser les blocs en sauts de ligne avant le parse
+  const withBreaks = html
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/\s*(p|div|li|h[1-6]|tr)\s*>/gi, '\n')
+  const doc = new DOMParser().parseFromString(withBreaks, 'text/html')
+  let text = doc.body.textContent ?? ''
+
+  // Étape 3 : sections métier des descriptions d'anomalie. On insère un
+  // saut de ligne AVANT chaque libellé (sauf en début de chaîne) si elles
+  // sont collées à la phrase précédente. La regex tolère espaces et
+  // ponctuation autour du ":".
+  const SECTION_LABELS = [
+    'Cause immédiate',
+    'Cause racine',
+    'Actions menées',
+    'Action menée',
+    'Observations',
+    'Observation',
+  ]
+  for (const label of SECTION_LABELS) {
+    // (?<!^|\n)  : pas en début de texte ou de ligne (lookbehind)
+    // \s* avant : tolère espaces existants
+    // \s*:      : tolère espaces avant ":"
+    const re = new RegExp(`(?<!^|\\n)\\s*${label}\\s*:`, 'g')
+    text = text.replace(re, `\n${label} :`)
+  }
+
+  // Étape 4 : nettoyage des sauts excessifs
+  text = text
+    .replace(/[ \t]+/g, ' ')     // espaces multiples → un seul
+    .replace(/\n{3,}/g, '\n\n')  // 3+ newlines → 2
+    .trim()
+  return text
 }
 
 /**
@@ -1023,7 +1073,16 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     if (filterReseau) clauses.push(`field_7 eq '${filterReseau}'`)
     if (filterClassification) clauses.push(`field_5 eq '${filterClassification}'`)
     if (filterCriticite) clauses.push(`criticiteAnomalie eq '${filterCriticite}'`)
-    if (filterStatut) clauses.push(`field_10 eq '${filterStatut}'`)
+    if (filterStatut) {
+      clauses.push(`field_10 eq '${filterStatut}'`)
+    } else {
+      // Règle métier : la liste principale des anomalies N'AFFICHE PAS les
+      // anomalies clôturées ou résolues — elles sont consultables sur la
+      // page "Fiche récapitulatif de l'anomalie". On n'applique l'exclusion
+      // QUE si l'utilisateur n'a pas choisi explicitement un statut.
+      clauses.push("field_10 ne 'Clos'")
+      clauses.push("field_10 ne 'Resolu'")
+    }
     return clauses.join(' and ')
   }
 
@@ -1373,12 +1432,13 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         </div>
         <div className="filter-field">
           <label>Statut</label>
+          {/* Clos / Résolu retirés volontairement : ils sont consultables sur
+              la page "Fiche récapitulatif de l'anomalie". Seuls les tickets
+              en cours de traitement apparaissent ici. */}
           <select value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
-            <option value="">Tous</option>
+            <option value="">Tous (en cours)</option>
             <option value="Ouvert">Ouvert</option>
             <option value="En cours">En cours</option>
-            <option value="Resolu">Résolu</option>
-            <option value="Clos">Clos</option>
           </select>
         </div>
         <div className="filter-field">
@@ -1686,7 +1746,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               </tr>
             </thead>
             <tbody>
-              {pagedItems.map((item, index) => (
+              {pagedItems.map(item => (
                 <tr
                   key={item.ID}
                   className="row-clickable"
@@ -1696,12 +1756,17 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailItem(item) } }}
                 >
                   <td className="col-ticket">
+                    {/* Le numéro de ticket utilise l'ID SharePoint pour être
+                        IDENTIQUE à celui affiché sur la page "Fiche
+                        récapitulatif de l'anomalie" (cf. buildConsolidatedBulletin
+                        qui produit `T-${ticket.ID}`). On évite ainsi qu'un
+                        même ticket soit "T-3" ici et "T-46" ailleurs. */}
                     <span
                       className={`ticket-badge ${statusBadgeClass(item.field_10)}`}
-                      aria-label={`Ticket #${pagination.start + index + 1}, statut ${item.field_10 ?? 'inconnu'}`}
+                      aria-label={`Ticket T-${item.ID ?? '—'}, statut ${item.field_10 ?? 'inconnu'}`}
                     >
                       <span className="ticket-badge-icon" aria-hidden="true">{statusIcon(item.field_10)}</span>
-                      <span className="ticket-badge-num">T-{pagination.start + index + 1}</span>
+                      <span className="ticket-badge-num">T-{item.ID ?? '—'}</span>
                     </span>
                   </td>
                   <td className="col-status">
@@ -1802,7 +1867,13 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <dt>Délai de traitement</dt><dd>{detailItem.delai ? `${detailItem.delai} jour(s)` : '-'}</dd>
                   <dt>Commentaire affectation</dt><dd>{detailItem.commentaireAffectation ?? '-'}</dd>
                   <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
-                  <dt>Cause</dt><dd>{detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}</dd>
+                  <dt>Cause</dt>
+                  {/* white-space: pre-line → respecte les \n insérés par stripHtml
+                      pour séparer "Cause immédiate / Cause racine / Actions menées /
+                      Observations" sur des lignes distinctes. */}
+                  <dd style={{ whiteSpace: 'pre-line' }}>
+                    {detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}
+                  </dd>
                   <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
                   <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
                   <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
@@ -2221,7 +2292,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               {ticketItem.field_4 && (
                 <div className="ticket-description">
                   <h3>Description / cause</h3>
-                  <p>{stripHtml(ticketItem.field_4)}</p>
+                  {/* pre-line : préserve les sauts de section (Cause immédiate,
+                      Cause racine, Actions menées, Observations). */}
+                  <p style={{ whiteSpace: 'pre-line' }}>{stripHtml(ticketItem.field_4)}</p>
                 </div>
               )}
 
