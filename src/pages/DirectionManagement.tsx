@@ -36,19 +36,6 @@ const EMPTY_FORM = { sigle: '', libelle: '' }
 
 
 /* ──────────────────────────────────────────────────────────────────────────
- * HELPERS
- * ────────────────────────────────────────────────────────────────────────── */
-
-/** Formate une date ISO en jj/mm/aaaa. Tolérant : '—' si vide ou invalide. */
-function formatDate(d: string | undefined): string {
-  if (!d) return '—'
-  const parsed = new Date(d)
-  if (Number.isNaN(parsed.getTime())) return d
-  return parsed.toLocaleDateString('fr-FR')
-}
-
-
-/* ──────────────────────────────────────────────────────────────────────────
  * COMPOSANT PRINCIPAL
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -280,8 +267,6 @@ export default function DirectionManagement() {
                 <th>#</th>
                 <th>Sigle</th>
                 <th>Libellé</th>
-                <th>Créé le</th>
-                <th>Modifié le</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -291,8 +276,6 @@ export default function DirectionManagement() {
                   <td>{pagination.start + i + 1}</td>
                   <td><strong>{d.sigle}</strong></td>
                   <td>{d.libelle}</td>
-                  <td>{formatDate((d as Direction & { createdAt?: string }).createdAt)}</td>
-                  <td>{formatDate((d as Direction & { updatedAt?: string }).updatedAt)}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button

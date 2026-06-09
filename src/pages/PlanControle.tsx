@@ -700,9 +700,13 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                     <span className={`manager-pill ${getControleStatusClass(c.statut)}`}>{c.statut}</span>
                   </td>
                   <td style={{ minWidth: 130 }}>
-                    {/* Taux = évaluations effectuées / attendues sur l'année (par fréquence) */}
+                    {/* Taux = évaluations effectuées / attendues sur l'année (par fréquence).
+                        Couleur verte forcée pour toutes les lignes — la coloration
+                        automatique par seuil n'est pas pertinente ici (toute
+                        progression vers l'objectif est positive). */}
                     <ProgressBar
                       value={pct}
+                      color="#10b981"
                       label={`${evalCount}/${expected}`}
                       title={`${pct}% — ${evalCount} évaluation(s) sur ${expected} attendue(s) (${c.frequence.toLowerCase()})`}
                     />
