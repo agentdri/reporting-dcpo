@@ -93,6 +93,8 @@ interface FormState {
   field_9: string
   field_10: string
   criticiteAnomalie: string
+  /** Domaine d'activité concerné (colonne SP `domaineActivite`). */
+  domaineActivite: string
 }
 
 /** État initial vide du formulaire (utilisé après création / au reset). */
@@ -106,10 +108,72 @@ const EMPTY_FORM: FormState = {
   field_9: '',
   field_10: '',
   criticiteAnomalie: '',
+  domaineActivite: '',
 }
 
 /** Niveaux de criticité d'anomalie. Utilisé dans les selects. */
 const CRITICITE_OPTIONS = ['Faible', 'Moyenne', 'Haute', 'Critique']
+
+/**
+ * Classification métier de l'anomalie (champ field_5).
+ *
+ * Référentiel officiel DCPO 2026 — synchronisé avec la colonne Choix
+ * "Classification" de la liste SharePoint DCPO_LISTE_ANORMALIE.
+ *
+ * Pour ajouter une nouvelle valeur : la créer côté SP (Choice → Add value)
+ * ET l'ajouter ici. Tant que les deux ne sont pas synchros, la sélection ne
+ * sera pas écrite correctement (SP rejette les valeurs inconnues).
+ */
+const CLASSIFICATION_OPTIONS = [
+  'Fraude interne',
+  'Exécution, livraison et gestion des processus',
+  'Fraude externe',
+  'Interruptions de l\'activité et dysfonctionnements des systèmes',
+  'Pratiques en matière d\'emploi et de sécurité du travail',
+  'Clients, produits et pratiques commerciales',
+  'Dommages occasionnés aux actifs physiques',
+] as const
+
+/**
+ * Domaines d'activité concernés par l'anomalie (champ `domaineActivite`,
+ * récemment ajouté à la liste SP). Référentiel DCPO 2026.
+ */
+const DOMAINE_ACTIVITE_OPTIONS = [
+  'Engagements',
+  'Exploitation et Reseau',
+  'Opérations internationales',
+  'Opérations digitales',
+  'Administratif et Financier',
+  'Surveillance IT',
+] as const
+
+/**
+ * Type d'action ou de sanction à appliquer suite à l'anomalie (champ
+ * `typeSanction`). Renseigné UNIQUEMENT à la clôture (cf. modale de
+ * résolution) — pas à la création.
+ *
+ * Liste mixte action (Relance, Demande, Formation…) et sanction
+ * (Avertissement, Blâme, Suspension…). Ordonnée du plus léger au plus
+ * lourd pour aider à la sélection.
+ */
+const TYPE_SANCTION_OPTIONS = [
+  'Relance outlook',
+  'Demande d\'informations',
+  'Demande d\'explications',
+  'Ultime relance',
+  'Mise en garde',
+  'Avertissement',
+  'Blâme',
+  'Suspension',
+  'Teams',
+  'Produit de controles',
+  'Demande de régularisation',
+  'Lettre d\'observation',
+  'Mise a pied 3 Jours',
+  'Mise a pied 8 Jours',
+  'Licenciement',
+  'Formations',
+] as const
 
 /* ──────────────────────────────────────────────────────────────────────────
  * URL DU WORKFLOW POWER AUTOMATE (UPLOAD PIÈCE JOINTE)
@@ -351,6 +415,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const [filterReseau, setFilterReseau] = useState('')
   const [filterClassification, setFilterClassification] = useState('')
   const [filterCriticite, setFilterCriticite] = useState('')
+  /** Filtre par domaine d'activité (colonne SP `domaineActivite`). */
+  const [filterDomaineActivite, setFilterDomaineActivite] = useState('')
   /**
    * Filtre serveur par statut workflow (field_10 en SharePoint).
    * Valeurs possibles : 'Ouvert' / 'En cours' / 'Resolu' / 'Clos' / ''
@@ -408,6 +474,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     field_9: '',        // Date de régularisation (YYYY-MM-DD)
     field_10: '',       // Statut workflow
     criticiteAnomalie: '',  // Criticité
+    domaineActivite: '',    // Domaine d'activité (référentiel DOMAINE_ACTIVITE_OPTIONS)
     delai: '',          // Délai de traitement en jours (entier sous forme string)
     commentaireAffectation: '',  // Commentaire pour la personne affectée
   })
@@ -469,6 +536,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     causeRacine: '',
     actionsMenees: '',
     observations: '',
+    /**
+     * Type d'action ou de sanction décidée à la clôture. Référentiel
+     * TYPE_SANCTION_OPTIONS. Champ propre à la clôture — pas saisi à la
+     * création. Optionnel (un blâme/avertissement n'est pas systématique).
+     */
+    typeSanction: '',
   })
   const [resolutionSaving, setResolutionSaving] = useState(false)
   const [resolutionError, setResolutionError] = useState<string | null>(null)
@@ -719,6 +792,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       field_9: detailItem.field_9 ? detailItem.field_9.split('T')[0] : '',
       field_10: detailItem.field_10 ?? '',
       criticiteAnomalie: detailItem.criticiteAnomalie ?? '',
+      domaineActivite: detailItem.domaineActivite ?? '',
       delai: detailItem.delai ?? '',
       commentaireAffectation: detailItem.commentaireAffectation ?? '',
     })
@@ -778,6 +852,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         field_9: detailForm.field_9 ? `${detailForm.field_9}T00:00:00Z` : '',
         field_10: detailForm.field_10,
         criticiteAnomalie: detailForm.criticiteAnomalie,
+        domaineActivite: detailForm.domaineActivite,
         // Normalisation du délai : on stocke l'entier sans zéros tête / espaces
         delai: detailForm.delai.trim() === '' ? '' : String(parseInt(detailForm.delai, 10)),
         commentaireAffectation: detailForm.commentaireAffectation.trim(),
@@ -896,6 +971,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       causeRacine: '',
       actionsMenees: '',
       observations: '',
+      // Pré-remplit avec la valeur déjà stockée (cas de réouverture d'une
+      // clôture précédente), sinon laisse vide pour forcer une saisie consciente.
+      typeSanction: item.typeSanction ?? '',
     })
     setResolutionAttachment(null)
     setResolutionError(null)
@@ -991,6 +1069,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         field_10: resolutionForm.statut,
         field_9: `${resolutionForm.dateRegul || today}T00:00:00Z`,
         date_cloture_ticket: `${resolutionForm.dateCloture || today}T00:00:00Z`,
+        // typeSanction n'est écrit QU'À LA CLÔTURE — c'est la seule
+        // entrée utilisateur pour ce champ dans l'application.
+        typeSanction: resolutionForm.typeSanction,
       }
       if (html) payload.field_4 = html
       // Mise à jour de l'auteur si modifié
@@ -1073,6 +1154,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     if (filterReseau) clauses.push(`field_7 eq '${filterReseau}'`)
     if (filterClassification) clauses.push(`field_5 eq '${filterClassification}'`)
     if (filterCriticite) clauses.push(`criticiteAnomalie eq '${filterCriticite}'`)
+    if (filterDomaineActivite) clauses.push(`domaineActivite eq '${filterDomaineActivite}'`)
     if (filterStatut) {
       clauses.push(`field_10 eq '${filterStatut}'`)
     } else {
@@ -1082,6 +1164,24 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       // QUE si l'utilisateur n'a pas choisi explicitement un statut.
       clauses.push("field_10 ne 'Clos'")
       clauses.push("field_10 ne 'Resolu'")
+    }
+    /**
+     * Restriction de visibilité par rôle (côté SERVEUR pour ne pas charger
+     * en mémoire ce que l'utilisateur n'a pas le droit de voir) :
+     *   - Controleur → ne voit QUE les anomalies qui LUI sont affectées
+     *     (personneAffecter/Email eq <userEmail>).
+     *   - Manager (Chef_Departement / Directeur) → voit tout (pas de clause).
+     *   - Rôle inconnu / vide → comportement par défaut (= voit tout) pour
+     *     ne pas bloquer en cas de mauvaise config de DCPO_LISTE_USER.
+     *
+     * Le chemin `personneAffecter/Email` est l'OData expand standard pour
+     * un champ Person — c'est le même que celui des autres listes Person
+     * dans ce projet.
+     */
+    if (userRole === 'Controleur' && userEmail) {
+      // Échappement des single-quotes éventuels dans l'email (cas rare)
+      const safeEmail = userEmail.replace(/'/g, "''")
+      clauses.push(`personneAffecter/Email eq '${safeEmail}'`)
     }
     return clauses.join(' and ')
   }
@@ -1122,8 +1222,11 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     }
     loadLists()
     fetchItems()
+    // userRole/userEmail intégrés : si l'utilisateur simule un autre rôle via
+    // le sélecteur de la topbar, on doit refetch pour appliquer (ou retirer)
+    // la restriction "Controleur ne voit que ses anomalies".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [userRole, userEmail])
 
   /**
    * Au clic "Rechercher" :
@@ -1152,6 +1255,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setFilterReseau('')
     setFilterClassification('')
     setFilterCriticite('')
+    setFilterDomaineActivite('')
     setFilterStatut('')
     setFilterAgent('')
     setFilterAffecte('')
@@ -1279,6 +1383,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       if (form.field_10) payload.field_10 = form.field_10
       else payload.field_10 = 'Ouvert'
       if (form.criticiteAnomalie) payload.criticiteAnomalie = form.criticiteAnomalie
+      if (form.domaineActivite) payload.domaineActivite = form.domaineActivite
 
       // Ouverture automatique du ticket
       payload.dateOuvertureTicket = new Date().toISOString()
@@ -1416,9 +1521,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
           <label>Classification</label>
           <select value={filterClassification} onChange={e => setFilterClassification(e.target.value)}>
             <option value="">Toutes</option>
-            <option value="Operationnel">Operationnel</option>
-            <option value="Fraude">Fraude</option>
-            <option value="Commercial">Commercial</option>
+            {CLASSIFICATION_OPTIONS.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
         <div className="filter-field">
@@ -1427,6 +1532,15 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             <option value="">Toutes</option>
             {CRITICITE_OPTIONS.map(c => (
               <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Domaine d'activité</label>
+          <select value={filterDomaineActivite} onChange={e => setFilterDomaineActivite(e.target.value)}>
+            <option value="">Tous</option>
+            {DOMAINE_ACTIVITE_OPTIONS.map(d => (
+              <option key={d} value={d}>{d}</option>
             ))}
           </select>
         </div>
@@ -1568,9 +1682,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   onChange={e => handleChange('field_5', e.target.value)}
                 >
                   <option value="">— Choisir —</option>
-                  <option value="Operationnel">Opérationnel</option>
-                  <option value="Fraude">Fraude</option>
-                  <option value="Commercial">Commercial</option>
+                  {CLASSIFICATION_OPTIONS.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-field">
@@ -1583,6 +1697,19 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <option value="">— Choisir —</option>
                   {CRITICITE_OPTIONS.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="anom-domaine">Domaine d'activité</label>
+                <select
+                  id="anom-domaine"
+                  value={form.domaineActivite}
+                  onChange={e => handleChange('domaineActivite', e.target.value)}
+                >
+                  <option value="">— Choisir —</option>
+                  {DOMAINE_ACTIVITE_OPTIONS.map(d => (
+                    <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
               </div>
@@ -1875,6 +2002,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                     {detailItem.field_4 ? stripHtml(detailItem.field_4) : '-'}
                   </dd>
                   <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
+                  <dt>Domaine d'activité</dt><dd>{detailItem.domaineActivite ?? '-'}</dd>
+                  <dt>Type d'action / sanction</dt><dd>{detailItem.typeSanction ?? '-'}</dd>
                   <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
                   <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
                   <dt>Montant</dt><dd>{detailItem.field_8?.toLocaleString() ?? '-'}</dd>
@@ -1923,9 +2052,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                       disabled={detailSaving}
                     >
                       <option value="">— Choisir —</option>
-                      <option value="Operationnel">Opérationnel</option>
-                      <option value="Fraude">Fraude</option>
-                      <option value="Commercial">Commercial</option>
+                      {CLASSIFICATION_OPTIONS.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -1940,6 +2069,21 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                       <option value="">— Choisir —</option>
                       {CRITICITE_OPTIONS.map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor="edit-domaine">Domaine d'activité</label>
+                    <select
+                      id="edit-domaine"
+                      value={detailForm.domaineActivite}
+                      onChange={e => updateDetailForm('domaineActivite', e.target.value)}
+                      disabled={detailSaving}
+                    >
+                      <option value="">— Choisir —</option>
+                      {DOMAINE_ACTIVITE_OPTIONS.map(d => (
+                        <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
                   </div>
@@ -2466,6 +2610,28 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   onChange={e => updateResolutionForm('observations', e.target.value)}
                   placeholder="Remarques additionnelles, recommandations..."
                 />
+              </div>
+
+              {/* Type d'action / sanction : saisi UNIQUEMENT à la clôture
+                  (pas à la création de l'anomalie). Référentiel mixte
+                  TYPE_SANCTION_OPTIONS (relance, demande, sanction…).
+                  Champ optionnel — on peut clôturer sans action/sanction
+                  particulière dans les cas simples. */}
+              <div className="form-field">
+                <label htmlFor="resolution-typeSanction">
+                  Type d'action / sanction
+                  <small className="field-hint" style={{ marginLeft: 8 }}>optionnel</small>
+                </label>
+                <select
+                  id="resolution-typeSanction"
+                  value={resolutionForm.typeSanction}
+                  onChange={e => updateResolutionForm('typeSanction', e.target.value)}
+                >
+                  <option value="">— Aucun —</option>
+                  {TYPE_SANCTION_OPTIONS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-field">

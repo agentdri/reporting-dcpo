@@ -1049,11 +1049,28 @@ interface ControleDetailModalProps {
 }
 
 function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProps) {
+  // Historique des évaluations du contrôle : chargé une fois à l'ouverture
+  // de la modale (filtre serveur OData sur plan_controle_id). Non-bloquant :
+  // pendant le chargement, on affiche un placeholder.
+  const [history, setHistory] = useState<ControleEvaluation[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    // Pas de setHistoryLoading(true) ici : l'état initial est déjà `true`.
+    // La modale se monte à chaque ouverture (`{selected && <Modal />}`)
+    // donc un useState(true) initial suffit — pas de re-fetch sur même item.
+    let cancelled = false
+    listEvaluationsForControle(entry.id)
+      .then(data => { if (!cancelled) setHistory(data) })
+      .finally(() => { if (!cancelled) setHistoryLoading(false) })
+    return () => { cancelled = true }
+  }, [entry.id])
 
   const attachments = entry.attachments ?? []
 
@@ -1104,6 +1121,75 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
                     </li>
                   )
                 })}
+              </ul>
+            )}
+          </div>
+
+          {/* Historique des évaluations — réutilise le format chip-card de
+              la modale d'évaluation (même rendu visuel pour la cohérence). */}
+          <div style={{ marginTop: 20 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>
+              Historique des évaluations ({history.length})
+            </h3>
+            {historyLoading ? (
+              <p className="loading-text">Chargement de l'historique...</p>
+            ) : history.length === 0 ? (
+              <p className="loading-text">Aucune évaluation enregistrée pour ce contrôle.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {history.map(ev => (
+                  <li
+                    key={ev.id}
+                    style={{
+                      padding: '8px 10px',
+                      border: '1px solid #eee',
+                      borderLeft: '3px solid #1d4ed8',
+                      borderRadius: 6,
+                      background: '#fafafa',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                      <strong>{formatPeriodeLabel(ev.periode, entry.frequence)}</strong>
+                      {ev.createdAt && (
+                        <span style={{ color: '#888' }}>
+                          {new Date(ev.createdAt).toLocaleDateString('fr-FR')}
+                        </span>
+                      )}
+                    </div>
+                    {ev.observations && (
+                      <div style={{ marginTop: 4, fontSize: 13, color: '#444', whiteSpace: 'pre-wrap' }}>
+                        {ev.observations}
+                      </div>
+                    )}
+                    {/* Pièces jointes éventuelles de l'évaluation */}
+                    {ev.attachments && ev.attachments.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {ev.attachments.map((att, i) => (
+                          <a
+                            key={i}
+                            href={att.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 12,
+                              color: '#1d4ed8',
+                              textDecoration: 'none',
+                              padding: '2px 6px',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: 4,
+                              background: '#fff',
+                            }}
+                          >
+                            {getAttachmentIcon(getAttachmentIconType(att.name))} {att.name}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
               </ul>
             )}
           </div>

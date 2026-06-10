@@ -1311,12 +1311,28 @@ interface PacDetailModalProps {
 }
 
 function PacDetailModal({ pac, directions, onClose, onEdit }: PacDetailModalProps) {
+  // Historique des évaluations du PAC : chargé une fois à l'ouverture
+  // (filtre serveur OData sur plan_action_correctif_id).
+  const [history, setHistory] = useState<PacEvaluation[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+
   // Escape ferme la modale (cohérent avec les autres modales du projet)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    // Pas de setHistoryLoading(true) ici : l'état initial est déjà `true`.
+    // La modale se monte à chaque ouverture donc un useState(true) initial
+    // suffit — pas de re-fetch sur même item.
+    let cancelled = false
+    listEvaluationsForPac(pac.id)
+      .then(data => { if (!cancelled) setHistory(data) })
+      .finally(() => { if (!cancelled) setHistoryLoading(false) })
+    return () => { cancelled = true }
+  }, [pac.id])
 
   const attachments = pac.attachments ?? []
 
@@ -1385,6 +1401,69 @@ function PacDetailModal({ pac, directions, onClose, onEdit }: PacDetailModalProp
                     </li>
                   )
                 })}
+              </ul>
+            )}
+          </div>
+
+          {/* Historique des évaluations du PAC — même rendu visuel que dans
+              la modale d'évaluation pour la cohérence d'expérience. */}
+          <div style={{ marginTop: 20 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>
+              Historique des évaluations ({history.length})
+            </h3>
+            {historyLoading ? (
+              <p className="loading-text">Chargement de l'historique...</p>
+            ) : history.length === 0 ? (
+              <p className="loading-text">Aucune évaluation enregistrée pour ce PAC.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {history.map(ev => (
+                  <li
+                    key={ev.id}
+                    style={{
+                      padding: '8px 10px',
+                      border: '1px solid #eee',
+                      borderLeft: '3px solid #1d4ed8',
+                      borderRadius: 6,
+                      background: '#fafafa',
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: '#888' }}>
+                      {ev.createdAt && new Date(ev.createdAt).toLocaleDateString('fr-FR')}
+                    </div>
+                    {ev.observations && (
+                      <div style={{ marginTop: 4, fontSize: 13, color: '#444', whiteSpace: 'pre-wrap' }}>
+                        {ev.observations}
+                      </div>
+                    )}
+                    {ev.attachments.length > 0 && (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {ev.attachments.map((att, i) => (
+                          <a
+                            key={i}
+                            href={att.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 12,
+                              color: '#1d4ed8',
+                              textDecoration: 'none',
+                              padding: '2px 6px',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: 4,
+                              background: '#fff',
+                            }}
+                          >
+                            {getAttachmentIcon(getAttachmentIconType(att.name))} {att.name}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                ))}
               </ul>
             )}
           </div>
