@@ -77,6 +77,17 @@ interface AgentStats {
   clos: number
   montantTotal: number
   anomalies: DCPO_LISTE_ANORMALIERead[]
+  /**
+   * Valeurs DISTINCTES de domaine d'activité rencontrées sur les anomalies
+   * de cet agent. Triées par ordre alphabétique pour un affichage stable.
+   */
+  domaines: string[]
+  /**
+   * Valeurs DISTINCTES de typeSanction rencontrées sur les anomalies clôturées
+   * de cet agent (le champ n'est renseigné qu'à la clôture, donc cette liste
+   * peut rester vide si aucune anomalie n'est clos).
+   */
+  sanctions: string[]
 }
 
 
@@ -318,6 +329,16 @@ export default function ReportingAgent() {
    *   - email : vue détail de cet agent (toutes ses anomalies)
    */
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  /**
+   * Mode de regroupement des anomalies :
+   *   - 'affecte' : par contrôleur affecté (personneAffecter) — par défaut
+   *   - 'auteur'  : par auteur de l'anomalie (auteur_anormalie)
+   *
+   * Le changement de mode rebuild agentMap et reset la sélection courante
+   * (le contexte change : "l'agent X" en mode affecte ≠ "l'agent X" en mode
+   * auteur). Permet d'imprimer le bulletin selon les deux axes.
+   */
+  const [groupingMode, setGroupingMode] = useState<'affecte' | 'auteur'>('affecte')
   /** Filtres en cours de saisie (binding inputs). */
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   /** Filtres effectivement appliqués (snapshot au clic Rechercher). */
@@ -447,23 +468,24 @@ export default function ReportingAgent() {
   /**
    * Étape 2 — agrégation des items filtrés par AGENT.
    *
-   * /!\ Sémantique métier : l'"agent" ici est le CONTRÔLEUR AFFECTÉ à
-   * l'anomalie (champ `personneAffecter`), pas l'auteur qui l'a déclarée.
-   * Cette vue mesure la CHARGE de chaque contrôleur — pas qui a signalé quoi.
+   * Sémantique métier pilotée par `groupingMode` :
+   *   - 'affecte' (par défaut) → contrôleur AFFECTÉ (personneAffecter) :
+   *     mesure la CHARGE de chaque contrôleur, qui s'occupe de quoi.
+   *   - 'auteur' → AUTEUR de l'anomalie (auteur_anormalie) : mesure la
+   *     PRODUCTION de signalements par agent (qui a déclaré quoi).
    *
-   * Algorithme :
-   *   - Map<email, AgentStats> alimentée en un seul passage
-   *   - Skip les items sans personne affectée (anomalies non assignées)
-   *   - Pour chaque item : créer le bucket si absent, accumuler les compteurs
-   *
-   * Map (vs objet) : permet une recherche O(1) par email + itération facile
-   * via .values() pour le .sort() final.
+   * Permet d'imprimer le bulletin selon les DEUX axes (cf. sélecteur en
+   * haut de page).
    */
   const agentMap = useMemo(() => {
     const map = new Map<string, AgentStats>()
     filteredItems.forEach(item => {
-      const email = item.personneAffecter?.Email ?? ''
-      const name = item.personneAffecter?.DisplayName ?? 'Inconnu'
+      // Choix de la personne de référence selon le mode actif
+      const personne = groupingMode === 'auteur'
+        ? item.auteur_anormalie
+        : item.personneAffecter
+      const email = personne?.Email ?? ''
+      const name = personne?.DisplayName ?? 'Inconnu'
       if (!email) return
 
       if (!map.has(email)) {
@@ -477,6 +499,8 @@ export default function ReportingAgent() {
           clos: 0,
           montantTotal: 0,
           anomalies: [],
+          domaines: [],
+          sanctions: [],
         })
       }
       const stats = map.get(email)!
@@ -487,9 +511,24 @@ export default function ReportingAgent() {
       else if (item.field_10 === 'En cours') stats.enCours++
       else if (item.field_10 === 'Resolu') stats.resolu++
       else if (item.field_10 === 'Clos') stats.clos++
+
+      // Domaines & sanctions : on collecte les valeurs distinctes pour
+      // afficher chips en colonnes dédiées. Les chaînes vides / espaces
+      // sont ignorées pour ne pas polluer la liste.
+      const dom = item.domaineActivite?.trim()
+      if (dom && !stats.domaines.includes(dom)) stats.domaines.push(dom)
+      const san = item.typeSanction?.trim()
+      if (san && !stats.sanctions.includes(san)) stats.sanctions.push(san)
     })
+    // Tri alphabétique stable des listes distinctes (cohérent visuellement
+    // d'un agent à l'autre — sinon l'ordre dépendrait de l'ordre de
+    // traitement des items).
+    for (const stats of map.values()) {
+      stats.domaines.sort()
+      stats.sanctions.sort()
+    }
     return map
-  }, [filteredItems])
+  }, [filteredItems, groupingMode])
 
   /**
    * Étape 3 — tableau des agents trié par volume décroissant.
@@ -623,8 +662,27 @@ export default function ReportingAgent() {
    * ════════════════════════════════════════════════════════════════════════ */
   return (
     <>
-      <div className="content-header">
-        <h2>Reporting par Agent</h2>
+      <div className="content-header" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h2 style={{ flex: 1, margin: 0 }}>
+          Reporting par {groupingMode === 'auteur' ? 'auteur' : 'agent affecté'}
+        </h2>
+        {/* Sélecteur de regroupement : pilote agentMap → permet d'imprimer
+            le bulletin selon deux axes (charge des contrôleurs vs production
+            de signalements par auteur). Masqué en vue détail pour ne pas
+            laisser changer le contexte d'une fiche déjà ouverte. */}
+        {!selectedAgent && (
+          <div className="filter-field" style={{ marginBottom: 0 }}>
+            <label htmlFor="grouping-mode" style={{ fontSize: 12, marginBottom: 4 }}>Regroupement</label>
+            <select
+              id="grouping-mode"
+              value={groupingMode}
+              onChange={e => setGroupingMode(e.target.value as 'affecte' | 'auteur')}
+            >
+              <option value="affecte">Par personne affectée</option>
+              <option value="auteur">Par auteur</option>
+            </select>
+          </div>
+        )}
         {selectedAgent && (
           <button className="btn-add" onClick={() => setSelectedAgent(null)}>
             Retour à la liste
@@ -729,7 +787,7 @@ export default function ReportingAgent() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Personne affectée</th>
+                    <th>{groupingMode === 'auteur' ? 'Auteur' : 'Personne affectée'}</th>
                     <th>Email</th>
                     <th>Total</th>
                     <th>Ouvert</th>
@@ -737,6 +795,8 @@ export default function ReportingAgent() {
                     <th>Resolu</th>
                     <th>Clos</th>
                     <th>Montant total</th>
+                    <th style={{ minWidth: 180 }}>Domaines d'activité</th>
+                    <th style={{ minWidth: 180 }}>Types d'action / sanction</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -757,6 +817,58 @@ export default function ReportingAgent() {
                       <td>{agent.resolu}</td>
                       <td>{agent.clos}</td>
                       <td>{agent.montantTotal.toLocaleString()}</td>
+                      {/* Domaines distincts en chips bleues */}
+                      <td>
+                        {agent.domaines.length === 0
+                          ? <span style={{ color: '#888' }}>—</span>
+                          : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {agent.domaines.map(d => (
+                                <span
+                                  key={d}
+                                  style={{
+                                    fontSize: 11,
+                                    padding: '2px 6px',
+                                    background: '#dbeafe',
+                                    color: '#1e3a8a',
+                                    border: '1px solid #93c5fd',
+                                    borderRadius: 10,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {d}
+                                </span>
+                              ))}
+                            </div>
+                          )
+                        }
+                      </td>
+                      {/* Sanctions distinctes en chips ambrées */}
+                      <td>
+                        {agent.sanctions.length === 0
+                          ? <span style={{ color: '#888' }}>—</span>
+                          : (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {agent.sanctions.map(s => (
+                                <span
+                                  key={s}
+                                  style={{
+                                    fontSize: 11,
+                                    padding: '2px 6px',
+                                    background: '#fef3c7',
+                                    color: '#92400e',
+                                    border: '1px solid #fcd34d',
+                                    borderRadius: 10,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          )
+                        }
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -898,13 +1010,16 @@ export default function ReportingAgent() {
                 <tr>
                   <th>Date</th>
                   <th>Declarant</th>
+                  <th>Auteur</th>
                   <th>Cause</th>
                   <th>Classification</th>
+                  <th>Domaine d'activité</th>
                   <th>Agence</th>
                   <th>Reseau</th>
                   <th>Montant</th>
                   <th>Date regularisation</th>
                   <th>Statut</th>
+                  <th>Type d'action / sanction</th>
                   <th>Personne affectee</th>
                 </tr>
               </thead>
@@ -913,13 +1028,16 @@ export default function ReportingAgent() {
                   <tr key={item.ID}>
                     <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
                     <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
+                    <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
                     <td>{item.field_4 ? stripHtml(item.field_4) : '-'}</td>
                     <td>{item.field_5 ?? '-'}</td>
+                    <td>{item.domaineActivite ?? '-'}</td>
                     <td>{agences.find(a => String(a.ID) === item.field_6)?.Title ?? item.field_6 ?? '-'}</td>
                     <td>{reseaux.find(r => String(r.ID) === item.field_7)?.field_1 ?? item.field_7 ?? '-'}</td>
                     <td>{item.field_8?.toLocaleString() ?? '-'}</td>
                     <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString() : '-'}</td>
                     <td>{item.field_10 ?? '-'}</td>
+                    <td>{item.typeSanction ?? '-'}</td>
                     <td>{item.personneAffecter?.DisplayName ?? '-'}</td>
                   </tr>
                 ))}
@@ -943,7 +1061,14 @@ export default function ReportingAgent() {
               CONFORMITE" par section + score global en bas. */}
           <div className="agent-print-only">
             <div className="agent-print-header">
-              <h1>FICHE DE NOTATION DU CONTROLEUR</h1>
+              {/* Le titre du bulletin reflète le mode de regroupement :
+                  - 'affecte' → "FICHE DE NOTATION DU CONTROLEUR" (charge)
+                  - 'auteur'  → "FICHE DE NOTATION DE L'AUTEUR" (production) */}
+              <h1>
+                {groupingMode === 'auteur'
+                  ? "FICHE DE NOTATION DE L'AUTEUR"
+                  : 'FICHE DE NOTATION DU CONTROLEUR'}
+              </h1>
               <p style={{ textAlign: 'center', color: '#c0392b' }}>
                 Édité le {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
               </p>

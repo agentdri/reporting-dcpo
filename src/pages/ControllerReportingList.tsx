@@ -349,6 +349,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                   <th>Total heures</th>
                   <th>Temps occupé</th>
                   <th>Statut journée</th>
+                  <th style={{ minWidth: 240 }}>Synthèse des actions</th>
                   <th>Statut</th>
                 </tr>
               </thead>
@@ -366,6 +367,58 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                     <td>{formatHours(r.totalHeures)}</td>
                     <td>{r.tempsOccupe}%</td>
                     <td>{r.statutJournee}</td>
+                    {/* Synthèse compacte : compteur + 2 premières actions
+                        tronquées + bouton "Voir plus" qui ouvre le détail.
+                        stopPropagation sur le bouton pour éviter le double
+                        déclenchement avec le onClick de la ligne (qui ouvre
+                        aussi le détail). */}
+                    <td onClick={e => e.stopPropagation()} style={{ fontSize: 12 }}>
+                      {r.lines.length === 0 ? (
+                        <span style={{ color: '#888' }}>Aucune action</span>
+                      ) : (
+                        <>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                            {r.lines.length} action{r.lines.length > 1 ? 's' : ''}
+                          </div>
+                          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {r.lines.slice(0, 2).map(line => {
+                              const objet = (line.objet || '').trim()
+                              // Tronque à ~60 caractères pour rester compact
+                              const display = objet.length > 60 ? objet.slice(0, 57) + '…' : objet
+                              return (
+                                <li key={line.id} style={{ color: '#444' }}>
+                                  <span style={{ color: '#1d4ed8', fontWeight: 600 }}>[{line.domaine || '—'}]</span>{' '}
+                                  {display || <em style={{ color: '#888' }}>(sans objet)</em>}
+                                  <span style={{ color: '#888' }}> — {line.duree} min</span>
+                                </li>
+                              )
+                            })}
+                            {r.lines.length > 2 && (
+                              <li style={{ color: '#888', fontStyle: 'italic' }}>
+                                … +{r.lines.length - 2} autre{r.lines.length - 2 > 1 ? 's' : ''}
+                              </li>
+                            )}
+                          </ul>
+                          <button
+                            type="button"
+                            onClick={() => setSelected(r)}
+                            style={{
+                              marginTop: 6,
+                              padding: '2px 8px',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: '#1d4ed8',
+                              background: 'transparent',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Voir plus →
+                          </button>
+                        </>
+                      )}
+                    </td>
                     <td>
                       <span className={`manager-pill ${
                         r.statut === 'Soumis' ? 'manager-pill-pending'
