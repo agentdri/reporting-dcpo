@@ -241,14 +241,43 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
     })
   }, [controles, appliedFilters, userRole, userEmail])
 
-  /** Stats globales (sur la liste filtrée). */
-  const stats = useMemo(() => ({
-    total: filtered.length,
-    aPlanifier: filtered.filter(c => c.statut === 'À planifier').length,
-    planifies: filtered.filter(c => c.statut === 'Planifié').length,
-    enCours: filtered.filter(c => c.statut === 'En cours').length,
-    realises: filtered.filter(c => c.statut === 'Réalisé').length,
-  }), [filtered])
+  /**
+   * Stats globales (sur la liste filtrée) + taux d'évolution global.
+   *
+   * `tauxGlobal` = ratio agrégé de toutes les évaluations effectuées vs
+   * attendues sur les contrôles visibles. Calculé comme :
+   *   sum(évaluations faites)  /  sum(évaluations attendues) * 100
+   *
+   * Pertinent pour donner une vision macro à la direction : un seul
+   * pourcentage qui résume "où en est-on collectivement sur le plan de
+   * contrôle ?". Capé à 100 % et arrondi à l'entier.
+   *
+   * Les contrôles sans évaluation attendue (cas pathologique) sont ignorés
+   * pour éviter une division par zéro.
+   */
+  const stats = useMemo(() => {
+    let totalRealized = 0
+    let totalExpected = 0
+    for (const c of filtered) {
+      const expected = getExpectedEvaluationsPerYear(c.frequence)
+      if (expected <= 0) continue
+      totalRealized += evaluationCounts.get(Number(c.id)) ?? 0
+      totalExpected += expected
+    }
+    const tauxGlobal = totalExpected > 0
+      ? Math.max(0, Math.min(100, Math.round((totalRealized / totalExpected) * 100)))
+      : 0
+    return {
+      total: filtered.length,
+      aPlanifier: filtered.filter(c => c.statut === 'À planifier').length,
+      planifies: filtered.filter(c => c.statut === 'Planifié').length,
+      enCours: filtered.filter(c => c.statut === 'En cours').length,
+      realises: filtered.filter(c => c.statut === 'Réalisé').length,
+      tauxGlobal,
+      totalRealized,
+      totalExpected,
+    }
+  }, [filtered, evaluationCounts])
 
   const pagination = usePagination({
     total: filtered.length,
@@ -580,6 +609,18 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
         <div className="stat-card resolu">
           <span className="stat-value">{stats.realises}</span>
           <span className="stat-label">Réalisés</span>
+        </div>
+        {/* Taux d'évolution global : agrégat de toutes les évaluations
+            effectuées vs attendues sur la liste filtrée. Donne une vision
+            macro instantanée de l'avancement collectif. */}
+        <div className="stat-card resolu">
+          <span
+            className="stat-value"
+            title={`${stats.totalRealized} évaluation(s) effectuée(s) sur ${stats.totalExpected} attendue(s)`}
+          >
+            {stats.tauxGlobal}%
+          </span>
+          <span className="stat-label">Taux d'évolution global</span>
         </div>
       </div>
 

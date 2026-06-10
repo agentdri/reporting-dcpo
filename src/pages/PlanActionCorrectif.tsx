@@ -29,6 +29,11 @@ import {
   createPAC,
   updatePAC,
   updatePacResponsable,
+  createPacEvaluation,
+  listEvaluationsForPac,
+  appendPacEvaluationAttachmentUrls,
+  isPacEvaluable,
+  type PacEvaluation,
   appendPacAttachmentUrls,
   listPACs,
   getPacStatusClass,
@@ -44,7 +49,7 @@ import {
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
-import { uploadPacAttachment, getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
+import { uploadPacAttachment, uploadPacEvaluationAttachment, getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
 
 
 /**
@@ -162,6 +167,23 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
   /** Erreur affichée dans la modale (validation ou réseau). */
   const [affectError, setAffectError] = useState<string | null>(null)
 
+  /* ─── États de la modale ÉVALUATION PAC ────────────────────────────────
+   * Pas de période (différence avec le Plan de Contrôle) : on consigne juste
+   * observations. La modale liste également les évaluations passées du PAC. */
+  /** PAC ciblé par la modale d'évaluation (null = modale fermée). */
+  const [evalTarget, setEvalTarget] = useState<Pac | null>(null)
+  /** Évaluations existantes du PAC ciblé. */
+  const [evalHistory, setEvalHistory] = useState<PacEvaluation[]>([])
+  /** Champ unique du formulaire (observations). */
+  const [evalObservations, setEvalObservations] = useState('')
+  /** Pièce jointe optionnelle de l'évaluation PAC.
+   *  Uploadée via Power Automate APRÈS création de l'évaluation (le workflow
+   *  a besoin de l'ID de l'item), puis l'URL renvoyée est concaténée dans
+   *  le champ urlPieceJointe de l'évaluation. */
+  const [evalAttachment, setEvalAttachment] = useState<File | null>(null)
+  const [evalSaving, setEvalSaving] = useState(false)
+  const [evalError, setEvalError] = useState<string | null>(null)
+
   /** Permission "créer / éditer un PAC". */
   const canManage = !!userRole && MANAGER_ROLES.includes(userRole)
 
@@ -250,6 +272,108 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
       setAffectError(err instanceof Error ? err.message : "Échec de l'affectation.")
     } finally {
       setAffectSaving(false)
+    }
+  }
+
+  /* ─── Handlers de la modale ÉVALUATION PAC ───────────────────────────── */
+
+  /**
+   * Ouvre la modale d'évaluation pour un PAC :
+   *   1. Charge l'historique des évaluations existantes (filtre serveur)
+   *   2. Reset le formulaire
+   *
+   * L'historique est chargé en arrière-plan ; pendant ce temps, evalHistory
+   * reste vide et l'utilisateur peut déjà commencer à saisir.
+   */
+  const openEvaluation = async (pac: Pac) => {
+    setEvalTarget(pac)
+    setEvalObservations('')
+    setEvalAttachment(null)
+    setEvalError(null)
+    setEvalHistory([])
+    try {
+      const history = await listEvaluationsForPac(pac.id)
+      setEvalHistory(history)
+    } catch (err) {
+      console.error('openEvaluation: échec chargement historique', err)
+    }
+  }
+
+  /** Ferme la modale d'évaluation et reset tous ses états. */
+  const closeEvaluation = () => {
+    setEvalTarget(null)
+    setEvalObservations('')
+    setEvalAttachment(null)
+    setEvalHistory([])
+    setEvalError(null)
+    setEvalSaving(false)
+  }
+
+  /**
+   * Crée une évaluation pour le PAC ciblé.
+   *
+   * Garde-fou supplémentaire : on revérifie isPacEvaluable au moment du
+   * submit pour empêcher un cas de race où le statut aurait basculé pendant
+   * que la modale est ouverte.
+   */
+  const submitEvaluation = async () => {
+    if (!evalTarget?.id) return
+    setEvalError(null)
+
+    if (!isPacEvaluable(evalTarget.statut)) {
+      setEvalError("Ce PAC n'est plus évaluable (statut Exécutée ou Non Exécutée).")
+      return
+    }
+    if (!evalObservations.trim()) {
+      setEvalError('Les observations sont obligatoires.')
+      return
+    }
+
+    setEvalSaving(true)
+    try {
+      // 1. Créer l'évaluation côté SP — on récupère son ID pour l'étape 2.
+      const created = await createPacEvaluation({
+        pacId: evalTarget.id,
+        observations: evalObservations.trim(),
+      })
+
+      // 2. Si une pièce jointe est sélectionnée : upload via Power Automate,
+      //    puis concaténation de l'URL retournée dans urlPieceJointe.
+      //
+      //    Stratégie d'erreur "best-effort" : si l'upload échoue, on garde
+      //    l'évaluation créée et on affiche un message pour ne pas perdre
+      //    la saisie utilisateur. L'utilisateur peut re-tenter manuellement
+      //    ou attacher le fichier plus tard.
+      if (evalAttachment) {
+        try {
+          const uploadedUrl = await uploadPacEvaluationAttachment(created.id, evalAttachment, 'Visite')
+          if (uploadedUrl) {
+            await appendPacEvaluationAttachmentUrls(created.id, [uploadedUrl])
+          }
+        } catch (uploadErr) {
+          const detail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          console.error('Échec upload pièce jointe évaluation PAC', uploadErr)
+          setEvalError(`L'évaluation a été enregistrée mais la pièce jointe a échoué : ${detail}`)
+          // Recharger l'historique tout de même pour montrer la nouvelle ligne
+          const history = await listEvaluationsForPac(evalTarget.id)
+          setEvalHistory(history)
+          setEvalObservations('')
+          setEvalAttachment(null)
+          return  // garde la modale ouverte
+        }
+      }
+
+      // Recharger l'historique pour que la nouvelle évaluation apparaisse en haut.
+      const history = await listEvaluationsForPac(evalTarget.id)
+      setEvalHistory(history)
+      // Reset du formulaire pour permettre une saisie successive
+      setEvalObservations('')
+      setEvalAttachment(null)
+    } catch (err) {
+      console.error('submitEvaluation PAC error', err)
+      setEvalError(err instanceof Error ? err.message : "Échec de l'enregistrement de l'évaluation.")
+    } finally {
+      setEvalSaving(false)
     }
   }
 
@@ -617,6 +741,16 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                       sur un bouton d'action de la cellule. */}
                   <td onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {/* Bouton "Évaluation" : visible uniquement si le PAC
+                          est encore évaluable (statut "En cours"). Dès qu'il
+                          passe à "Exécutée" ou "Non Exécutée", il est figé
+                          côté évaluation — l'historique reste consultable
+                          mais aucune nouvelle évaluation ne peut être ajoutée. */}
+                      {isPacEvaluable(p.statut) && (
+                        <button type="button" className="btn-cta btn-cta-affect" onClick={() => openEvaluation(p)}>
+                          Évaluation
+                        </button>
+                      )}
                       {/* Bouton "Affectation" : réservé aux managers (canManage).
                           Un Controleur consulte les PAC mais ne peut pas
                           réassigner le responsable. */}
@@ -717,6 +851,167 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                 >
                   {affectSaving ? 'Affectation...' : "Valider l'affectation"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modale ÉVALUATION PAC ─────────────────────────────────── */}
+      {/* Permet de consigner une évaluation pour un PAC en cours.
+            - Pas de période (différence avec Plan de Contrôle) : un PAC
+              est ponctuel, on évalue son avancement à un moment T.
+            - Le bouton qui ouvre cette modale n'est rendu que si
+              isPacEvaluable(p.statut), mais on revérifie au submit pour
+              éviter les races (le statut peut changer pendant l'ouverture).
+            - L'historique des évaluations existantes est listé en bas. */}
+      {evalTarget && (
+        <div className="modal-overlay" onClick={closeEvaluation}>
+          <div
+            className="modal"
+            onClick={e => e.stopPropagation()}
+            style={{ width: 'min(640px, 100%)' }}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-header">
+              <h2>Évaluation du PAC</h2>
+              <button className="modal-close" onClick={closeEvaluation} aria-label="Fermer">&times;</button>
+            </div>
+            <div className="modal-body">
+              {/* Rappel du PAC ciblé (lecture seule) */}
+              <dl className="detail-grid" style={{ marginBottom: 12 }}>
+                <dt>Intitulé</dt><dd><strong>{evalTarget.intitule}</strong></dd>
+                <dt>Source</dt><dd>{evalTarget.sourcePac || '—'}</dd>
+                <dt>Responsable</dt><dd>{evalTarget.responsable || '—'}</dd>
+                <dt>Statut</dt>
+                <dd>
+                  <span className={`manager-pill ${getPacStatusClass(evalTarget.statut)}`}>
+                    {evalTarget.statut}
+                  </span>
+                </dd>
+              </dl>
+
+              <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Nouvelle évaluation</h3>
+
+              <div className="form-field" style={{ marginBottom: 8 }}>
+                <label htmlFor="pac-eval-obs">Observations *</label>
+                <textarea
+                  id="pac-eval-obs"
+                  rows={4}
+                  value={evalObservations}
+                  onChange={e => setEvalObservations(e.target.value)}
+                  placeholder="Avancement, blocages, jalons franchis..."
+                  disabled={evalSaving}
+                />
+              </div>
+
+              {/* Pièce jointe optionnelle : uploadée après création de
+                  l'évaluation (workflow Power Automate). En cas d'échec
+                  d'upload, l'évaluation reste créée — message d'avertissement
+                  affiché à l'utilisateur. */}
+              <div className="form-field" style={{ marginBottom: 8 }}>
+                <label htmlFor="pac-eval-attachment">Pièce jointe (optionnel)</label>
+                <input
+                  id="pac-eval-attachment"
+                  type="file"
+                  onChange={e => setEvalAttachment(e.target.files?.[0] ?? null)}
+                  disabled={evalSaving}
+                />
+                {evalAttachment && (
+                  <span className="selected-email" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {getAttachmentIcon(getAttachmentIconType(evalAttachment.name))} {evalAttachment.name}
+                  </span>
+                )}
+              </div>
+
+              {evalError && (
+                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                  {evalError}
+                </p>
+              )}
+
+              <div
+                className="modal-actions"
+                style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}
+              >
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-detail"
+                  onClick={closeEvaluation}
+                  disabled={evalSaving}
+                >
+                  Fermer
+                </button>
+                <button
+                  type="button"
+                  className="btn-cta btn-cta-affect"
+                  onClick={submitEvaluation}
+                  disabled={evalSaving || !evalObservations.trim()}
+                >
+                  {evalSaving ? 'Enregistrement...' : "Enregistrer l'évaluation"}
+                </button>
+              </div>
+
+              {/* Historique des évaluations existantes du PAC */}
+              <div style={{ marginTop: 20 }}>
+                <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>
+                  Historique des évaluations ({evalHistory.length})
+                </h3>
+                {evalHistory.length === 0 ? (
+                  <p className="loading-text">Aucune évaluation enregistrée pour le moment.</p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {evalHistory.map(ev => (
+                      <li
+                        key={ev.id}
+                        style={{
+                          padding: '8px 10px',
+                          border: '1px solid #eee',
+                          borderLeft: '3px solid #1d4ed8',
+                          borderRadius: 6,
+                          background: '#fafafa',
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: '#888' }}>
+                          {ev.createdAt && new Date(ev.createdAt).toLocaleDateString('fr-FR')}
+                        </div>
+                        {ev.observations && (
+                          <div style={{ marginTop: 4, fontSize: 13, color: '#444', whiteSpace: 'pre-wrap' }}>
+                            {ev.observations}
+                          </div>
+                        )}
+                        {/* Pièces jointes éventuelles de l'évaluation */}
+                        {ev.attachments.length > 0 && (
+                          <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {ev.attachments.map((att, i) => (
+                              <a
+                                key={i}
+                                href={att.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  fontSize: 12,
+                                  color: '#1d4ed8',
+                                  textDecoration: 'none',
+                                  padding: '2px 6px',
+                                  border: '1px solid #bfdbfe',
+                                  borderRadius: 4,
+                                  background: '#fff',
+                                }}
+                              >
+                                {getAttachmentIcon(getAttachmentIconType(att.name))} {att.name}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>

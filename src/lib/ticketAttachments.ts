@@ -119,6 +119,15 @@ export const PAC_ATTACHMENT_API_URL =
 export const EVALUATION_ATTACHMENT_API_URL =
   'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/34768a8a92324fc3a3e5181d95b604d0/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=fFhe-8z3azTw1jkdekzHF8_inr9zsH7ydsSrUr7Z2ks'
 
+/**
+ * Endpoint Power Automate dédié aux pièces jointes des ÉVALUATIONS du
+ * Plan d'Action Correctif (liste DCPO_EVALUATION_PLAN_ACTION_CORRECTIF).
+ * Workflow indépendant — distinct du flux d'upload PAC lui-même
+ * (PAC_ATTACHMENT_API_URL) et du flux des évaluations Plan de Contrôle.
+ */
+export const PAC_EVALUATION_ATTACHMENT_API_URL =
+  'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/3bfe06475a9c4e0c99306ea3ba62cad1/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=1u00IQtrIXJ8CKgxFHYbwf6dLjrlrA1xswB9a7w0tI8'
+
 
 /* ──────────────────────────────────────────────────────────────────────────
  * SECTION 3 — UTILITAIRES BAS-NIVEAU
@@ -580,6 +589,36 @@ export async function uploadEvaluationAttachment(
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Echec upload piece jointe évaluation (${response.status}): ${errorText}`)
+  }
+  const data: UploadResponse = await response.json()
+  return data.attachmentUrl
+}
+
+/**
+ * Upload une pièce jointe à un item de la liste
+ * DCPO_EVALUATION_PLAN_ACTION_CORRECTIF (évaluation d'un PAC).
+ * Workflow Power Automate dédié.
+ *
+ * @param itemId - ID SharePoint de l'évaluation PAC cible
+ * @param file - File issu d'un <input type="file">
+ * @param choise - Catégorie métier (défaut 'Visite')
+ * @returns URL absolue de la pièce jointe (ou undefined si réponse vide)
+ */
+export async function uploadPacEvaluationAttachment(
+  itemId: string,
+  file: File,
+  choise: string = 'Visite',
+): Promise<string | undefined> {
+  const fileContent = await fileToBase64(file)
+  const response = await postWorkflowWithRetry(PAC_EVALUATION_ATTACHMENT_API_URL, {
+    fileName: file.name,
+    fileContent,
+    Choise: choise,
+    idItem: itemId,
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Echec upload piece jointe évaluation PAC (${response.status}): ${errorText}`)
   }
   const data: UploadResponse = await response.json()
   return data.attachmentUrl

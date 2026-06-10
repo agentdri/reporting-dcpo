@@ -32,6 +32,11 @@
  */
 
 import { DCPO_LISTE_PLAN_ACTION_CORRECTIFService } from '../generated/services/DCPO_LISTE_PLAN_ACTION_CORRECTIFService'
+import { DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService } from '../generated/services/DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService'
+import type {
+  DCPO_EVALUATION_PLAN_ACTION_CORRECTIFRead,
+  DCPO_EVALUATION_PLAN_ACTION_CORRECTIFWrite,
+} from '../generated/models/DCPO_EVALUATION_PLAN_ACTION_CORRECTIFModel'
 import type {
   DCPO_LISTE_PLAN_ACTION_CORRECTIFRead,
   DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite,
@@ -371,5 +376,175 @@ export function getPacStatusClass(statut: PacStatus): string {
     case 'En cours': return 'manager-pill-pending'
     case 'Non Exécutée': return 'manager-pill-reporte'
     default: return 'manager-pill'
+  }
+}
+
+/**
+ * Indique si un PAC est encore évaluable.
+ *
+ * Règle métier : dès qu'un PAC est en statut "Exécutée" ou "Non Exécutée",
+ * il est CLÔTURÉ — l'agent responsable ne peut plus consigner d'évaluation.
+ * Les évaluations passées restent consultables dans l'historique.
+ *
+ * Seul le statut "En cours" reste évaluable (suivi périodique).
+ */
+export function isPacEvaluable(statut: PacStatus): boolean {
+  return statut === 'En cours'
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 6 — ÉVALUATIONS DU PLAN D'ACTION CORRECTIF
+ *
+ * Liste SharePoint DCPO_EVALUATION_PLAN_ACTION_CORRECTIF.
+ *
+ * Mapping :
+ *   ┌─────────────────────────────┬────────────────────┐
+ *   │ Title                       │ titre              │
+ *   │ observations                │ observations       │
+ *   │ plan_action_correctif_id    │ pacId (string SP)  │
+ *   │ urlPieceJointe              │ attachments (URLs concaténées)
+ *   └─────────────────────────────┴────────────────────┘
+ *
+ * Différence notable avec les évaluations de Plan de Contrôle : PAS de
+ * champ période (un PAC est ponctuel, pas récurrent — on évalue son
+ * avancement à un moment T, sans notion de jour/semaine/mois/année).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Évaluation d'un PAC (vue front). */
+export interface PacEvaluation {
+  id: string
+  titre: string
+  pacId: string
+  observations: string
+  /** Pièces jointes décodées depuis urlPieceJointe (concat " | "). */
+  attachments: { name: string; url: string }[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** Input pour créer une évaluation PAC. */
+export interface CreatePacEvaluationInput {
+  pacId: string
+  observations: string
+  titre?: string
+}
+
+/** Mapping item SP → PacEvaluation. */
+function fromPacEvaluationItem(item: DCPO_EVALUATION_PLAN_ACTION_CORRECTIFRead): PacEvaluation {
+  const urls = parseUrlList(item.urlPieceJointe)
+  return {
+    id: String(item.ID),
+    titre: item.Title ?? '',
+    pacId: item.plan_action_correctif_id ?? '',
+    observations: item.observations ?? '',
+    attachments: urls.map(url => ({ name: getFileNameFromUrl(url), url })),
+    createdAt: item.Created ?? '',
+    updatedAt: item.Modified ?? '',
+  }
+}
+
+/**
+ * Liste les évaluations d'un PAC donné (les plus récentes d'abord).
+ *
+ * Filtre serveur OData sur `plan_action_correctif_id`. La colonne SP est
+ * typée `string` → on encode l'ID entre quotes pour la comparaison.
+ */
+export async function listEvaluationsForPac(pacId: string | number): Promise<PacEvaluation[]> {
+  const idStr = String(pacId)
+  if (!idStr) return []
+  try {
+    const res = await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.getAll({
+      filter: `plan_action_correctif_id eq '${idStr}'`,
+      orderBy: ['Created desc'],
+    })
+    if (!res.data) return []
+    return res.data.map(fromPacEvaluationItem)
+  } catch (err) {
+    console.error('listEvaluationsForPac error', err)
+    return []
+  }
+}
+
+/** Liste TOUTES les évaluations PAC (pour agrégation côté Reporting Agent). */
+export async function listAllPacEvaluations(): Promise<PacEvaluation[]> {
+  try {
+    const res = await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.getAll({
+      orderBy: ['Created desc'],
+    })
+    if (!res.data) return []
+    return res.data.map(fromPacEvaluationItem)
+  } catch (err) {
+    console.error('listAllPacEvaluations error', err)
+    return []
+  }
+}
+
+/**
+ * Crée une évaluation pour un PAC.
+ *
+ * Le `Title` SP est obligatoire — si pas fourni, on génère un libellé par
+ * défaut avec la date du jour.
+ */
+export async function createPacEvaluation(input: CreatePacEvaluationInput): Promise<PacEvaluation> {
+  if (!input.pacId) throw new Error('PAC parent manquant.')
+  if (!input.observations.trim()) throw new Error('Les observations sont obligatoires.')
+
+  const today = new Date().toISOString().slice(0, 10)
+  const title = (input.titre ?? '').trim() || `Évaluation PAC ${input.pacId} - ${today}`
+
+  const payload: Record<string, unknown> = {
+    Title: title,
+    plan_action_correctif_id: input.pacId,
+    observations: input.observations.trim(),
+  }
+
+  const res = await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.create(
+    payload as Omit<DCPO_EVALUATION_PLAN_ACTION_CORRECTIFWrite, 'ID'>,
+  )
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? "Échec de la création de l'évaluation.")
+  }
+  return fromPacEvaluationItem(res.data)
+}
+
+/**
+ * Ajoute (concatène) une ou plusieurs URLs de pièces jointes au champ
+ * `urlPieceJointe` d'une évaluation PAC, sans écraser celles existantes.
+ *
+ * Workflow type :
+ *   1. Créer l'évaluation via createPacEvaluation (récupère l'ID)
+ *   2. Uploader le fichier via uploadPacEvaluationAttachment (récupère l'URL)
+ *   3. Appeler ce helper avec l'ID + l'URL pour la persister
+ *
+ * Cohérent avec les patterns appendXxxAttachmentUrls existants (anomalies,
+ * PAC, plan de contrôle, évaluations plan de contrôle).
+ */
+export async function appendPacEvaluationAttachmentUrls(
+  evaluationId: string,
+  newUrls: string[],
+): Promise<void> {
+  const cleanUrls = newUrls.filter(u => !!u && u.trim().length > 0)
+  if (cleanUrls.length === 0) return
+
+  let existing = ''
+  try {
+    const res = await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.get(evaluationId)
+    existing = res.data?.urlPieceJointe ?? ''
+  } catch (err) {
+    console.error('appendPacEvaluationAttachmentUrls: échec lecture item', err)
+  }
+
+  const concatenated = cleanUrls.reduce(
+    (acc, url) => appendUrl(acc, url),
+    existing,
+  )
+
+  try {
+    await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.update(evaluationId, {
+      urlPieceJointe: concatenated,
+    } as Partial<Omit<DCPO_EVALUATION_PLAN_ACTION_CORRECTIFWrite, 'ID'>>)
+  } catch (err) {
+    console.error('appendPacEvaluationAttachmentUrls: échec update item', err)
   }
 }
