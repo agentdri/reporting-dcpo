@@ -253,6 +253,56 @@ function stripHtml(html: string): string {
 }
 
 /**
+ * État d'avancement d'un délai d'affectation d'anomalie.
+ *
+ * Calculé à partir de la date d'affectation, du délai (en jours) et du
+ * jour courant. Utilisé pour la colonne "Délai" du tableau principal.
+ *
+ *   echeance = dateAffection + delai
+ *   diff     = echeance - aujourd'hui (en jours arrondis à l'inférieur)
+ *
+ * Trois cas :
+ *   - kind 'na'       : pas d'affectation ou délai invalide → "—"
+ *   - kind 'restant'  : diff > 0 → "X j restant(s)" (vert)
+ *   - kind 'echu'     : diff === 0 → "Échéance aujourd'hui" (orange)
+ *   - kind 'depasse'  : diff < 0 → "Dépassée de X j" (rouge)
+ */
+interface DelaiStatus {
+  kind: 'na' | 'restant' | 'echu' | 'depasse'
+  diff: number
+  label: string
+}
+
+function getDelaiStatus(
+  dateAffection: string | undefined,
+  delai: string | undefined,
+): DelaiStatus {
+  if (!dateAffection || !delai) return { kind: 'na', diff: 0, label: '—' }
+  const delaiNum = parseInt(delai, 10)
+  if (!Number.isFinite(delaiNum) || delaiNum <= 0) {
+    return { kind: 'na', diff: 0, label: '—' }
+  }
+  const start = new Date(dateAffection)
+  if (Number.isNaN(start.getTime())) return { kind: 'na', diff: 0, label: '—' }
+
+  // Normalisation à minuit local pour comparer en jours pleins, indépendamment
+  // de l'heure d'affectation et de l'heure courante du navigateur.
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  const echeance = new Date(startDay)
+  echeance.setDate(echeance.getDate() + delaiNum)
+  const today = new Date()
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+
+  const ONE_DAY = 86_400_000
+  const diff = Math.round((echeance.getTime() - todayDay.getTime()) / ONE_DAY)
+
+  if (diff > 0) return { kind: 'restant', diff, label: `${diff} j restant${diff > 1 ? 's' : ''}` }
+  if (diff === 0) return { kind: 'echu', diff, label: "Échéance aujourd'hui" }
+  const abs = Math.abs(diff)
+  return { kind: 'depasse', diff, label: `Dépassée de ${abs} j${abs > 1 ? 's' : ''}` }
+}
+
+/**
  * Convertit un email en format "Claims" SharePoint pour les champs de type
  * Personne/Groupe.
  *
@@ -504,7 +554,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    * Ex: '7', '15', '30'. SharePoint a typé ce champ comme string max 255, donc
    * on stocke un nombre converti en string.
    */
-  const [affectDelai, setAffectDelai] = useState('')
+  // Délai par défaut à l'ouverture de la modale d'affectation : 3 jours.
+  // L'utilisateur peut l'ajuster avant validation.
+  const [affectDelai, setAffectDelai] = useState('3')
   /** Commentaire d'affectation libre (instructions pour la personne assignée). */
   const [affectCommentaire, setAffectCommentaire] = useState('')
   /** Message d'erreur de validation (champs vides, etc.). */
@@ -717,6 +769,13 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         // de jours. On envoie la version normalisée (sans espaces / zéros tête).
         delai: String(delaiNum),
         commentaireAffectation: affectCommentaire.trim(),
+        // dateAffection : horodatage du moment de l'affectation. Sert de
+        // référence pour calculer l'échéance affichée dans le tableau
+        // (cf. colonne "Échéance / délai" et helper getDeadlineStatus).
+        //
+        // NB : le champ est typé `dateAffection` côté SP (typo "Affection"
+        // sans 't' — conservé tel quel pour matcher la colonne réelle).
+        dateAffection: new Date().toISOString(),
       })
       closeAffectModal()
       await fetchItems()
@@ -733,7 +792,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setAffectSearch('')
     setAffectResults([])
     setAffectSelectedUser(null)
-    setAffectDelai('')
+    // Délai remis à 3 jours (valeur par défaut métier — cohérent avec
+    // l'init du useState ci-dessus).
+    setAffectDelai('3')
     setAffectCommentaire('')
     setAffectError(null)
   }
@@ -1405,6 +1466,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
           '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
           Claims: toClaims(affecteFormEmail),
         }
+        // Quand une personne est affectée dès la création, on horodate
+        // l'affectation et on applique un délai par défaut de 3 jours.
+        // L'utilisateur peut ensuite ajuster ce délai depuis la modale
+        // d'affectation ou la modale d'édition du détail.
+        payload['dateAffection'] = new Date().toISOString()
+        payload['delai'] = '3'
       }
 
       const result = await DCPO_LISTE_ANORMALIEService.create(payload as Omit<DCPO_LISTE_ANORMALIEWrite, 'ID'>)
@@ -1844,6 +1911,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 <th className="col-status">Statut</th>
                 <th className="col-date">Date</th>
                 <th className="col-criticite">Criticité</th>
+                <th>Délai</th>
                 <th className="col-toggle" aria-label="Déplier / replier les colonnes">
                   <button
                     type="button"
@@ -1906,6 +1974,40 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                     {item.criticiteAnomalie
                       ? <span className={`criticite-chip crit-${item.criticiteAnomalie.toLowerCase()}`}>{item.criticiteAnomalie}</span>
                       : '—'}
+                  </td>
+                  {/* Délai d'affectation : pastille colorée selon que le
+                      contrôleur est dans les temps (vert), à échéance (orange)
+                      ou en retard (rouge). Cf. helper getDelaiStatus.
+                      title= : info-bulle détaillée pour audit rapide. */}
+                  <td>
+                    {(() => {
+                      const s = getDelaiStatus(item.dateAffection, item.delai)
+                      if (s.kind === 'na') return <span style={{ color: '#888' }}>—</span>
+                      const palette = s.kind === 'restant'
+                        ? { bg: '#d1fae5', fg: '#065f46', border: '#6ee7b7' }
+                        : s.kind === 'echu'
+                          ? { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' }
+                          : { bg: '#fee2e2', fg: '#991b1b', border: '#fca5a5' }
+                      const affDate = item.dateAffection ? new Date(item.dateAffection).toLocaleDateString('fr-FR') : '—'
+                      return (
+                        <span
+                          title={`Affecté le ${affDate} — délai ${item.delai ?? '?'} j`}
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            borderRadius: 10,
+                            background: palette.bg,
+                            color: palette.fg,
+                            border: `1px solid ${palette.border}`,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {s.label}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="col-toggle" aria-hidden="true"></td>
                   {expandedColumns && (
@@ -1991,6 +2093,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <dt>Declarant</dt><dd>{detailItem.declarant_anormalie?.DisplayName ?? '-'}</dd>
                   <dt>Auteur</dt><dd>{detailItem.auteur_anormalie?.DisplayName ?? '-'}</dd>
                   <dt>Personne affectee</dt><dd>{detailItem.personneAffecter?.DisplayName ?? '-'}</dd>
+                  <dt>Date d'affectation</dt>
+                  <dd>{detailItem.dateAffection ? new Date(detailItem.dateAffection).toLocaleDateString('fr-FR') : '-'}</dd>
                   <dt>Délai de traitement</dt><dd>{detailItem.delai ? `${detailItem.delai} jour(s)` : '-'}</dd>
                   <dt>Commentaire affectation</dt><dd>{detailItem.commentaireAffectation ?? '-'}</dd>
                   <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
