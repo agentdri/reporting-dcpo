@@ -148,6 +148,24 @@
   transition: all 0.2s;
 }
 
+/* Icône emoji de la sidebar : taille légèrement plus grande que le texte
+   et marge à droite pour aérer la lecture. inline-flex pour aligner
+   verticalement avec le label texte. */
+.nav-icon {
+  display: inline-block;
+  margin-right: 10px;
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
+  filter: grayscale(0.15);
+  /* Légère réduction de saturation des emojis pour l'harmonie globale du
+     thème sombre — empêche les couleurs vives de "sauter" trop fort. */
+}
+.nav-item.active .nav-icon,
+.nav-item:hover .nav-icon {
+  filter: none;
+}
+
 .nav-item:hover {
   color: #fff;
   background: rgba(230, 57, 70, 0.08);

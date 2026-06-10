@@ -9,9 +9,15 @@
  *
  * Fonctionnalités :
  *   - Liste des utilisateurs (table paginée + filtres recherche/rôle)
- *   - Création d'un utilisateur (modale)
+ *   - Création d'un utilisateur (modale) — picker Office 365 qui alimente
+ *     automatiquement nom + email
  *   - Modification d'un utilisateur existant (même modale, mode édition)
- *   - Suppression (modale de confirmation + impossibilité de se supprimer)
+ *
+ * Suppression : VOLONTAIREMENT NON EXPOSÉE dans l'UI. Un utilisateur révoqué
+ * doit être supprimé via SharePoint directement (sinon risque de perte de
+ * traçabilité — un user supprimé qui est responsable d'anomalies / PAC
+ * créerait des "orphelins"). Pour révoquer un accès : changer son rôle vers
+ * une valeur non-allowée, ou retirer la ligne en SP avec les bonnes ACL.
  *
  * Persistance : liste SharePoint DCPO_LISTE_USER via le service généré.
  *

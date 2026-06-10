@@ -3,30 +3,89 @@
  * MODULE 1 — ANOMALIES (Liste, création, gestion ticket)
  * ============================================================================
  *
- * Page centrale de l'application : affiche la liste des anomalies, permet la
- * création, l'affectation, le changement de statut, et la clôture complète
- * via le formulaire de résolution.
+ * Page centrale de l'application. Concentre presque tout le cycle de vie
+ * d'une anomalie : création, affectation, suivi, édition, clôture.
  *
- * Fonctionnalités clés :
- *   - Liste filtrable par dates / agence / réseau / classification / criticité /
- *     agent (auteur) / personne affectée
- *   - Filtres serveur (OData) ET client (champs personne) — cf. fetchItems
- *   - Tableau dépliable (colonnes intermédiaires masquables via "+/-")
- *   - Cellules sticky (Numéro à gauche, Actions à droite)
- *   - Badges statut Material Design 3
- *   - Modale création avec sections (Identité / Caractérisation / Localisation /
- *     Impact / Pièce jointe)
- *   - Modale détail (lecture seule)
- *   - Modale affectation (recherche utilisateur Office 365)
- *   - Modale changement de statut rapide
- *   - Modale "Suivi du ticket" (vue synthétique)
- *   - Modale "Clôture de la résolution" (formulaire contrôleur complet :
- *     statut final, dates, auteur, causes, actions, observations, pièce jointe)
+ * VUE PRINCIPALE
+ * --------------
+ *   - Tableau paginé des anomalies EN COURS (statuts Ouvert / En cours)
+ *     UNIQUEMENT. Les Clos / Résolu ne s'affichent JAMAIS ici — elles sont
+ *     consultables sur "Fiche récapitulatif de l'anomalie" (AnomalyBulletins).
+ *     Cf. buildFilter() qui ajoute `field_10 ne 'Clos' and ne 'Resolu'` par
+ *     défaut.
+ *   - Colonnes toujours visibles : Numéro (T-{ID SP}), Statut, Date, Criticité,
+ *     Délai (pastille colorée selon dateAffection + delai), [Actions].
+ *   - Colonnes dépliables ("+/-") : Déclarant, Auteur, Personne affectée,
+ *     Cause, Classification, Agence, Réseau, Montant, Date régularisation.
+ *   - Cellules sticky (Numéro à gauche, Actions à droite) pour le scroll
+ *     horizontal.
+ *   - Filtres serveur (OData) : dates, agence, réseau, classification,
+ *     criticité, domaine d'activité, statut.
+ *   - Filtres client : agent (auteur), personne affectée (recherche libre).
+ *   - Numéro de ticket = ID SharePoint (T-{item.ID}) → cohérent avec la
+ *     page Fiche récapitulatif (un même ticket porte le MÊME numéro partout).
  *
- * Persistance :
- *   - Tous les écritures via DCPO_LISTE_ANORMALIEService (SharePoint)
- *   - Pièces jointes : upload via workflow Power Automate puis URL stockée
- *     dans urlPieceJointe (multi-URLs concaténées par "|")
+ * MODALES (état piloté par variables dédiées, ouverture mutuellement exclusive)
+ * --------------------------------------------------------------------------
+ *   1. DÉTAIL (detailItem)
+ *      - Lecture par défaut, mode édition au clic "Modifier" (managers ET
+ *        contrôleur affecté à l'anomalie — cf. canEditAnomaly)
+ *      - Édition : tous les champs métier sauf les Personne (auteur,
+ *        déclarant, personne affectée) qui passent par leurs flux dédiés
+ *
+ *   2. AFFECTATION (affectItemId) — RÉSERVÉE AUX MANAGERS (canAffect)
+ *      Workflow en 2 étapes :
+ *        a) Rechercher un utilisateur Office 365 et le sélectionner
+ *        b) Renseigner délai (défaut 3 jours) + commentaire d'affectation
+ *      Écrit en SP : personneAffecter, delai, commentaireAffectation,
+ *      dateAffection (horodatage) — cf. confirmAffect.
+ *
+ *   3. CHANGEMENT DE STATUT RAPIDE (statusItem)
+ *      Bascule Ouvert ↔ En cours sans passer par la modale de résolution
+ *      complète. Si statut = Resolu/Clos, ouvre aussi la date associée.
+ *
+ *   4. SUIVI DU TICKET (ticketItem)
+ *      Vue synthétique des infos clés + commentaire d'affectation visible
+ *      si renseigné. Sert d'écran de transit (Détail / Statut / Clôture).
+ *
+ *   5. CLÔTURE DE LA RÉSOLUTION (resolutionItem)
+ *      Formulaire complet pour passer une anomalie en Resolu/Clos :
+ *      statut final, dates, auteur, causes immédiate/racine, actions menées,
+ *      observations, pièce jointe, type d'action/sanction (typeSanction).
+ *      → Crée aussi une description structurée concaténée dans field_4.
+ *
+ * RÈGLES MÉTIER CLÉS
+ * ------------------
+ *   - VISIBILITÉ (côté serveur, cf. buildFilter) :
+ *       Controleur → ne voit QUE les anomalies dont il est affecté
+ *         (personneAffecter/Email eq userEmail)
+ *       Manager (Chef_Departement, Directeur) → voit tout
+ *
+ *   - AFFECTATION :
+ *       Bouton "Affecter" et champ "Personne affectée" du formulaire de
+ *       création MASQUÉS pour les contrôleurs (cf. canAffect).
+ *
+ *   - ÉDITION INLINE (modale Détail) :
+ *       Controleur peut éditer UNIQUEMENT les anomalies qui lui sont
+ *       affectées (canEditAnomaly). Managers éditent tout.
+ *
+ *   - DÉLAI / ÉCHÉANCE :
+ *       echeance = dateAffection + delai jours
+ *       Colonne "Délai" affiche une pastille colorée selon diff
+ *       (cf. getDelaiStatus) : vert si en cours, orange si échéance jour J,
+ *       rouge si dépassée.
+ *
+ *   - CYCLE DE VIE :
+ *       Création → Ouvert → (Affectation, En cours…) → Resolu / Clos
+ *       Statut Clos = ticket fermé définitivement. La clôture ouvre la
+ *       modale résolution qui demande tous les détails métier.
+ *
+ * PERSISTANCE
+ * -----------
+ *   - DCPO_LISTE_ANORMALIE via le service généré
+ *   - Pièces jointes : workflow Power Automate qui retourne une URL,
+ *     stockée dans urlPieceJointe (multi-URLs concaténées par " | ")
+ *   - Mapping des field_N → cf. interface FormState ci-dessous
  * ============================================================================
  */
 
@@ -426,6 +485,35 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       return !!affecteEmail && !!myEmail && affecteEmail === myEmail
     }
     // Rôle inconnu : permissif (cf. note canAffect).
+    return true
+  }
+
+  /**
+   * Vérifie si l'utilisateur peut CLORE une anomalie (passer à Resolu/Clos
+   * ou ouvrir la modale de résolution complète).
+   *
+   * Règle métier :
+   *   - Chef_Departement / Directeur → peuvent clore N'IMPORTE quelle anomalie
+   *   - Controleur                   → peut clore UNIQUEMENT les anomalies
+   *                                    qui lui sont AFFECTÉES (un contrôleur
+   *                                    n'est pas autorisé à clore le travail
+   *                                    d'un collègue)
+   *   - Rôle inconnu                 → permissif (cohérent avec canAffect /
+   *                                    canEditAnomaly)
+   *
+   * Logiquement équivalent à canEditAnomaly aujourd'hui, mais conservé en
+   * helper séparé pour pouvoir diverger plus tard (par ex : un contrôleur
+   * pourrait éditer mais pas clore, ou inversement, selon les évolutions
+   * métier).
+   */
+  const canCloseAnomaly = (item: DCPO_LISTE_ANORMALIERead | null): boolean => {
+    if (!item) return false
+    if (userRole === 'Chef_Departement' || userRole === 'Directeur') return true
+    if (userRole === 'Controleur') {
+      const affecteEmail = item.personneAffecter?.Email?.toLowerCase()
+      const myEmail = userEmail?.toLowerCase()
+      return !!affecteEmail && !!myEmail && affecteEmail === myEmail
+    }
     return true
   }
 
@@ -2571,7 +2659,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 >
                   Changer le statut
                 </button>
-                {ticketItem.field_10 !== 'Clos' && ticketItem.field_10 !== 'Resolu' && (
+                {ticketItem.field_10 !== 'Clos' && ticketItem.field_10 !== 'Resolu' && canCloseAnomaly(ticketItem) && (
                   <button
                     type="button"
                     className="btn-cta btn-cta-primary btn-cta-resolve"
@@ -2792,8 +2880,15 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <option value="">-- Choisir --</option>
                   <option value="Ouvert">Ouvert</option>
                   <option value="En cours">En cours</option>
-                  <option value="Resolu">Résolu</option>
-                  <option value="Clos">Clos</option>
+                  {/* Resolu / Clos : réservé aux managers ET au contrôleur
+                      affecté. Les autres contrôleurs ne voient même pas
+                      l'option (cf. canCloseAnomaly). */}
+                  {canCloseAnomaly(statusItem) && (
+                    <>
+                      <option value="Resolu">Résolu</option>
+                      <option value="Clos">Clos</option>
+                    </>
+                  )}
                 </select>
               </div>
               {(statusValue === 'Resolu' || statusValue === 'Clos') && (

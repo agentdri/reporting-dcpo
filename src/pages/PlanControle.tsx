@@ -3,26 +3,46 @@
  * MODULE — PLAN DE CONTRÔLE (PLAN ANNUEL DCPO)
  * ============================================================================
  *
- * Permet aux managers de créer et suivre les activités de contrôle prévues
- * sur l'année. Inspiré du fichier Excel "PLAN DE CONTROLE 2025" fourni par
- * l'utilisateur, avec :
- *   - une catégorie (regroupement thématique des contrôles)
- *   - un libellé d'activité
- *   - une fréquence (Quotidienne / Hebdomadaire / Mensuelle / Annuelle)
- *   - un responsable (champ Personne Office 365)
- *   - des objectifs (qualitatif + chiffré/KPI)
- *   - un statut workflow
+ * DEUX CONCEPTS DISTINCTS, MÊME PAGE :
  *
- * Structure UI :
- *   - Stats cards : Total + compteurs par statut
+ *   1. CONTRÔLE (entité principale, liste DCPO_LISTE_PLAN_CONTROLE)
+ *      = une activité de contrôle PLANIFIÉE sur l'année (catégorie, libellé,
+ *      fréquence, responsable, objectifs).
+ *
+ *   2. ÉVALUATION (entité dépendante, liste DCPO_EVALUATION_PLAN_CONTROLE)
+ *      = l'EXÉCUTION d'un contrôle sur UNE période (jour / semaine / mois /
+ *      année selon la fréquence du contrôle parent). Un contrôle "Mensuel"
+ *      donne 12 évaluations attendues par an, etc. (cf. getExpectedEvaluationsPerYear).
+ *      Le ratio évaluations réalisées / attendues s'affiche en colonne
+ *      "Taux d'évolution" du tableau principal (cf. ProgressBar).
+ *
+ * Inspiré du fichier Excel "PLAN DE CONTROLE 2025" fourni par l'utilisateur.
+ *
+ * STRUCTURE UI
+ * ------------
+ *   - Stats cards : Total + compteurs par statut + taux d'évolution global
  *   - Filtres : catégorie, fréquence, responsable, statut, année
- *   - Tableau paginé
+ *   - Tableau paginé avec progress bar + colonne actions
  *   - Bouton "Nouveau contrôle" (managers uniquement)
- *   - Modale création
- *   - Modale détail (lecture seule)
+ *   - Modale détail (avec cycle de vie + historique des évaluations)
+ *   - Modale création / édition (managers uniquement)
+ *   - Modale ÉVALUATION : créer une évaluation pour un contrôle
+ *     (picker de période adapté à la fréquence)
+ *   - Modale AFFECTATION : changer le responsable d'un contrôle
+ *     (réutilise UserPicker)
  *
- * Persistance : liste SharePoint DCPO_LISTE_PLAN_CONTROLE via
- * src/lib/planControleService.ts.
+ * PERMISSIONS
+ * -----------
+ *   - Chef_Departement / Directeur (canManage) : voient tout, créent, éditent,
+ *     affectent, évaluent
+ *   - Controleur : voit UNIQUEMENT ses contrôles (filtre côté client sur
+ *     responsableEmail), peut évaluer mais pas créer ni éditer ni affecter
+ *
+ * PERSISTANCE
+ * -----------
+ *   - Contrôles    : src/lib/planControleService.ts → DCPO_LISTE_PLAN_CONTROLE
+ *   - Évaluations  : même service → DCPO_EVALUATION_PLAN_CONTROLE
+ *   - Pièces jointes (contrôle + évaluation) : Power Automate via ticketAttachments
  * ============================================================================
  */
 

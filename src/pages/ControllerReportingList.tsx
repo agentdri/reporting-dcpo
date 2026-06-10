@@ -70,6 +70,19 @@ interface GroupKey {
 /**
  * Données agrégées d'un groupe : la liste des rapports + les compteurs
  * par statut + total heures cumulées.
+ *
+ * Pourquoi un groupe ? Le manager raisonne par "qui a soumis quoi tel jour"
+ * — l'unité utile n'est pas le rapport individuel mais la JOURNÉE-CONTRÔLEUR.
+ * D'où l'agrégation par couple (controleurEmail, date) avant l'affichage.
+ *
+ * Compteurs :
+ *   - pending  : statut "Soumis" (en attente de décision manager)
+ *   - realise  : statut "Valider" (le manager a validé la journée)
+ *   - reporte  : statut "Refuser" (le manager a refusé — motif obligatoire,
+ *                cf. validateReport dans activityService)
+ *
+ * Note : on ne stocke jamais l'historique des décisions (un seul statut +
+ * un seul motif à la fois). La décision la plus récente écrase la précédente.
  */
 interface Group {
   key: GroupKey

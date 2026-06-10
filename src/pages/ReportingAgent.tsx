@@ -1,30 +1,68 @@
 /**
  * ============================================================================
- * REPORTING PAR AGENT — STATISTIQUES PAR AUTEUR D'ANOMALIE
+ * REPORTING PAR AGENT — STATISTIQUES PAR PERSONNE (AFFECTÉE OU AUTEUR)
  * ============================================================================
  *
- * Vue agrégée des anomalies regroupées par AGENT (= personneAffecter,
- * c'est-à-dire le contrôleur à qui l'anomalie a été assignée).
+ * Vue agrégée des anomalies regroupées par "agent" — la sémantique d'"agent"
+ * est pilotée par le sélecteur `groupingMode` :
  *
- * Use case : un manager veut voir combien d'anomalies chaque agent
- * (commercial, opérationnel) a déclarées, leur répartition par statut,
- * leur montant cumulé.
+ *   - 'affecte' (DÉFAUT) : agent = personne AFFECTÉE (personneAffecter)
+ *     → mesure la CHARGE des contrôleurs ("qui gère quoi")
  *
- * Workflow utilisateur :
- *   1. Vue principale : tableau des agents avec leurs stats
- *      (Total, Ouvert, En cours, Resolu, Clos, Montant)
- *   2. Clic "Detail" → bascule sur la vue détail de l'agent sélectionné
- *      avec la liste de TOUTES ses anomalies
- *   3. Bouton "Retour à la liste" pour revenir à la vue principale
+ *   - 'auteur' : agent = AUTEUR de l'anomalie (auteur_anormalie)
+ *     → mesure la PRODUCTION de signalements ("qui a déclaré quoi")
  *
- * Filtres (avec bouton Rechercher pour application différée) :
- *   - Période (date)
- *   - Agence, Réseau (selects)
- *   - Classification, Criticité (selects)
- *   - Statut (select)
- *   - Agent, Personne affectée (texte)
+ * Le bulletin imprimable s'adapte automatiquement au mode (titre différent :
+ * "Fiche de notation du contrôleur" vs "Fiche de notation de l'auteur").
  *
- * Filtrage 100 % côté client (les anomalies sont chargées une fois au montage).
+ * ARCHITECTURE EN DEUX VUES
+ * -------------------------
+ *   1. Vue principale (selectedAgent === null) :
+ *      - Sélecteur de mode de regroupement
+ *      - Stats cards globales (Agents, Total anomalies, Montant total)
+ *      - Barre de filtres (saisie/applied : application différée au clic)
+ *      - Tableau des agents : colonnes Personne, Email, Total/Ouvert/EnCours/
+ *        Resolu/Clos, Montant, Domaines d'activité (chips bleues),
+ *        Types d'action/sanction (chips ambrées)
+ *
+ *   2. Vue détail (selectedAgent !== null) :
+ *      - Header : nom + email de l'agent + bouton Imprimer le bulletin
+ *      - Barre de filtres DÉTAIL (filtres propres à la vue agent)
+ *      - Stats cards spécifiques à l'agent (recalculées sur la liste filtrée)
+ *      - Tableau des anomalies de l'agent (paginé, scrollable)
+ *      - Bouton Retour à la liste
+ *
+ * BULLETIN IMPRIMABLE (.agent-print-only)
+ * ---------------------------------------
+ * Caché à l'écran, visible uniquement à l'impression. Format "Fiche de
+ * notation" inspiré du tableau de bord DCPO 2026 :
+ *   - Header : titre + nom agent + date d'édition
+ *   - Sections (cf. BulletinSection) :
+ *       • Anomalies (par classification)
+ *       • Plans de Contrôle (par contrôle assigné)
+ *       • Plans d'Action Correctif (par PAC assigné)
+ *     Chaque section affiche un tableau Critère / Prévu / Réalisé / Écart,
+ *     une ligne TAUX DE CONFORMITE (totaux) et un score % en haut.
+ *   - Score global = moyenne pondérée des scores de section
+ *
+ * DONNÉES CHARGÉES AU MONTAGE
+ * ---------------------------
+ *   - Anomalies (DCPO_LISTE_ANORMALIE)
+ *   - Agences + Réseaux (référentiels pour résolution des libellés)
+ *   - Plans de Contrôle (pour la section bulletin)
+ *   - Toutes les évaluations de contrôle (pour le compteur réalisé)
+ *   - PACs (pour la section bulletin)
+ *
+ * Filtrage 100 % CÔTÉ CLIENT (pas d'OData) — tout est en mémoire après le
+ * fetch initial. Adapté pour < 5 000 anomalies (limite SP par défaut).
+ *
+ * PERMISSIONS
+ * -----------
+ * Tous les rôles autorisés peuvent voir cette page (cf. ALLOWED_ROLES dans
+ * App.tsx). Il n'y a pas de filtrage rôle-dépendant côté serveur — un
+ * contrôleur voit donc les stats de TOUS les autres agents. Si on veut
+ * restreindre, ajouter un filtre OData `personneAffecter/Email eq <self>`
+ * dans fetchAnomalies (cf. pattern dans Anomalies.tsx).
  * ============================================================================
  */
 

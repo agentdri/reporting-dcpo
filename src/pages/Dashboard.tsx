@@ -7,35 +7,67 @@
  *
  * Structure visuelle :
  *
- *   ┌──────────────────────────────────────────────────────────────────┐
- *   │ TOPBAR : Logo ReportingDCPO  ........  Nom utilisateur + rôle    │
- *   ├──────────┬───────────────────────────────────────────────────────┤
- *   │          │                                                       │
- *   │ SIDEBAR  │              CONTENU (page courante)                  │
- *   │          │                                                       │
- *   │ - Anomalies (groupe expansible)                                  │
- *   │   - Liste des anomalies                                          │
- *   │   - Bulletins d'anomalies                                        │
- *   │ - Reporting par Agent                                            │
- *   │ - Rapport quotidien (controllers + managers)                     │
- *   │ - Validation reportings (managers seulement)                     │
- *   │ - Plan de Contrôle                                               │
- *   │ - Plan d'Action Correctif                                        │
- *   │          │                                                       │
- *   └──────────┴───────────────────────────────────────────────────────┘
+ *   ┌────────────────────────────────────────────────────────────────────┐
+ *   │ TOPBAR : Logo  .....  Nom user + [sélecteur de rôle] + badge       │
+ *   ├──────────┬─────────────────────────────────────────────────────────┤
+ *   │          │                                                         │
+ *   │ SIDEBAR  │              CONTENU (page courante)                    │
+ *   │          │                                                         │
+ *   │ - Anomalies (groupe expansible)                                    │
+ *   │   - Liste des anomalies                                            │
+ *   │   - Fiche récapitulatif de l'anomalie                              │
+ *   │ - Reporting par Agent                                              │
+ *   │ - Rapport quotidien (controleurs seulement) (groupe)               │
+ *   │   - Saisie du rapport                                              │
+ *   │   - Mes rapports                                                   │
+ *   │ - Validation reportings (managers seulement)                       │
+ *   │ - Plan de Contrôle                                                 │
+ *   │ - Plan d'Action Correctif                                          │
+ *   │ - Configuration (managers seulement) (groupe)                      │
+ *   │   - Directions                                                     │
+ *   │   - Gestion des utilisateurs                                       │
+ *   │          │                                                         │
+ *   └──────────┴─────────────────────────────────────────────────────────┘
  *
- * Logique de routage :
+ * ROUTAGE
+ * -------
  *   - State activeTab : key de l'onglet actif
- *   - Le rendu du contenu utilise des "&&" plutôt qu'un router → simple,
- *     léger, suffisant pour 7 onglets
+ *   - Le rendu du contenu utilise des "&&" plutôt qu'un router (suffisant
+ *     pour ~10 onglets, pas d'URL profonde)
+ *   - Les groupes (Anomalies, Rapport quotidien, Configuration) sont des
+ *     parents EXPANSIBLES (toggle) — leur clé n'est PAS un Tab.
  *
- * Logique des permissions :
- *   - Tous les utilisateurs autorisés voient les onglets standards
- *   - "Rapport quotidien" (Saisie + Mes rapports) : visible UNIQUEMENT pour
- *     les Controleurs (les managers ne soumettent pas de rapport eux-mêmes)
- *   - "Validation reportings" : visible UNIQUEMENT pour les managers
- *     (Chef_Departement, Directeur) — leur permet de voir et valider les
- *     rapports soumis par les contrôleurs
+ * PERMISSIONS (gouvernées par MANAGER_ROLES)
+ * ------------------------------------------
+ *   - Tous les autorisés : Anomalies, Reporting par Agent, Plan de Contrôle,
+ *     Plan d'Action Correctif
+ *   - Controleurs UNIQUEMENT : groupe "Rapport quotidien" (ils soumettent
+ *     leur reporting journalier — les managers eux ne le soumettent pas)
+ *   - Managers UNIQUEMENT : "Validation reportings" + groupe "Configuration"
+ *     (Directions, Gestion des utilisateurs)
+ *
+ * SIMULATION DE RÔLE (topbar)
+ * ---------------------------
+ * Si le rôle RÉEL de l'utilisateur (realUserRole) est Chef_Departement ou
+ * Directeur, la topbar expose un sélecteur (ROLE_SWITCH_OPTIONS) qui permet
+ * de "rétrograder" temporairement le rôle effectif :
+ *   - Directeur        → peut simuler Chef_Departement ou Controleur
+ *   - Chef_Departement → peut simuler Controleur
+ *   - Controleur       → pas de simulation (déjà le rôle le plus bas)
+ *
+ * C'est une simulation CÔTÉ CLIENT uniquement (le rôle réel reste inchangé
+ * en base). Permet de vérifier l'UX d'un autre rôle, de faire des démos ou
+ * du support. Un badge "rôle simulé" s'affiche tant que actif ≠ réel.
+ *
+ * AJOUTER UN NOUVEL ONGLET — Marche à suivre
+ * ------------------------------------------
+ *   1. Étendre le type Tab en haut de ce fichier
+ *   2. Ajouter la `leaf` (ou modifier un groupe) dans navItems
+ *   3. Ajouter le rendu conditionnel `{activeTab === 'xxx' && <Page ... />}`
+ *      en bas du composant
+ *   4. Importer le composant en haut
+ *   5. Si la page est restreinte à un rôle : conditionner avec isManager /
+ *      isController dans navItems
  * ============================================================================
  */
 
@@ -50,6 +82,20 @@ import PlanControle from './PlanControle'
 import PlanActionCorrectif from './PlanActionCorrectif'
 import UserManagement from './UserManagement'
 import DirectionManagement from './DirectionManagement'
+import DashboardPowerBI from './DashboardPowerBI'
+
+/**
+ * URLs publiques (Publier sur le web) des dashboards Power BI.
+ *
+ * Centralisées ici pour éviter d'avoir à chercher dans le code à chaque
+ * mise à jour. Pour publier un nouveau rapport : Power BI Desktop →
+ * Publier → Power BI Service → Fichier → Publier sur le web → copier l'URL.
+ */
+const POWER_BI_DASHBOARDS = {
+  numerisation: 'https://app.powerbi.com/view?r=eyJrIjoiY2MyMzA2NjctMDllYS00MWY3LTkxM2ItZTg2MDNiNWM1ZWM3IiwidCI6IjJiZDgyYTY4LTJjN2QtNGM0My1iMDgwLTliMDY0NDEwZjZjZiJ9',
+  creance: 'https://app.powerbi.com/view?r=eyJrIjoiNDFjYjRjZjItOWNmOC00YzE1LTg5MzYtZjljNmZkNDZmNTcyIiwidCI6IjJiZDgyYTY4LTJjN2QtNGM0My1iMDgwLTliMDY0NDEwZjZjZiJ9',
+  comex: 'https://app.powerbi.com/view?r=eyJrIjoiZTAwMjVkZTItOTI3YS00MmU2LTg5OTktZTY1YWExMjRlYzdhIiwidCI6IjJiZDgyYTY4LTJjN2QtNGM0My1iMDgwLTliMDY0NDEwZjZjZiJ9',
+}
 import './Dashboard.css'
 
 /**
@@ -113,18 +159,25 @@ type Tab =
   | 'plan-controle'
   | 'plan-action-correctif'
   | 'user-management'
-  | 'config-directions'  // Groupe Configuration → Directions (référentiel)
+  | 'config-directions'      // Groupe Configuration → Directions (référentiel)
+  | 'dashboard-numerisation' // Groupe Dashboards Power BI → Numérisation
+  | 'dashboard-creance'      // Groupe Dashboards Power BI → Créance Hors Bilan
+  | 'dashboard-comex'        // Groupe Dashboards Power BI → Apurement Comex
 
 /**
  * Item de nav simple (feuille de l'arbre).
  *   - type discriminant 'leaf' (vs 'group') pour le pattern matching
  *   - key : valeur de Tab à activer au clic
  *   - label : texte affiché
+ *   - icon : (optionnel) emoji ou caractère unicode affiché à gauche du label
+ *     pour faciliter la lecture visuelle de la sidebar. Pas d'asset à charger,
+ *     compatible multiplateforme.
  */
 interface NavLeaf {
   type: 'leaf'
   key: Tab
   label: string
+  icon?: string
 }
 
 /**
@@ -132,12 +185,14 @@ interface NavLeaf {
  *   - key : identifiant string (NON une Tab car le groupe lui-même
  *     n'est pas un onglet ; c'est juste un bouton expand/collapse)
  *   - children : tableau de NavLeaf imbriqués
+ *   - icon : (optionnel) emoji affiché à gauche du label du groupe
  */
 interface NavGroup {
   type: 'group'
   key: string
   label: string
   children: NavLeaf[]
+  icon?: string
 }
 
 /** Union pour le tableau de nav (mélange feuilles et groupes). */
@@ -175,12 +230,13 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         type: 'group',
         key: 'anomalies',
         label: 'Anomalies',
+        icon: '⚠️',
         children: [
-          { type: 'leaf', key: 'anomalie', label: 'Liste des anomalies' },
-          { type: 'leaf', key: 'bulletins', label: "Fiche récapitulatif de l'anomalie" },
+          { type: 'leaf', key: 'anomalie', label: 'Liste des anomalies', icon: '📋' },
+          { type: 'leaf', key: 'bulletins', label: "Fiche récapitulatif de l'anomalie", icon: '📄' },
         ],
       },
-      { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent' },
+      { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent', icon: '👤' },
     ]
     // Onglets conditionnels selon rôle
     //
@@ -196,21 +252,37 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         type: 'group',
         key: 'rapport-quotidien',
         label: 'Rapport quotidien',
+        icon: '📅',
         children: [
-          { type: 'leaf', key: 'reporting-saisie', label: 'Saisie du rapport' },
-          { type: 'leaf', key: 'reporting-mes-rapports', label: 'Mes rapports' },
+          { type: 'leaf', key: 'reporting-saisie', label: 'Saisie du rapport', icon: '📝' },
+          { type: 'leaf', key: 'reporting-mes-rapports', label: 'Mes rapports', icon: '📂' },
         ],
       })
     }
     if (isManager) {
       // Validation des rapports soumis par les contrôleurs (manager uniquement)
-      items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings' })
+      items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings', icon: '✅' })
     }
     // Onglets toujours en queue
     items.push(
-      { type: 'leaf', key: 'plan-controle', label: 'Plan de Contrôle' },
-      { type: 'leaf', key: 'plan-action-correctif', label: "Plan d'Action Correctif" },
+      { type: 'leaf', key: 'plan-controle', label: 'Plan de Contrôle', icon: '🎯' },
+      { type: 'leaf', key: 'plan-action-correctif', label: "Plan d'Action Correctif", icon: '🛠️' },
     )
+    // Groupe "Dashboards Power BI" — visible par tous les rôles autorisés.
+    // Chaque sous-onglet rend un iframe pointant vers un rapport Power BI
+    // publié (URL publique app.powerbi.com/view?r=...). Voir DashboardPowerBI.tsx
+    // pour le composant générique.
+    items.push({
+      type: 'group',
+      key: 'dashboards',
+      label: 'Dashboards',
+      icon: '📊',
+      children: [
+        { type: 'leaf', key: 'dashboard-numerisation', label: 'Numérisation des journées', icon: '📑' },
+        { type: 'leaf', key: 'dashboard-creance', label: 'Créance Hors Bilan', icon: '💰' },
+        { type: 'leaf', key: 'dashboard-comex', label: 'Apurement Comex', icon: '📈' },
+      ],
+    })
     // Groupe "Configuration" : référentiels métier + gestion des accès.
     // Réservé aux managers (Chef_Departement / Directeur) — restriction
     // d'accès aux paramètres partagés pour éviter les modifications anarchiques.
@@ -224,9 +296,10 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         type: 'group',
         key: 'configuration',
         label: 'Configuration',
+        icon: '⚙️',
         children: [
-          { type: 'leaf', key: 'config-directions', label: 'Directions' },
-          { type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs' },
+          { type: 'leaf', key: 'config-directions', label: 'Directions', icon: '🏛️' },
+          { type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs', icon: '👥' },
         ],
       })
     }
@@ -259,7 +332,10 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
       {/* ─── TOPBAR : titre app + identité utilisateur ─────────────── */}
       <header className="dashboard-topbar">
         <div className="topbar-left">
-          <h1 className="topbar-title">ReportingDCPO</h1>
+          <h1 className="topbar-title">
+            <span aria-hidden="true" style={{ marginRight: 8 }}>📋</span>
+            ReportingDCPO
+          </h1>
         </div>
         <div className="topbar-user">
           <span className="topbar-user-name">{userName}</span>
@@ -308,6 +384,8 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                   onClick={() => setActiveTab(item.key)}
                   aria-current={activeTab === item.key ? 'page' : undefined}
                 >
+                  {/* Icône optionnelle : `aria-hidden` car redondante avec le label texte */}
+                  {item.icon && <span className="nav-icon" aria-hidden="true">{item.icon}</span>}
                   {item.label}
                 </button>
               )
@@ -325,7 +403,10 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                   onClick={() => toggleGroup(item.key)}
                   aria-expanded={isOpen}
                 >
-                  <span>{item.label}</span>
+                  <span>
+                    {item.icon && <span className="nav-icon" aria-hidden="true">{item.icon}</span>}
+                    {item.label}
+                  </span>
                   <span className="nav-chevron" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
                 </button>
                 {/* Enfants visibles uniquement si groupe ouvert */}
@@ -339,6 +420,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                         onClick={() => setActiveTab(child.key)}
                         aria-current={activeTab === child.key ? 'page' : undefined}
                       >
+                        {child.icon && <span className="nav-icon" aria-hidden="true">{child.icon}</span>}
                         {child.label}
                       </button>
                     ))}
@@ -376,6 +458,27 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
             <UserManagement userEmail={userEmail} userRole={userRole} />
           )}
           {activeTab === 'config-directions' && <DirectionManagement />}
+          {/* ─── Dashboards Power BI ──────────────────────────────────
+              Trois rapports embarqués via iframe — cf. composant générique
+              DashboardPowerBI qui prend titre + URL en props. */}
+          {activeTab === 'dashboard-numerisation' && (
+            <DashboardPowerBI
+              title="Suivi de numérisation des journées comptables"
+              url={POWER_BI_DASHBOARDS.numerisation}
+            />
+          )}
+          {activeTab === 'dashboard-creance' && (
+            <DashboardPowerBI
+              title="Surveillance Créance Hors Bilan"
+              url={POWER_BI_DASHBOARDS.creance}
+            />
+          )}
+          {activeTab === 'dashboard-comex' && (
+            <DashboardPowerBI
+              title="Apurement Comex"
+              url={POWER_BI_DASHBOARDS.comex}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -3,21 +3,48 @@
  * MODULE — PLAN D'ACTION CORRECTIF (PAC)
  * ============================================================================
  *
- * Permet aux managers (Chef_Departement / Directeur) de créer et suivre les
- * plans d'action correctifs émis par la DCPO. Les autres utilisateurs ont
- * un accès en lecture seule (consultation de la liste et du détail).
+ * DEUX CONCEPTS DISTINCTS (architecture similaire à PlanControle.tsx) :
  *
- * Structure :
- *   - Stats cards : compteurs Total / En cours / Exécutées / Non Exécutées
+ *   1. PAC (entité principale, liste DCPO_LISTE_PLAN_ACTION_CORRECTIF)
+ *      = un plan d'action correctif à mettre en œuvre suite à un constat
+ *      (intitulé, sources, descriptions du problème, causes immédiate/racine,
+ *      actions correctives, directions concernées, échéance, KPI,
+ *      responsable de mise en œuvre, statut).
+ *
+ *   2. ÉVALUATION (entité dépendante, liste DCPO_EVALUATION_PAC)
+ *      = un point de suivi périodique sur l'avancement d'un PAC (observations
+ *      + pièces jointes éventuelles). Permet de tracer l'évolution avant la
+ *      clôture finale (statut Exécutée / Non Exécutée).
+ *
+ *      Règle métier : un PAC en statut Exécutée OU Non Exécutée est FIGÉ
+ *      (cf. canEvaluatePac dans pacService) — plus d'évaluation possible.
+ *
+ * STRUCTURE UI
+ * ------------
+ *   - Stats cards : Total / En cours / Exécutées / Non Exécutées
  *   - Barre de filtres : statut, direction, année + bouton "Nouveau PAC"
- *     (visible uniquement pour les managers)
- *   - Tableau paginé des PAC avec colonnes principales
- *   - Modale Détail (lecture seule)
- *   - Modale Création (formulaire complet)
+ *   - Tableau paginé avec actions (Évaluation, Affectation manager-only)
+ *   - Modale détail (lecture seule + historique des évaluations)
+ *   - Modale création / édition (managers uniquement)
+ *   - Modale ÉVALUATION : créer une évaluation pour un PAC
+ *   - Modale AFFECTATION : changer le responsable de mise en œuvre
  *
- * Persistance des PAC : liste SharePoint DCPO_LISTE_PLAN_ACTION_CORRECTIF
- * via src/lib/pacService.ts. Le référentiel des directions reste local
- * (constante, pas de liste SharePoint dédiée).
+ * PERMISSIONS
+ * -----------
+ *   - Chef_Departement / Directeur (canManage) : voient tout, créent, éditent,
+ *     affectent, évaluent
+ *   - Controleur : voit UNIQUEMENT ses PAC (filtre côté client sur
+ *     responsableEmail), peut évaluer (si PAC pas figé) mais pas créer ni
+ *     éditer ni affecter
+ *
+ * PERSISTANCE
+ * -----------
+ *   - PAC               : src/lib/pacService.ts → DCPO_LISTE_PLAN_ACTION_CORRECTIF
+ *   - Évaluations       : même service → DCPO_EVALUATION_PAC
+ *   - Référentiel des DIRECTIONS : maintenant en SharePoint
+ *     (DCPO_LISTE_DIRECTIONS) — cf. directionService. Liste pré-remplie au
+ *     démarrage si vide.
+ *   - Pièces jointes (PAC + évaluation) : Power Automate via ticketAttachments
  *
  * Source des champs : feuille "PAC DCPO" du fichier Excel
  * Tableau_de_bord_KPI_DCPO_2026.xlsx fourni par l'utilisateur.
