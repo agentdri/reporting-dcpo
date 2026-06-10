@@ -464,7 +464,7 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
               <dt>Statut journée</dt><dd>{report.statutJournee}</dd>
             </div>
             <div className="manager-summary-cell">
-              <dt>Anomalies détectées</dt><dd>{report.anomaliesDetectees ?? 0}</dd>
+              <dt>nombres d'anomalies détectées</dt><dd>{report.anomaliesDetectees ?? 0}</dd>
             </div>
             <div className="manager-summary-cell">
               <dt>Statut</dt><dd>{report.statut}</dd>

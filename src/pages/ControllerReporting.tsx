@@ -442,7 +442,7 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
           <h3>Options avancées</h3>
           <div className="form-grid">
             <div className="form-field">
-              <label htmlFor="reporting-anomalies">Anomalies détectées</label>
+              <label htmlFor="reporting-anomalies">nombres d'anomalies détectées</label>
               <input
                 id="reporting-anomalies"
                 type="number"

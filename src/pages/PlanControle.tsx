@@ -1101,6 +1101,84 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
             <dt>Objectif chiffré</dt><dd>{entry.objectifChiffre || '—'}</dd>
           </dl>
 
+          {/* ─── Cycle de vie ────────────────────────────────────────────
+              Synthèse chronologique des événements clés du contrôle :
+                1. Création (entry.createdAt)
+                2. Une étape par évaluation enregistrée (history)
+                3. Réalisation si statut = 'Réalisé' (entry.updatedAt)
+              On ne montre l'étape de réalisation que pour ce statut final
+              car les autres états (À planifier / Planifié / En cours) ne
+              correspondent pas à un événement daté distinct.
+              Visuel : timeline verticale ; pastille colorée par type
+              d'étape (création=bleu, évaluation=violet, réalisation=vert). */}
+          <div style={{ marginTop: 20 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Cycle de vie</h3>
+            {(() => {
+              type Step = {
+                type: 'creation' | 'evaluation' | 'realisation'
+                label: string
+                date?: string
+                description?: string
+              }
+              const steps: Step[] = []
+              if (entry.createdAt) {
+                steps.push({ type: 'creation', label: 'Création du contrôle', date: entry.createdAt })
+              }
+              // Trie l'historique du plus ancien au plus récent pour respecter
+              // l'ordre chronologique de la timeline (l'API renvoie desc).
+              const evals = [...history].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+              evals.forEach((ev, i) => {
+                steps.push({
+                  type: 'evaluation',
+                  label: `Évaluation ${i + 1}${ev.periode ? ` — ${formatPeriodeLabel(ev.periode, entry.frequence)}` : ''}`,
+                  date: ev.createdAt,
+                  description: ev.observations,
+                })
+              })
+              if (entry.statut === 'Réalisé' && entry.updatedAt) {
+                steps.push({ type: 'realisation', label: 'Contrôle réalisé', date: entry.updatedAt })
+              }
+              const colorOf = (t: Step['type']) =>
+                t === 'creation' ? '#1d4ed8' :
+                t === 'evaluation' ? '#8b5cf6' :
+                '#10b981'
+              return (
+                <ol style={{ listStyle: 'none', margin: 0, padding: '6px 0 6px 16px', position: 'relative', borderLeft: '2px solid #e5e7eb' }}>
+                  {steps.map((step, i) => (
+                    <li key={i} style={{ position: 'relative', padding: '4px 0 14px 14px' }}>
+                      {/* Pastille colorée alignée sur la ligne verticale */}
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute',
+                          left: -22,
+                          top: 8,
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          background: colorOf(step.type),
+                          border: '2px solid #fff',
+                          boxShadow: `0 0 0 2px ${colorOf(step.type)}`,
+                        }}
+                      />
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>{step.label}</div>
+                      {step.date && (
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
+                          {new Date(step.date).toLocaleString('fr-FR')}
+                        </div>
+                      )}
+                      {step.description && (
+                        <div style={{ fontSize: 12, color: '#555', marginTop: 2, whiteSpace: 'pre-wrap' }}>
+                          {step.description}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )
+            })()}
+          </div>
+
           {/* Pièces jointes — icônes selon extension, lien externe vers le fichier */}
           <div className="detail-attachments" style={{ marginTop: 16 }}>
             <h3 style={{ marginBottom: 8 }}>Pièces jointes</h3>
