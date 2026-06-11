@@ -75,7 +75,7 @@ import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGEN
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
-import { formatMontantCompact } from '../lib/formatters'
+import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
 import {
   listControles,
   listAllEvaluations,
@@ -1064,7 +1064,7 @@ export default function ReportingAgent() {
               <tbody>
                 {pagedDetailAnomalies.map(item => (
                   <tr key={item.ID}>
-                    <td>{item.field_0 ? new Date(item.field_0).toLocaleDateString() : '-'}</td>
+                    <td>{formatDateOnlyFR(item.field_0, '-')}</td>
                     <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
                     <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
                     <td>{item.field_4 ? stripHtml(item.field_4) : '-'}</td>
@@ -1073,7 +1073,7 @@ export default function ReportingAgent() {
                     <td>{agences.find(a => String(a.ID) === item.field_6)?.Title ?? item.field_6 ?? '-'}</td>
                     <td>{reseaux.find(r => String(r.ID) === item.field_7)?.field_1 ?? item.field_7 ?? '-'}</td>
                     <td>{item.field_8?.toLocaleString() ?? '-'}</td>
-                    <td>{item.field_9 ? new Date(item.field_9).toLocaleDateString() : '-'}</td>
+                    <td>{formatDateOnlyFR(item.field_9, '-')}</td>
                     <td>{item.field_10 ?? '-'}</td>
                     <td>{item.typeSanction ?? '-'}</td>
                     <td>{item.personneAffecter?.DisplayName ?? '-'}</td>

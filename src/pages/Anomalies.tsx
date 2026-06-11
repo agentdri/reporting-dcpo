@@ -99,7 +99,7 @@ import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGEN
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
-import { formatMontantCompact } from '../lib/formatters'
+import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 
@@ -2057,7 +2057,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                       {item.field_10 ?? '—'}
                     </span>
                   </td>
-                  <td className="col-date">{item.field_0 ? new Date(item.field_0).toLocaleDateString('fr-FR') : '—'}</td>
+                  <td className="col-date">{formatDateOnlyFR(item.field_0, '—')}</td>
                   <td className="col-criticite">
                     {item.criticiteAnomalie
                       ? <span className={`criticite-chip crit-${item.criticiteAnomalie.toLowerCase()}`}>{item.criticiteAnomalie}</span>
@@ -2076,7 +2076,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                         : s.kind === 'echu'
                           ? { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d' }
                           : { bg: '#fee2e2', fg: '#991b1b', border: '#fca5a5' }
-                      const affDate = item.dateAffection ? new Date(item.dateAffection).toLocaleDateString('fr-FR') : '—'
+                      const affDate = formatDateOnlyFR(item.dateAffection, '—')
                       return (
                         <span
                           title={`Affecté le ${affDate} — délai ${item.delai ?? '?'} j`}
@@ -2108,7 +2108,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                       <td className="col-collapsible">{agences.find(a => String(a.ID) === item.field_6)?.Title ?? item.field_6 ?? '—'}</td>
                       <td className="col-collapsible">{reseaux.find(r => String(r.ID) === item.field_7)?.field_1 ?? item.field_7 ?? '—'}</td>
                       <td className="col-collapsible">{item.field_8?.toLocaleString('fr-FR') ?? '—'}</td>
-                      <td className="col-collapsible">{item.field_9 ? new Date(item.field_9).toLocaleDateString('fr-FR') : '—'}</td>
+                      <td className="col-collapsible">{formatDateOnlyFR(item.field_9, '—')}</td>
                     </>
                   )}
                   {/* La cellule Actions stoppe la propagation du clic pour
@@ -2182,10 +2182,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <dt>Auteur</dt><dd>{detailItem.auteur_anormalie?.DisplayName ?? '-'}</dd>
                   <dt>Personne affectee</dt><dd>{detailItem.personneAffecter?.DisplayName ?? '-'}</dd>
                   <dt>Date d'affectation</dt>
-                  <dd>{detailItem.dateAffection ? new Date(detailItem.dateAffection).toLocaleDateString('fr-FR') : '-'}</dd>
+                  <dd>{formatDateOnlyFR(detailItem.dateAffection, '-')}</dd>
                   <dt>Délai de traitement</dt><dd>{detailItem.delai ? `${detailItem.delai} jour(s)` : '-'}</dd>
                   <dt>Commentaire affectation</dt><dd>{detailItem.commentaireAffectation ?? '-'}</dd>
-                  <dt>Date</dt><dd>{detailItem.field_0 ? new Date(detailItem.field_0).toLocaleDateString() : '-'}</dd>
+                  <dt>Date</dt><dd>{formatDateOnlyFR(detailItem.field_0, '-')}</dd>
                   <dt>Cause</dt>
                   {/* white-space: pre-line → respecte les \n insérés par stripHtml
                       pour séparer "Cause immédiate / Cause racine / Actions menées /
@@ -2199,7 +2199,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
                   <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
                   <dt>Montant</dt><dd>{detailItem.field_8?.toLocaleString() ?? '-'}</dd>
-                  <dt>Date regularisation</dt><dd>{detailItem.field_9 ? new Date(detailItem.field_9).toLocaleDateString() : '-'}</dd>
+                  <dt>Date regularisation</dt><dd>{formatDateOnlyFR(detailItem.field_9, '-')}</dd>
                   <dt>Statut</dt><dd>{detailItem.field_10 ?? '-'}</dd>
                   <dt>Criticite</dt><dd>{detailItem.criticiteAnomalie ?? '-'}</dd>
                 </dl>
@@ -2604,9 +2604,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 <dt>Ouverture</dt>
                 <dd>{ticketItem.dateOuvertureTicket ? new Date(ticketItem.dateOuvertureTicket).toLocaleString('fr-FR') : '—'}</dd>
                 <dt>Date déclaration</dt>
-                <dd>{ticketItem.field_0 ? new Date(ticketItem.field_0).toLocaleDateString('fr-FR') : '—'}</dd>
+                <dd>{formatDateOnlyFR(ticketItem.field_0, '—')}</dd>
                 <dt>Régularisation</dt>
-                <dd>{ticketItem.field_9 ? new Date(ticketItem.field_9).toLocaleDateString('fr-FR') : '—'}</dd>
+                <dd>{formatDateOnlyFR(ticketItem.field_9, '—')}</dd>
                 <dt>Clôture</dt>
                 <dd>{ticketItem.date_cloture_ticket ? new Date(ticketItem.date_cloture_ticket).toLocaleString('fr-FR') : '—'}</dd>
                 <dt>Déclarant</dt>

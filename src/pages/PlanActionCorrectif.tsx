@@ -68,6 +68,7 @@ import {
   type Pac,
   type PacStatus,
 } from '../lib/pacService'
+import { formatDateOnlyFR } from '../lib/formatters'
 import {
   listDirections,
   getDirectionLabelFromList,
@@ -126,13 +127,13 @@ const EMPTY_FORM = {
 
 /**
  * Formatte une date YYYY-MM-DD vers locale FR (jj/mm/aaaa).
- * Tolérant : renvoie '—' si vide / invalide.
+ *
+ * Délègue à formatDateOnlyFR pour gérer le cas des dates "jour calendaire"
+ * stockées comme minuit UTC en SP — évite le décalage de fuseau horaire qui
+ * faisait basculer 04/06 → 05/06 selon le TZ du navigateur.
  */
 function formatDate(d: string | undefined): string {
-  if (!d) return '—'
-  const parsed = new Date(d)
-  if (Number.isNaN(parsed.getTime())) return d
-  return parsed.toLocaleDateString('fr-FR')
+  return formatDateOnlyFR(d, '—')
 }
 
 

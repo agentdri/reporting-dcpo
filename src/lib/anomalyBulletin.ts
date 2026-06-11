@@ -183,9 +183,45 @@ function stripHtml(html?: string | null): string {
  * Use case : SharePoint peut renvoyer null, undefined, '', ou des strings
  * non parseables ("0001-01-01T00:00:00Z"). On veut tout normaliser sur
  * Date | undefined pour pouvoir tester `if (date)` côté UI.
+ *
+ * /!\ GESTION DU FUSEAU HORAIRE
+ * ----------------------------
+ * Les dates SAISIES via `<input type="date">` représentent un JOUR CALENDAIRE
+ * (pas un instant précis). Le formulaire les stocke en SP comme
+ * `"YYYY-MM-DDT00:00:00Z"` (minuit UTC). Si on fait `new Date(...)` puis
+ * `.toLocaleDateString('fr-FR')`, le résultat dépend du fuseau du navigateur :
+ *   - UTC+1 (WAT/CET) → "DD/MM" (correct)
+ *   - UTC+2 (CEST)    → "DD/MM" (correct)
+ *   - UTC-3 (Brésil)  → "DD-1/MM" (jour précédent — bug!)
+ *   - UTC+24h hypothétique → "DD+1/MM" (jour suivant — bug!)
+ *
+ * Pour ÉVITER ce décalage, quand on détecte le pattern "minuit UTC"
+ * (= jour calendaire), on construit la Date avec les composants LOCAUX
+ * (`new Date(year, month, day)`) → la Date représente "ce jour minuit local"
+ * et `.toLocaleDateString()` rend systématiquement le bon jour, quel que
+ * soit le fuseau de l'utilisateur.
+ *
+ * Pour les VRAIS instants (créés avec `new Date().toISOString()` — qui ont
+ * une heure non-nulle), on garde le comportement standard : conversion en
+ * heure locale (logique car c'est bien un moment dans le temps).
  */
 function parseDateSafe(value?: string | null): Date | undefined {
   if (!value) return undefined
+  // Pattern "minuit UTC" = date calendrier (saisie via input date).
+  // Tolère les variations ".000" sur les millisecondes et l'absence du "Z"
+  // (qui n'arrive normalement pas mais reste défensif).
+  const calendarDayMatch = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.000)?Z?$/,
+  )
+  if (calendarDayMatch) {
+    const year = parseInt(calendarDayMatch[1], 10)
+    const month = parseInt(calendarDayMatch[2], 10) - 1
+    const day = parseInt(calendarDayMatch[3], 10)
+    const d = new Date(year, month, day)
+    return Number.isNaN(d.getTime()) ? undefined : d
+  }
+  // Vrai timestamp (ex: dateOuvertureTicket, Created, Modified)
+  // → conversion en heure locale normale.
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? undefined : d
 }
