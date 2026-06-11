@@ -485,6 +485,10 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
               <div><dt>Montant</dt><dd>{formatAmount(bulletin.montant)}</dd></div>
               <div><dt>Occurrences</dt><dd>{bulletin.occurrences ?? '—'}</dd></div>
               <div><dt>Statut</dt><dd>{bulletin.statut || '—'}</dd></div>
+              {/* typeSanction : renseigné à la clôture par le contrôleur
+                  via la modale de résolution. Sert au suivi disciplinaire
+                  ou opérationnel des suites données à l'anomalie. */}
+              <div><dt>Type d'action / sanction</dt><dd>{bulletin.typeSanction || '—'}</dd></div>
             </dl>
           </section>
 

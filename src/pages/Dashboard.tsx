@@ -167,17 +167,24 @@ type Tab =
 /**
  * Item de nav simple (feuille de l'arbre).
  *   - type discriminant 'leaf' (vs 'group') pour le pattern matching
- *   - key : valeur de Tab à activer au clic
+ *   - key : identifiant unique. Pour les liens INTERNES, c'est une valeur
+ *     de Tab activée au clic. Pour les liens EXTERNES (`href` défini), c'est
+ *     juste un identifiant React (typage élargi à string)
  *   - label : texte affiché
  *   - icon : (optionnel) emoji ou caractère unicode affiché à gauche du label
  *     pour faciliter la lecture visuelle de la sidebar. Pas d'asset à charger,
  *     compatible multiplateforme.
+ *   - href : (optionnel) URL externe. Si défini, l'item est rendu comme un
+ *     `<a target="_blank">` qui ouvre l'URL dans un nouvel onglet sans
+ *     changer l'onglet interne actif. Sert à intégrer des applications
+ *     externes au dashboard (ex: autres apps Power Apps métier).
  */
 interface NavLeaf {
   type: 'leaf'
-  key: Tab
+  key: Tab | string
   label: string
   icon?: string
+  href?: string
 }
 
 /**
@@ -272,6 +279,9 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
     // Chaque sous-onglet rend un iframe pointant vers un rapport Power BI
     // publié (URL publique app.powerbi.com/view?r=...). Voir DashboardPowerBI.tsx
     // pour le composant générique.
+    //
+    // Inclut aussi un lien externe vers l'application Power Apps "Clôture des
+    // journées" qui ouvre dans un nouvel onglet (cf. champ `href`).
     items.push({
       type: 'group',
       key: 'dashboards',
@@ -281,6 +291,15 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         { type: 'leaf', key: 'dashboard-numerisation', label: 'Numérisation des journées', icon: '📑' },
         { type: 'leaf', key: 'dashboard-creance', label: 'Créance Hors Bilan', icon: '💰' },
         { type: 'leaf', key: 'dashboard-comex', label: 'Apurement Comex', icon: '📈' },
+        {
+          type: 'leaf',
+          key: 'ext-cloture-journees',
+          label: 'Clôture des journées',
+          icon: '📒',
+          // App Power Apps externe — ouvre dans un nouvel onglet
+          // (cf. logique des leaves avec `href` dans le rendu de la sidebar).
+          href: 'https://apps.powerapps.com/play/e/e78a17af-caf0-e888-989b-beca000173f8/a/8d342307-2ae1-4d55-ac08-414d26a60449',
+        },
       ],
     })
     // Groupe "Configuration" : référentiels métier + gestion des accès.
@@ -374,14 +393,35 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         {/* ─── SIDEBAR : navigation principale ─────────────────────── */}
         <nav className="dashboard-nav" aria-label="Navigation principale">
           {navItems.map(item => {
-            // Branche feuille : un simple bouton qui change activeTab
+            // Branche feuille : un simple bouton qui change activeTab,
+            // OU un lien externe (<a target="_blank">) si `href` est défini.
             if (item.type === 'leaf') {
+              // Lien externe : on rend un <a> qui ouvre l'URL dans un nouvel
+              // onglet. On NE TOUCHE PAS à activeTab → l'utilisateur revient
+              // sur son onglet actuel quand il ferme le nouvel onglet.
+              // L'icône "↗" en suffixe signale visuellement la nature externe.
+              if (item.href) {
+                return (
+                  <a
+                    key={item.key}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="nav-item"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    {item.icon && <span className="nav-icon" aria-hidden="true">{item.icon}</span>}
+                    {item.label}
+                    <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>↗</span>
+                  </a>
+                )
+              }
               return (
                 <button
                   key={item.key}
                   type="button"
                   className={`nav-item ${activeTab === item.key ? 'active' : ''}`}
-                  onClick={() => setActiveTab(item.key)}
+                  onClick={() => setActiveTab(item.key as Tab)}
                   aria-current={activeTab === item.key ? 'page' : undefined}
                 >
                   {/* Icône optionnelle : `aria-hidden` car redondante avec le label texte */}
@@ -409,21 +449,41 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                   </span>
                   <span className="nav-chevron" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
                 </button>
-                {/* Enfants visibles uniquement si groupe ouvert */}
+                {/* Enfants visibles uniquement si groupe ouvert.
+                    Comme pour les leaves de niveau racine, on supporte les
+                    liens externes via la prop `href`. */}
                 {isOpen && (
                   <div className="nav-children" role="group" aria-label={item.label}>
-                    {item.children.map(child => (
+                    {item.children.map(child => {
+                      if (child.href) {
+                        return (
+                          <a
+                            key={child.key}
+                            href={child.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="nav-item nav-child"
+                            style={{ textDecoration: 'none' }}
+                          >
+                            {child.icon && <span className="nav-icon" aria-hidden="true">{child.icon}</span>}
+                            {child.label}
+                            <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>↗</span>
+                          </a>
+                        )
+                      }
+                      return (
                       <button
                         key={child.key}
                         type="button"
                         className={`nav-item nav-child ${activeTab === child.key ? 'active' : ''}`}
-                        onClick={() => setActiveTab(child.key)}
+                        onClick={() => setActiveTab(child.key as Tab)}
                         aria-current={activeTab === child.key ? 'page' : undefined}
                       >
                         {child.icon && <span className="nav-icon" aria-hidden="true">{child.icon}</span>}
                         {child.label}
                       </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>

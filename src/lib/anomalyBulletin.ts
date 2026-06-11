@@ -150,6 +150,13 @@ export interface ConsolidatedBulletin {
   actions: string[]
   domaine: string
   natureRisque: string
+  /**
+   * Type d'action / sanction appliquée à la clôture de l'anomalie
+   * (champ SP `typeSanction`). Vide tant que l'anomalie n'a pas été
+   * clôturée — c'est le contrôleur qui le renseigne dans le formulaire
+   * de résolution.
+   */
+  typeSanction: string
   occurrences?: number
   lifecycle: LifecycleStep[]
   sharePointUrl?: string
@@ -438,6 +445,79 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
 
 
 /* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 6 BIS — PARSING DES SECTIONS DE DESCRIPTION
+ *
+ * Pourquoi : les champs SP `field_4` (description) sont remplis par le
+ * formulaire de clôture en CONCATENANT toutes les sections sur une seule
+ * ligne, sous la forme :
+ *   "Cause immédiate : <texte>Cause racine : <texte>Actions menées : <texte>Observations : <texte>"
+ *
+ * Les colonnes dédiées (causeImmediate, causeRacine, observations,
+ * actionsAMener) restent souvent VIDES. Si on se contente du fallback en
+ * cascade `pickFirstHtml(ext.causeImmediate, ext.field_11, …)`, on affiche
+ * "—" alors que toute l'info est dans la description.
+ *
+ * Solution : on parse la description pour en extraire chaque section. Si une
+ * section est trouvée, elle prend la priorité sur "—". Sinon on garde le
+ * fallback existant.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Sections que l'on tente d'extraire de la description concaténée.
+ * Synchronisé avec les libellés produits par le formulaire de clôture
+ * (cf. Anomalies.tsx → buildResolutionDescription).
+ */
+const SECTION_LABELS = [
+  'Cause immédiate',
+  'Cause racine',
+  'Actions menées',
+  'Action menée',
+  'Observations',
+  'Observation',
+] as const
+
+/**
+ * Parse une chaîne contenant les sections concaténées en clé/valeur.
+ *
+ * Algorithme :
+ *   1. On construit une regex unique qui matche un libellé de section,
+ *      suivi de ":" puis du texte jusqu'au PROCHAIN libellé (lookahead).
+ *      Cela gère les sections collées sans séparateur ("…clientsCause racine").
+ *   2. Normalise les clés pour matcher l'orthographe canonique (les pluriels
+ *      "Action menée" / "Observations" sont uniformisés).
+ *
+ * Retourne un objet avec les sections trouvées (valeurs déjà trimées).
+ */
+function parseDescriptionSections(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {}
+  // Pattern : (libellé) \s* : \s* (texte jusqu'au prochain libellé ou fin)
+  // Le `?:` rend le groupe alternative non-capturant pour ne pas polluer
+  // les groupes nommés. Lookahead non-greedy → on s'arrête au prochain
+  // libellé même collé sans espace.
+  const labelsAlt = SECTION_LABELS.map(l => l.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  const re = new RegExp(
+    `(${labelsAlt})\\s*:\\s*([\\s\\S]*?)(?=(?:${labelsAlt})\\s*:|$)`,
+    'gi',
+  )
+  const out: Record<string, string> = {}
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw)) !== null) {
+    const key = m[1].trim()
+    const val = m[2].trim()
+    if (!val) continue
+    // Normalisation (singulier ↔ pluriel)
+    let canonical = key
+    if (/^action menée$/i.test(key)) canonical = 'Actions menées'
+    else if (/^observation$/i.test(key)) canonical = 'Observations'
+    // Si on a déjà rempli cette clé via un précédent match, on garde le
+    // premier (cas d'une description qui répéterait un libellé).
+    if (out[canonical] === undefined) out[canonical] = val
+  }
+  return out
+}
+
+
+/* ──────────────────────────────────────────────────────────────────────────
  * SECTION 7 — FONCTION PRINCIPALE : BULLETIN CONSOLIDÉ
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -477,14 +557,49 @@ export function buildConsolidatedBulletin(
   const delayDays = diffInDays(declarationDate, closureDate ?? regularizationDate)
 
   // Fallback en cascade pour les textes principaux
-  const description = pickFirstHtml(ticket.field_4, ticket.field_3, ticket.Title)
-  const causeImmediate = pickFirstHtml(ext.causeImmediate, ext.field_11, ticket.field_3)
-  const causeRacine = pickFirstHtml(ext.causeRacine, ext.field_12)
-  const observations = pickFirstHtml(ext.observationsBulletin, ext.field_22)
-  const actionsRaw = pickFirstHtml(ext.actionsAMener, ext.field_21)
+  const descriptionFull = pickFirstHtml(ticket.field_4, ticket.field_3, ticket.Title)
+  // Parsing des sections concaténées dans la description :
+  // le formulaire de clôture remplit field_4 avec
+  // "Cause immédiate : X Cause racine : Y Actions menées : Z Observations : W".
+  // On extrait chaque section pour les afficher proprement dans le bulletin,
+  // au cas où les colonnes dédiées (causeImmediate, etc.) seraient vides.
+  const parsed = parseDescriptionSections(descriptionFull)
+  // Si on a réussi à parser des sections, la "Description" affichée est
+  // SEULEMENT le texte avant la première section (sinon on répète tout ce
+  // qui sera déjà détaillé en dessous). Sinon, on garde tout.
+  const firstLabelIdx = (() => {
+    let min = -1
+    for (const label of SECTION_LABELS) {
+      const idx = descriptionFull.search(new RegExp(`\\b${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`, 'i'))
+      if (idx >= 0 && (min === -1 || idx < min)) min = idx
+    }
+    return min
+  })()
+  const description = firstLabelIdx >= 0
+    ? descriptionFull.slice(0, firstLabelIdx).trim()
+    : descriptionFull
+  const causeImmediate =
+    pickFirstHtml(ext.causeImmediate, ext.field_11) ||
+    parsed['Cause immédiate'] ||
+    ''
+  const causeRacine =
+    pickFirstHtml(ext.causeRacine, ext.field_12) ||
+    parsed['Cause racine'] ||
+    ''
+  const observations =
+    pickFirstHtml(ext.observationsBulletin, ext.field_22) ||
+    parsed['Observations'] ||
+    ''
+  const actionsRaw =
+    pickFirstHtml(ext.actionsAMener, ext.field_21) ||
+    parsed['Actions menées'] ||
+    ''
   const actions = splitActions(actionsRaw)
-  const domaine = pickFirstString(ext.domaineAnomalie, ext.field_13)
+  const domaine = pickFirstString(ext.domaineAnomalie, ticket.domaineActivite, ext.field_13)
   const natureRisque = pickFirstString(ext.natureRisque, ext.field_14)
+  // typeSanction : renseigné à la clôture par le contrôleur (cf. modale
+  // de résolution dans Anomalies.tsx). Vide en cours de vie de l'anomalie.
+  const typeSanction = ticket.typeSanction ?? ''
   const occurrences = ext.field_20 ?? undefined
 
   // {Link} = URL native SharePoint vers l'item dans l'UI moderne
@@ -520,6 +635,7 @@ export function buildConsolidatedBulletin(
     actions,
     domaine,
     natureRisque,
+    typeSanction,
     occurrences,
     lifecycle: buildLifecycleSteps(ticket),
     sharePointUrl,
