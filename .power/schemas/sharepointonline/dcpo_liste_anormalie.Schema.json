@@ -7,6 +7,7 @@
       "sortable": true,
       "unsortableProperties": [
         "field_4",
+        "actionsMenees",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -30,6 +31,7 @@
       "nonFilterableProperties": [
         "field_4",
         "urlPieceJointe",
+        "actionsMenees",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -893,6 +895,13 @@
           },
           "maxLength": 255
         },
+        "actionsMenees": {
+          "title": "actionsMenees",
+          "description": "les différentes actions menées sur une anomalie pour la résoudre ",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "none"
+        },
         "OData__ColorTag": {
           "title": "Balise de couleur",
           "type": "string",
@@ -1213,6 +1222,7 @@
           "domaineActivite",
           "typeSanction",
           "dateAffection",
+          "actionsMenees",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -1242,7 +1252,8 @@
           "commentaireAffectation",
           "domaineActivite",
           "typeSanction",
-          "dateAffection"
+          "dateAffection",
+          "actionsMenees"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -1271,7 +1282,8 @@
           "commentaireAffectation",
           "domaineActivite",
           "typeSanction",
-          "dateAffection"
+          "dateAffection",
+          "actionsMenees"
         ]
       }
     }

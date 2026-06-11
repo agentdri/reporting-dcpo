@@ -1183,17 +1183,9 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     if (resolutionForm.causeRacine.trim()) {
       blocks.push(`<p><strong>Cause racine :</strong> ${escapeHtml(resolutionForm.causeRacine)}</p>`)
     }
-    if (resolutionForm.actionsMenees.trim()) {
-      const items = resolutionForm.actionsMenees
-        .split(/\r?\n/)
-        .map(s => s.trim())
-        .filter(Boolean)
-      if (items.length > 1) {
-        blocks.push(`<p><strong>Actions menées :</strong></p><ul>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`)
-      } else if (items.length === 1) {
-        blocks.push(`<p><strong>Actions menées :</strong> ${escapeHtml(items[0])}</p>`)
-      }
-    }
+    // Les actions menées NE SONT PLUS écrites ici (concaténation dans field_4).
+    // Elles sont désormais stockées dans la colonne dédiée `actionsMenees` de
+    // la liste SP (cf. payload de saveResolution).
     if (resolutionForm.observations.trim()) {
       blocks.push(`<p><strong>Observations :</strong> ${escapeHtml(resolutionForm.observations)}</p>`)
     }
@@ -1221,6 +1213,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         // typeSanction n'est écrit QU'À LA CLÔTURE — c'est la seule
         // entrée utilisateur pour ce champ dans l'application.
         typeSanction: resolutionForm.typeSanction,
+        // actionsMenees : colonne SP dédiée (ajoutée récemment). Auparavant
+        // ces actions étaient concaténées dans field_4 ; désormais on les
+        // écrit ici directement (les éventuels retours à la ligne du
+        // textarea sont conservés tels quels — c'est SP qui décide du
+        // formatage à l'affichage natif).
+        actionsMenees: resolutionForm.actionsMenees.trim(),
       }
       if (html) payload.field_4 = html
       // Mise à jour de l'auteur si modifié
@@ -2347,21 +2345,28 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                     />
                   </div>
 
-                  <div className="form-field" style={{ marginBottom: 8 }}>
-                    <label htmlFor="edit-statut">Statut</label>
-                    <select
-                      id="edit-statut"
-                      value={detailForm.field_10}
-                      onChange={e => updateDetailForm('field_10', e.target.value)}
-                      disabled={detailSaving}
-                    >
-                      <option value="">— Choisir —</option>
-                      <option value="Ouvert">Ouvert</option>
-                      <option value="En cours">En cours</option>
-                      <option value="Resolu">Résolu</option>
-                      <option value="Clos">Clos</option>
-                    </select>
-                  </div>
+                  {/* Statut : éditable UNIQUEMENT par les managers.
+                      Un contrôleur peut éditer les autres champs de "son"
+                      anomalie mais pas le statut workflow — celui-ci suit
+                      des transitions métier réservées (cf. modale "Changer
+                      le statut" et "Clore la résolution"). */}
+                  {userRole !== 'Controleur' && (
+                    <div className="form-field" style={{ marginBottom: 8 }}>
+                      <label htmlFor="edit-statut">Statut</label>
+                      <select
+                        id="edit-statut"
+                        value={detailForm.field_10}
+                        onChange={e => updateDetailForm('field_10', e.target.value)}
+                        disabled={detailSaving}
+                      >
+                        <option value="">— Choisir —</option>
+                        <option value="Ouvert">Ouvert</option>
+                        <option value="En cours">En cours</option>
+                        <option value="Resolu">Résolu</option>
+                        <option value="Clos">Clos</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div className="form-field" style={{ marginBottom: 8 }}>
                     <label htmlFor="edit-delai">Délai de traitement (jours)</label>
@@ -2652,13 +2657,22 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 >
                   Voir le détail complet
                 </button>
-                <button
-                  type="button"
-                  className="btn-cta btn-cta-status"
-                  onClick={() => { const t = ticketItem; setTicketItem(null); openStatusModal(t) }}
-                >
-                  Changer le statut
-                </button>
+                {/* "Changer le statut" : RÉSERVÉ AUX MANAGERS.
+                    Un contrôleur ne peut pas modifier le statut workflow d'un
+                    ticket — il peut seulement le clôturer via le bouton
+                    "Clore la résolution" (si l'anomalie lui est affectée,
+                    cf. canCloseAnomaly).
+                    Cohérent avec canAffect : les opérations qui changent
+                    l'état métier d'un ticket sont managériales. */}
+                {userRole !== 'Controleur' && (
+                  <button
+                    type="button"
+                    className="btn-cta btn-cta-status"
+                    onClick={() => { const t = ticketItem; setTicketItem(null); openStatusModal(t) }}
+                  >
+                    Changer le statut
+                  </button>
+                )}
                 {ticketItem.field_10 !== 'Clos' && ticketItem.field_10 !== 'Resolu' && canCloseAnomaly(ticketItem) && (
                   <button
                     type="button"

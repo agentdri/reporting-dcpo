@@ -590,7 +590,16 @@ export function buildConsolidatedBulletin(
     pickFirstHtml(ext.observationsBulletin, ext.field_22) ||
     parsed['Observations'] ||
     ''
+  // actionsMenees : colonne SP dédiée (priorité absolue depuis la migration
+  // récente — le formulaire de clôture y écrit directement les actions).
+  // Fallback en cascade pour les anomalies historiques :
+  //   1. ext.actionsAMener (ancienne colonne nommée)
+  //   2. ext.field_21      (ancienne colonne numérotée)
+  //   3. parsed['Actions menées'] : section extraite de la description
+  //      concaténée — couvre les anomalies clôturées AVANT que la colonne
+  //      `actionsMenees` n'existe.
   const actionsRaw =
+    ticket.actionsMenees ||
     pickFirstHtml(ext.actionsAMener, ext.field_21) ||
     parsed['Actions menées'] ||
     ''

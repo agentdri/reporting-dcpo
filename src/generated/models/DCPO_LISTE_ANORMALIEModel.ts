@@ -81,6 +81,7 @@ export interface DCPO_LISTE_ANORMALIEBase {
   domaineActivite?: string;
   typeSanction?: string;
   dateAffection?: string;
+  actionsMenees?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   "{Identifier}"?: string;
