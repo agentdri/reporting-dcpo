@@ -36,12 +36,13 @@ import { useCallback, useState } from 'react'
 
 /**
  * Taille de page par défaut quand une page ne précise rien.
- * Choisi à 10 : équilibre entre densité d'info et rapidité de scroll/clic.
+ * Choisi à 50 : densité d'info élevée pour limiter les changements de page,
+ * adaptée à un usage métier où l'utilisateur scanne souvent de grosses listes.
  *
  * Pour avoir un défaut différent : changer cette valeur OU passer
  * `initialPageSize: 25` aux options du hook depuis une page spécifique.
  */
-export const DEFAULT_PAGE_SIZE = 10
+export const DEFAULT_PAGE_SIZE = 50
 
 /**
  * Tailles proposées dans le sélecteur "Afficher X par page".
