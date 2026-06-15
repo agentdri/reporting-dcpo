@@ -70,6 +70,13 @@ export interface ControleEntry {
   annee: number
   statut: ControleStatus
   /**
+   * Nature d'activité — partage le même référentiel que `domaineActivite`
+   * d'une anomalie (cf. DOMAINE_ACTIVITE_OPTIONS dans lib/referentiels.ts).
+   * Stocké en SP dans la colonne `natureActivicte` (typo SP volontairement
+   * conservée pour matcher la colonne réelle).
+   */
+  natureActivicte: string
+  /**
    * Pièces jointes décodées depuis le champ urlPieceJointe (multi-URLs
    * séparées par " | "). Reconstruit à la lecture pour l'affichage UI.
    */
@@ -89,6 +96,8 @@ export interface CreateControleInput {
   responsableEmail: string
   annee: number
   statut: ControleStatus
+  /** Nature d'activité (cf. DOMAINE_ACTIVITE_OPTIONS — facultatif). */
+  natureActivicte: string
 }
 
 
@@ -166,6 +175,7 @@ function fromItem(item: DCPO_LISTE_PLAN_CONTROLERead): ControleEntry {
     objectifChiffre: item.field_7 ?? '',
     responsable: item.responsable?.DisplayName ?? '',
     responsableEmail: item.responsable?.Email ?? '',
+    natureActivicte: item.natureActivicte ?? '',
     attachments,
     createdAt: item.Created ?? '',
     updatedAt: item.Modified ?? '',
@@ -221,6 +231,7 @@ export async function createControle(input: CreateControleInput): Promise<Contro
     field_5: input.statut,
     field_6: input.objectif.trim(),
     field_7: input.objectifChiffre.trim(),
+    natureActivicte: input.natureActivicte,
   }
   // Champ Personne : on n'écrit le responsable que si un email est fourni.
   if (input.responsableEmail) {
@@ -289,6 +300,7 @@ export async function updateControle(id: string, input: CreateControleInput): Pr
     field_5: input.statut,
     field_6: input.objectif.trim(),
     field_7: input.objectifChiffre.trim(),
+    natureActivicte: input.natureActivicte,
   }
   if (input.responsableEmail) {
     payload.responsable = {

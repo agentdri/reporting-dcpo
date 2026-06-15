@@ -100,6 +100,7 @@ import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESE
 import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
 import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
+import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 
@@ -193,18 +194,8 @@ const CLASSIFICATION_OPTIONS = [
   'Dommages occasionnés aux actifs physiques',
 ] as const
 
-/**
- * Domaines d'activité concernés par l'anomalie (champ `domaineActivite`,
- * récemment ajouté à la liste SP). Référentiel DCPO 2026.
- */
-const DOMAINE_ACTIVITE_OPTIONS = [
-  'Engagements',
-  'Exploitation et Reseau',
-  'Opérations internationales',
-  'Opérations digitales',
-  'Administratif et Financier',
-  'Surveillance IT',
-] as const
+// DOMAINE_ACTIVITE_OPTIONS est désormais centralisé dans lib/referentiels.ts
+// (partagé avec le Plan de Contrôle qui utilise le même référentiel).
 
 /**
  * Type d'action ou de sanction à appliquer suite à l'anomalie (champ

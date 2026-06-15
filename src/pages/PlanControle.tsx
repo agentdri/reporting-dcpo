@@ -70,6 +70,7 @@ import {
   type ControleStatus,
   type ControleEvaluation,
 } from '../lib/planControleService'
+import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
@@ -114,6 +115,9 @@ const EMPTY_FORM = {
   responsableEmail: '',
   annee: new Date().getFullYear(),
   statut: 'À planifier' as ControleStatus,
+  // Nature d'activité : même référentiel que domaineActivite d'une anomalie
+  // (cf. DOMAINE_ACTIVITE_OPTIONS dans lib/referentiels.ts).
+  natureActivicte: '',
 }
 
 
@@ -357,6 +361,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
       responsableEmail: ctrl.responsableEmail,
       annee: ctrl.annee,
       statut: ctrl.statut,
+      natureActivicte: ctrl.natureActivicte,
     })
     setAttachment(null)
     setFormError(null)
@@ -557,6 +562,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
         responsableEmail: form.responsableEmail,
         annee: Number(form.annee) || new Date().getFullYear(),
         statut: form.statut,
+        natureActivicte: form.natureActivicte,
       }
 
       const saved = editingId
@@ -939,6 +945,23 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                 </select>
               </div>
 
+              {/* Nature d'activité : réutilise le référentiel des domaines
+                  d'activité des anomalies (cf. lib/referentiels.ts).
+                  Aligne les axes de reporting entre Anomalies et Plan de Contrôle. */}
+              <div className="form-field" style={{ marginBottom: 8 }}>
+                <label htmlFor="ctrl-nature">Nature d'activité</label>
+                <select
+                  id="ctrl-nature"
+                  value={form.natureActivicte}
+                  onChange={e => updateForm('natureActivicte', e.target.value)}
+                >
+                  <option value="">— Choisir —</option>
+                  {DOMAINE_ACTIVITE_OPTIONS.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div className="form-field">
                   <label htmlFor="ctrl-freq">Fréquence</label>
@@ -1110,6 +1133,7 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
           <dl className="detail-grid">
             <dt>Libellé</dt><dd><strong>{entry.libelle}</strong></dd>
             <dt>Catégorie</dt><dd>{entry.categorie}</dd>
+            <dt>Nature d'activité</dt><dd>{entry.natureActivicte || '—'}</dd>
             <dt>Fréquence</dt><dd>{entry.frequence}</dd>
             <dt>Responsable</dt><dd>{entry.responsable || '—'}</dd>
             <dt>Année</dt><dd>{entry.annee}</dd>

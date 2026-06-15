@@ -44,6 +44,7 @@ export interface DCPO_LISTE_PLAN_CONTROLEBase {
   field_7?: string;
   "responsable#Claims"?: string;
   urlPieceJointe?: string;
+  natureActivicte?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   Modified?: string;
