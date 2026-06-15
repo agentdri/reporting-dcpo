@@ -95,6 +95,7 @@ const MANAGER_ROLES = ['Chef_Departement', 'Directeur']
 /** État vide pour la barre de filtres. */
 const EMPTY_FILTERS = {
   categorie: '',
+  natureActivicte: '',
   frequence: '' as '' | ControleFrequence,
   responsable: '',
   statut: '' as '' | ControleStatus,
@@ -249,6 +250,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
       }
       // ─── Filtres de la barre de recherche ────────────────────────────
       if (appliedFilters.categorie && c.categorie !== appliedFilters.categorie) return false
+      if (appliedFilters.natureActivicte && c.natureActivicte !== appliedFilters.natureActivicte) return false
       if (appliedFilters.frequence && c.frequence !== appliedFilters.frequence) return false
       if (appliedFilters.statut && c.statut !== appliedFilters.statut) return false
       if (appliedFilters.annee && String(c.annee) !== appliedFilters.annee) return false
@@ -668,6 +670,15 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
             <option value="">Toutes</option>
             {PLAN_CONTROLE_CATEGORIES.map(c => (
               <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-field">
+          <label>Nature d'activité</label>
+          <select value={filters.natureActivicte} onChange={e => updateFilter('natureActivicte', e.target.value)}>
+            <option value="">Toutes</option>
+            {DOMAINE_ACTIVITE_OPTIONS.map(d => (
+              <option key={d} value={d}>{d}</option>
             ))}
           </select>
         </div>
