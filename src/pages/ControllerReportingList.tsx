@@ -251,9 +251,11 @@ export default function ControllerReportingList({ userName, userEmail }: Control
    * Garde-fou défensif : alert + abort si motif vide.
    *
    * Après validation :
-   *   - refresh() recharge la liste depuis localStorage
-   *   - setSelected(updated) garde la modale ouverte avec les données fraîches
-   *     (l'utilisateur voit immédiatement la nouvelle entrée dans l'historique)
+   *   - refresh() recharge la liste depuis SharePoint pour refléter le
+   *     nouveau statut dans le tableau
+   *   - setSelected(null) ferme automatiquement la modale (UX : le manager
+   *     a pris sa décision, il n'a plus rien à faire sur cet item, on
+   *     enchaîne sur le rapport suivant dans la liste)
    */
   const handleValidation = async (report: ActivityReport, decision: 'Valider' | 'Refuser', motif?: string) => {
     if (decision === 'Refuser' && !motif?.trim()) {
@@ -268,7 +270,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     })
     if (updated) {
       await refresh()
-      setSelected(updated)
+      setSelected(null)
     }
   }
 
