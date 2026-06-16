@@ -564,6 +564,49 @@ export async function listReports(): Promise<ActivityReport[]> {
   }
 }
 
+/**
+ * Recherche le rapport d'un contrôleur pour une date donnée.
+ *
+ * Règle métier : **un seul rapport par (contrôleur, jour)**. Cette fonction
+ * sert à :
+ *   1. Détecter qu'un rapport existe déjà pour un (email, date) avant de
+ *      proposer la création — évite les doublons qui rendent ambigu "quel
+ *      rapport est le bon".
+ *   2. Pré-charger les données existantes pour permettre la re-soumission
+ *      d'un rapport REJETÉ (statut 'Refuser').
+ *
+ * Filtre OData côté SP pour limiter la charge réseau (filtre sur la Date
+ * uniquement — l'email Person n'est pas filtrable directement en OData
+ * sans expand, donc on récupère tous les rapports de la date puis on filtre
+ * en mémoire sur l'email).
+ *
+ * @param controleurEmail Email du contrôleur (case-insensitive)
+ * @param date YYYY-MM-DD
+ * @returns Le rapport unique de ce contrôleur pour cette date, ou undefined
+ */
+export async function findReportByControleurAndDate(
+  controleurEmail: string,
+  date: string,
+): Promise<ActivityReport | undefined> {
+  if (!controleurEmail || !date) return undefined
+  try {
+    const result = await DCPO_ACTIVICTE_CONTROLLERService.getAll({
+      // Filtre sur la date — bornes large pour absorber les variations
+      // d'heure (un rapport stocké à 00:00 UTC reste dans le jour métier).
+      filter: `Date ge '${date}T00:00:00Z' and Date le '${date}T23:59:59Z'`,
+    })
+    if (!result.data) return undefined
+    const target = controleurEmail.toLowerCase()
+    const found = result.data
+      .map(reportFromItem)
+      .find((r: ActivityReport) => r.controleurEmail.toLowerCase() === target)
+    return found
+  } catch (err) {
+    console.error('findReportByControleurAndDate error', err)
+    return undefined
+  }
+}
+
 /** Récupère un rapport par ID SharePoint. */
 export async function getReport(id: string): Promise<ActivityReport | undefined> {
   try {
@@ -694,6 +737,46 @@ export async function updateReport(id: string, patch: Partial<ActivityReport>): 
       console.error('updateReport error', err)
       return undefined
     }
+  }
+  return getReport(id)
+}
+
+/**
+ * Re-soumission d'un rapport précédemment REJETÉ par le manager.
+ *
+ * Cas d'usage : un manager a refusé un rapport (statut 'Refuser' + motif).
+ * Le contrôleur corrige son rapport et le re-soumet ; on doit alors :
+ *   1. Écraser le contenu (lignes, anomalies, observations) avec les
+ *      nouvelles valeurs.
+ *   2. Réinitialiser `statutValidation` à 'Soumis' pour que le rapport
+ *      réapparaisse dans la file d'attente du manager.
+ *   3. Vider `motifRejet` pour ne pas garder un motif obsolète attaché
+ *      au rapport re-soumis.
+ *
+ * Tout est fait en UNE seule requête `update` pour éviter un état
+ * intermédiaire incohérent côté SP.
+ *
+ * Préconditions : ne JAMAIS appeler cette fonction sur un rapport qui n'est
+ * pas en statut 'Refuser'. Le composant React (ControllerReporting.tsx) doit
+ * vérifier le statut avant d'invoquer ce flux.
+ */
+export async function resubmitReport(
+  id: string,
+  input: { lines: ActivityLine[]; anomaliesDetectees?: number; observationsGlobales?: string },
+): Promise<ActivityReport | undefined> {
+  const payload: Record<string, unknown> = {
+    actionDeLaJournee: serializeLines(input.lines),
+    nombreAnomalieDetectee: input.anomaliesDetectees ?? 0,
+    observationsGlobales: input.observationsGlobales ?? '',
+    // Reset workflow de validation : nouveau cycle pour le manager.
+    statutValidation: 'Soumis',
+    motifRejet: '',
+  }
+  try {
+    await DCPO_ACTIVICTE_CONTROLLERService.update(id, payload as never)
+  } catch (err) {
+    console.error('resubmitReport error', err)
+    return undefined
   }
   return getReport(id)
 }

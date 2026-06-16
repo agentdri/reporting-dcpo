@@ -35,11 +35,14 @@ import {
   clearDraft,
   computeTotals,
   createReport,
+  findReportByControleurAndDate,
   loadDraft,
   makeEmptyLine,
+  resubmitReport,
   saveDraft,
   validateLines,
   type ActivityLine,
+  type ActivityReport,
   type LineValidationError,
 } from '../lib/activityService'
 import { uploadActivityAttachment } from '../lib/ticketAttachments'
@@ -49,6 +52,19 @@ import './ControllerReporting.css'
 interface ControllerReportingProps {
   userName?: string
   userEmail?: string
+  /**
+   * Date cible à pré-charger au lieu d'aujourd'hui.
+   *
+   * Cas d'usage : depuis la page "Mes rapports", l'utilisateur clique
+   * "Modifier" sur un rapport rejeté → Dashboard switche vers cette page
+   * en passant la date du rapport. Le lookup `findReportByControleurAndDate`
+   * détectera alors le rapport REJETÉ et pré-remplira automatiquement le
+   * formulaire (cf. logique de re-soumission).
+   *
+   * Format : YYYY-MM-DD (même format que le state `date`).
+   * Si undefined ou identique à aujourd'hui → comportement normal.
+   */
+  targetDate?: string
 }
 
 /** Helper : renvoie la date du jour au format ISO court (YYYY-MM-DD). */
@@ -56,7 +72,7 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-export default function ControllerReporting({ userName, userEmail }: ControllerReportingProps) {
+export default function ControllerReporting({ userName, userEmail, targetDate }: ControllerReportingProps) {
   // Identité — fallbacks défensifs pour l'affichage si props absentes
   const email = userEmail ?? ''
   const name = userName ?? '—'
@@ -65,8 +81,24 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
    * ÉTATS DU FORMULAIRE
    * ────────────────────────────────────────────────────────────────────── */
 
-  /** Date du rapport (par défaut aujourd'hui). */
-  const [date, setDate] = useState(todayISO())
+  /**
+   * Date du rapport (par défaut aujourd'hui — ou `targetDate` si fournie
+   * par le Dashboard, ex: lors d'un clic "Modifier" sur un rapport rejeté
+   * depuis la page Mes rapports).
+   */
+  const [date, setDate] = useState(targetDate || todayISO())
+
+  /**
+   * Pattern "compute during render" : si targetDate change pendant que la
+   * page est déjà montée (l'utilisateur clique sur un autre rapport rejeté
+   * sans démonter le composant), on aligne le state `date`.
+   * React 19 : `if + setState` synchrone est autorisé hors useEffect.
+   */
+  const [prevTargetDate, setPrevTargetDate] = useState(targetDate)
+  if (prevTargetDate !== targetDate) {
+    setPrevTargetDate(targetDate)
+    if (targetDate) setDate(targetDate)
+  }
   /** Lignes d'activités. Au moins une ligne vide à l'initialisation. */
   const [lines, setLines] = useState<ActivityLine[]>([makeEmptyLine()])
   /** Nombre d'anomalies détectées par le contrôleur ce jour. */
@@ -83,6 +115,23 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
   const [submitMessage, setSubmitMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   /** Indicateur visuel "Brouillon restauré" pour rassurer l'utilisateur. */
   const [draftRestored, setDraftRestored] = useState(false)
+
+  /**
+   * Rapport existant pour (contrôleur, date) — détection serveur.
+   * Règle métier : UN seul rapport par jour par contrôleur.
+   *
+   *   - undefined  : recherche pas encore faite OU aucun rapport
+   *   - ActivityReport : un rapport existe → on bloque ou on pré-remplit
+   *     selon son statut :
+   *       • 'Soumis' / 'Valider' → SAISIE VERROUILLÉE (pas de re-création
+   *         possible — formulaire en lecture seule)
+   *       • 'Refuser' → re-soumission autorisée (le contenu est pré-rempli
+   *         pour correction, le submit appelle `resubmitReport` au lieu de
+   *         `createReport`)
+   */
+  const [existingReport, setExistingReport] = useState<ActivityReport | undefined>(undefined)
+  /** True pendant la requête de lookup (évite des soumissions premature). */
+  const [checkingExisting, setCheckingExisting] = useState(false)
 
 
   /* ──────────────────────────────────────────────────────────────────────
@@ -129,6 +178,72 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     }, 600)
     return () => clearTimeout(handler)
   }, [email, date, lines, anomaliesDetectees, observationsGlobales])
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * DÉTECTION D'UN RAPPORT EXISTANT POUR (email, date)
+   *
+   * Règle métier : un seul rapport par jour par contrôleur. Au changement
+   * d'email ou de date, on lookup côté SP pour savoir s'il y en a déjà un.
+   *
+   * Pattern :
+   *   - Compute during render pour reset l'état (compatible React 19 lint)
+   *   - useEffect pour le fetch async + setState dans .then/.finally
+   * ────────────────────────────────────────────────────────────────────── */
+
+  // Reset lors d'un changement de couple (email, date) — pattern
+  // "compute during render" pour éviter le lint set-state-in-effect.
+  const lookupKey = `${email}|${date}`
+  const [prevLookupKey, setPrevLookupKey] = useState(lookupKey)
+  if (prevLookupKey !== lookupKey) {
+    setPrevLookupKey(lookupKey)
+    setExistingReport(undefined)
+    setCheckingExisting(true)
+  }
+
+  useEffect(() => {
+    if (!email || !date) {
+      setCheckingExisting(false)
+      return
+    }
+    let cancelled = false
+    findReportByControleurAndDate(email, date)
+      .then(report => {
+        if (!cancelled) setExistingReport(report)
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingExisting(false)
+      })
+    return () => { cancelled = true }
+  }, [email, date])
+
+  /**
+   * Pré-remplissage AUTOMATIQUE du formulaire quand le rapport existant est
+   * un rapport REJETÉ — pour permettre au contrôleur de corriger et re-soumettre.
+   *
+   * On garde trace de l'ID déjà pré-rempli (`prefilledFromId`) pour ne PAS
+   * écraser les modifications en cours du contrôleur après le 1er prefill.
+   */
+  const [prefilledFromId, setPrefilledFromId] = useState<string | undefined>(undefined)
+  if (
+    existingReport &&
+    existingReport.statut === 'Refuser' &&
+    prefilledFromId !== existingReport.id
+  ) {
+    setPrefilledFromId(existingReport.id)
+    setLines(existingReport.lines.length > 0 ? existingReport.lines : [makeEmptyLine()])
+    setAnomaliesDetectees(existingReport.anomaliesDetectees ?? 0)
+    setObservationsGlobales(existingReport.observationsGlobales ?? '')
+  }
+
+  /**
+   * Verrou métier : la saisie est désactivée quand un rapport existe DÉJÀ
+   * pour ce (contrôleur, date) et qu'il n'est pas en statut 'Refuser'.
+   * Le contrôleur ne peut alors NI modifier NI re-créer — il peut seulement
+   * attendre la décision du manager (statut 'Soumis') ou consulter son
+   * rapport déjà validé.
+   */
+  const isLocked = !!existingReport && existingReport.statut !== 'Refuser'
+  const isRejectedResubmit = !!existingReport && existingReport.statut === 'Refuser'
 
 
   /* ──────────────────────────────────────────────────────────────────────
@@ -200,6 +315,22 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
       setSubmitMessage({ type: 'err', text: 'Email contrôleur introuvable.' })
       return
     }
+    // Garde-fou : si le verrou est actif (rapport Soumis/Validé), on refuse
+    // toute soumission. L'UI désactive normalement le bouton mais on protège
+    // aussi côté handler en cas de contournement (raccourci clavier, etc.).
+    if (isLocked) {
+      setSubmitMessage({
+        type: 'err',
+        text: `Vous avez déjà un rapport ${existingReport?.statut === 'Valider' ? 'validé' : 'soumis'} pour cette date. Modification impossible.`,
+      })
+      return
+    }
+    // Bloque aussi si la requête de lookup n'a pas encore répondu (évite un
+    // doublon créé pendant qu'on ne sait pas encore qu'un rapport existe).
+    if (checkingExisting) {
+      setSubmitMessage({ type: 'err', text: 'Vérification du rapport existant en cours, réessayez dans un instant.' })
+      return
+    }
     const validation = validateLines(lines)
     setErrors(validation)
     if (validation.length > 0) {
@@ -208,15 +339,22 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
     }
     setSubmitting(true)
     try {
-      // 1. Création du rapport SharePoint
-      const created = await createReport({
-        controleurEmail: email,
-        controleurName: name,
-        date,
-        lines,
-        anomaliesDetectees,
-        observationsGlobales: observationsGlobales.trim() || undefined,
-      })
+      // 1a. Re-soumission d'un rapport REJETÉ → update + reset statut
+      // 1b. Création d'un nouveau rapport sinon
+      const created = isRejectedResubmit && existingReport
+        ? await resubmitReport(existingReport.id, {
+            lines,
+            anomaliesDetectees,
+            observationsGlobales: observationsGlobales.trim() || undefined,
+          })
+        : await createReport({
+            controleurEmail: email,
+            controleurName: name,
+            date,
+            lines,
+            anomaliesDetectees,
+            observationsGlobales: observationsGlobales.trim() || undefined,
+          })
 
       // 2. Upload des pièces jointes via le workflow Power Automate
       //    (ACTIVITY_ATTACHMENT_API_URL → liste DCPO_ACTIVICTE_CONTROLLER)
@@ -248,16 +386,26 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
       }
 
       clearDraft(email)
+      // Message adapté selon le mode : création vs re-soumission après rejet.
+      const baseMsg = isRejectedResubmit ? 'Rapport re-soumis après correction.' : 'Rapport soumis avec succès.'
       setSubmitMessage({
         type: uploadFailures > 0 ? 'err' : 'ok',
         text: uploadFailures > 0
-          ? `Rapport soumis, mais ${uploadFailures} pièce(s) jointe(s) ont échoué à l'upload.`
-          : 'Rapport soumis avec succès.',
+          ? `${baseMsg.replace(' avec succès.', '').replace('.', '')} — ${uploadFailures} pièce(s) jointe(s) ont échoué à l'upload.`
+          : baseMsg,
       })
-      setDate(todayISO())
-      setLines([makeEmptyLine()])
-      setAnomaliesDetectees(0)
-      setObservationsGlobales('')
+      // Met à jour l'état local pour refléter le nouveau statut 'Soumis'
+      // (verrouille la saisie tant que le manager n'a pas tranché).
+      if (created) setExistingReport(created)
+      // Reset complet du formulaire UNIQUEMENT en mode création — en
+      // re-soumission, on garde l'affichage des données qui viennent
+      // d'être envoyées (le verrou prendra le relais).
+      if (!isRejectedResubmit) {
+        setDate(todayISO())
+        setLines([makeEmptyLine()])
+        setAnomaliesDetectees(0)
+        setObservationsGlobales('')
+      }
       setAttachments([])
       setErrors([])
       setDraftRestored(false)
@@ -302,7 +450,54 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
         </div>
       </div>
 
+      {/* ─── Bannière "rapport existant" ────────────────────────────────
+          Avertit visuellement quand un rapport existe déjà pour la date
+          choisie. Style et message dépendent du statut :
+            - Soumis    : info bleue ("en attente de validation")
+            - Valider   : succès vert ("validé, modification impossible")
+            - Refuser   : warning orange ("rejeté, corrigez et re-soumettez")
+          La saisie est verrouillée dans les 2 premiers cas (cf. isLocked). */}
+      {existingReport && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 12,
+            padding: '10px 14px',
+            borderRadius: 6,
+            border: '1px solid',
+            borderColor: existingReport.statut === 'Refuser' ? '#f59e0b' : existingReport.statut === 'Valider' ? '#10b981' : '#3b82f6',
+            background: existingReport.statut === 'Refuser' ? '#fffbeb' : existingReport.statut === 'Valider' ? '#ecfdf5' : '#eff6ff',
+            color: '#1f2937',
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>
+            {existingReport.statut === 'Refuser' && '⚠️ Rapport rejeté pour cette date'}
+            {existingReport.statut === 'Soumis' && 'ℹ️ Rapport déjà soumis pour cette date'}
+            {existingReport.statut === 'Valider' && '✅ Rapport validé pour cette date'}
+          </strong>
+          <div style={{ marginTop: 4 }}>
+            {existingReport.statut === 'Refuser' && (
+              <>
+                Motif manager : <em>{existingReport.motifRejet || '—'}</em>.
+                Corrigez les éléments ci-dessous et re-soumettez.
+              </>
+            )}
+            {existingReport.statut === 'Soumis' && (
+              <>En attente de décision du manager — aucune modification possible tant que le statut n'a pas changé.</>
+            )}
+            {existingReport.statut === 'Valider' && (
+              <>Ce rapport a été validé par le manager. Il ne peut plus être modifié.</>
+            )}
+          </div>
+        </div>
+      )}
+
       <form className="reporting-form" onSubmit={handleSubmit}>
+        {/* La rangée TOP (contrôleur + date) reste toujours active, même
+            quand le rapport est verrouillé : l'utilisateur doit pouvoir
+            changer la date pour consulter / saisir un autre jour. */}
         <div className="reporting-toprow">
           <div className="form-field">
             <label htmlFor="reporting-controleur">Contrôleur</label>
@@ -321,6 +516,12 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
             />
           </div>
         </div>
+
+        {/* fieldset disabled : désactive tous les inputs/selects/textareas
+            descendants en un seul attribut → pas besoin de propager
+            `disabled` champ par champ. Le bouton submit reste géré
+            séparément par `disabled={submitting || isLocked}`. */}
+        <fieldset disabled={isLocked} style={{ border: 'none', padding: 0, margin: 0 }}>
 
         <div className="reporting-section">
           <div className="reporting-section-header">
@@ -484,9 +685,14 @@ export default function ControllerReporting({ userName, userEmail }: ControllerR
           </div>
         )}
 
+        </fieldset>
         <div className="reporting-submit-row">
-          <button className="btn-submit" type="submit" disabled={submitting}>
-            {submitting ? 'Envoi en cours...' : 'Soumettre le rapport'}
+          <button className="btn-submit" type="submit" disabled={submitting || isLocked}>
+            {submitting
+              ? 'Envoi en cours...'
+              : isRejectedResubmit
+                ? 'Re-soumettre le rapport corrigé'
+                : 'Soumettre le rapport'}
           </button>
         </div>
       </form>

@@ -70,9 +70,21 @@ import './ControllerReporting.css'
  *   - userName  : DisplayName Office 365 (affichage)
  *   - userEmail : email Office 365 (clé de filtrage)
  */
+/**
+ * Callback de redirection vers la page de saisie d'un rapport rejeté.
+ * Fournie par Dashboard.tsx qui switche `activeTab` vers la saisie ET
+ * passe la date du rapport en `targetDate` à ControllerReporting.
+ *
+ * Optionnel : si non fourni, le bouton "Modifier et re-soumettre" n'apparaît
+ * pas. Permet d'utiliser ce composant en lecture seule dans d'autres contextes.
+ */
+type OnEditRejectedReport = (date: string) => void
+
 interface ControllerMyReportsProps {
   userName?: string
   userEmail?: string
+  /** Callback invoqué quand l'utilisateur clique "Modifier" sur un rapport rejeté. */
+  onEditRejected?: OnEditRejectedReport
 }
 
 
@@ -159,7 +171,7 @@ function statutPillClass(statut: ActivityStatus): string {
  * COMPOSANT PRINCIPAL
  * ══════════════════════════════════════════════════════════════════════════ */
 
-export default function ControllerMyReports({ userEmail }: ControllerMyReportsProps) {
+export default function ControllerMyReports({ userEmail, onEditRejected }: ControllerMyReportsProps) {
   /**
    * Email normalisé en lowercase une seule fois ici.
    * Utilisé comme clé de filtrage côté client.
@@ -485,6 +497,9 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
                 <th>Statut</th>
                 <th>Lignes</th>
                 <th>Soumis le</th>
+                {/* Colonne Actions affichée uniquement si la redirection
+                    est branchée (onEditRejected fourni par le Dashboard). */}
+                {onEditRejected && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -508,6 +523,25 @@ export default function ControllerMyReports({ userEmail }: ControllerMyReportsPr
                   </td>
                   <td>{(r.lines ?? []).length}</td>
                   <td>{formatDateTime(r.submittedAt)}</td>
+                  {/* Bouton "Modifier" UNIQUEMENT sur les rapports REJETÉS.
+                      stopPropagation pour ne pas déclencher l'ouverture de
+                      la modale détail (gérée par le onClick de la ligne). */}
+                  {onEditRejected && (
+                    <td onClick={e => e.stopPropagation()}>
+                      {r.statut === 'Refuser' ? (
+                        <button
+                          type="button"
+                          className="btn-cta btn-cta-affect"
+                          onClick={() => onEditRejected(r.date)}
+                          title="Corriger le rapport et le re-soumettre au manager"
+                        >
+                          ✎ Modifier et re-soumettre
+                        </button>
+                      ) : (
+                        <span style={{ color: '#888', fontSize: 11 }}>—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

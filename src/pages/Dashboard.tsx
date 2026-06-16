@@ -331,6 +331,34 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
   const [activeTab, setActiveTab] = useState<Tab>('anomalie')
 
   /**
+   * Date cible passée à <ControllerReporting> quand on navigue depuis la
+   * page "Mes rapports" via le bouton "Modifier et re-soumettre" d'un
+   * rapport rejeté.
+   *
+   *   - undefined → comportement par défaut (date = aujourd'hui)
+   *   - 'YYYY-MM-DD' → la saisie pré-charge cette date, ce qui déclenche
+   *     dans ControllerReporting le lookup serveur et le pré-remplissage
+   *     du rapport rejeté correspondant.
+   */
+  const [targetReportDate, setTargetReportDate] = useState<string | undefined>(undefined)
+
+  /**
+   * Callback passé à ControllerMyReports : redirige vers la saisie en
+   * ciblant la date d'un rapport rejeté à corriger.
+   *
+   * Flux :
+   *   1. Utilisateur clique "Modifier" sur la ligne d'un rapport rejeté
+   *   2. setTargetReportDate(date) mémorise la date à pré-charger
+   *   3. setActiveTab('reporting-saisie') affiche la page de saisie
+   *   4. ControllerReporting reçoit targetDate et lance son lookup
+   *      → la bannière orange "Rapport rejeté" apparaît + formulaire pré-rempli
+   */
+  const handleEditRejectedReport = (date: string) => {
+    setTargetReportDate(date)
+    setActiveTab('reporting-saisie')
+  }
+
+  /**
    * État d'expansion des groupes de navigation.
    * Map keyName → true (ouvert) / false (fermé).
    * Initialisé avec 'anomalies' et 'rapport-quotidien' ouverts pour que
@@ -500,10 +528,18 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
           {activeTab === 'bulletins' && <AnomalyBulletins />}
           {activeTab === 'reporting-agent' && <ReportingAgent />}
           {activeTab === 'reporting-saisie' && (
-            <ControllerReporting userName={userName} userEmail={userEmail} />
+            <ControllerReporting
+              userName={userName}
+              userEmail={userEmail}
+              targetDate={targetReportDate}
+            />
           )}
           {activeTab === 'reporting-mes-rapports' && (
-            <ControllerMyReports userName={userName} userEmail={userEmail} />
+            <ControllerMyReports
+              userName={userName}
+              userEmail={userEmail}
+              onEditRejected={handleEditRejectedReport}
+            />
           )}
           {activeTab === 'reporting-validation' && (
             <ControllerReportingList userName={userName} userEmail={userEmail} />
