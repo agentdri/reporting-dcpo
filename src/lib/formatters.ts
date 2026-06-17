@@ -66,15 +66,63 @@ export function formatDateOnlyFR(value: string | null | undefined, fallback: str
 }
 
 /**
- * Formate un montant pour affichage COMPACT dans une carte de stats.
+ * Échelle d'unités compactes (suffixes SI + usage financier).
  *
- * Sur les agrégats DCPO les montants peuvent rapidement atteindre plusieurs
- * milliards de FCFA, ce qui fait déborder les cartes du dashboard. On bascule
- * sur l'ordre de grandeur du million dès qu'on dépasse 1 000 000.
+ *   M  = million        (10^6)
+ *   Md = milliard        (10^9)  — équivalent SI : G (giga)
+ *   T  = tera            (10^12) — équivalent FR : billion
+ *   P  = peta            (10^15)
+ *   E  = exa             (10^18)
+ *   Z  = zetta           (10^21)
+ *   Y  = yotta           (10^24)
+ *   R  = ronna           (10^27)
+ *   Q  = quetta          (10^30)
+ *
+ * Choix de "Md" pour le milliard (au lieu de "G") : pratique courante dans
+ * les contextes financiers francophones (rapports BEAC, bilans bancaires…).
+ * Au-delà de quetta on bascule en notation scientifique car (1) les suffixes
+ * sont inconnus du grand public et (2) le contexte DCPO ne rencontrera jamais
+ * de tels montants.
+ *
+ * Tableau ordonné DECROISSANT (du plus grand au plus petit seuil) — la boucle
+ * dans formatMontantCompact prend la première unité dont le seuil est atteint.
+ */
+const COMPACT_UNITS: ReadonlyArray<{ threshold: number; suffix: string }> = [
+  { threshold: 1e30, suffix: 'Q' },
+  { threshold: 1e27, suffix: 'R' },
+  { threshold: 1e24, suffix: 'Y' },
+  { threshold: 1e21, suffix: 'Z' },
+  { threshold: 1e18, suffix: 'E' },
+  { threshold: 1e15, suffix: 'P' },
+  { threshold: 1e12, suffix: 'T' },
+  { threshold: 1e9, suffix: 'Md' },
+  { threshold: 1e6, suffix: 'M' },
+]
+
+/**
+ * Formate un montant pour affichage COMPACT dans une carte de stats KPI.
  *
  * Stratégie :
- *   - valeur < 1 000 000      → affichage complet ('150 000')
- *   - valeur ≥ 1 000 000      → en millions avec max 2 décimales ('61 775,88 M')
+ *   - valeur < 1 000 000        → affichage complet avec séparateurs FR
+ *                                  ('999 999') — lisibilité maximale pour
+ *                                  les montants "normaux" (sous le million)
+ *   - 1 M ≤ valeur < 10^33      → abréviation SI/financière, décimales
+ *                                  adaptatives :
+ *                                    • |scaled| < 10  → 2 décimales ('1,25 Md')
+ *                                    • |scaled| < 100 → 1 décimale  ('12,5 Md')
+ *                                    • sinon           → 0 décimale  ('125 Md')
+ *                                  Une carte affiche donc au pire 3 chiffres
+ *                                  significatifs + suffixe (~6-7 caractères),
+ *                                  ce qui rentre dans la grille de cartes.
+ *   - valeur ≥ 10^33            → notation scientifique compacte
+ *                                  ('1,23×10^33') — fallback de sécurité
+ *
+ * Couverture pratique :
+ *   - Précision exacte JavaScript : jusqu'à 2^53 − 1 ≈ 9 × 10^15 (P / peta).
+ *     Au-delà, les derniers chiffres significatifs peuvent être imprécis mais
+ *     l'ordre de grandeur affiché reste correct (suffisant pour un KPI).
+ *   - Limite numérique JS : Number.MAX_VALUE ≈ 1,8 × 10^308 — on peut donc
+ *     toujours afficher quelque chose, même pour des valeurs absurdes.
  *
  * Pour les contextes où la précision compte (table, détail, impression),
  * continuer à utiliser `value.toLocaleString('fr-FR')` directement.
@@ -85,10 +133,26 @@ export function formatDateOnlyFR(value: string | null | undefined, fallback: str
 export function formatMontantCompact(value: number): string {
   if (!Number.isFinite(value)) return '0'
   const abs = Math.abs(value)
-  if (abs >= 1_000_000) {
-    return `${(value / 1_000_000).toLocaleString('fr-FR', {
-      maximumFractionDigits: 2,
-    })} M`
+  // Sous le million : affichage complet (lisibilité prioritaire)
+  if (abs < 1_000_000) return value.toLocaleString('fr-FR')
+  // Au-delà de quetta (10^30) : notation scientifique de secours
+  if (abs >= 1e33) {
+    const exp = Math.floor(Math.log10(abs))
+    const mantissa = value / Math.pow(10, exp)
+    return `${mantissa.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}×10^${exp}`
   }
+  // Cas standard : on cherche le plus grand suffixe applicable
+  for (const { threshold, suffix } of COMPACT_UNITS) {
+    if (abs >= threshold) {
+      const scaled = value / threshold
+      const absScaled = Math.abs(scaled)
+      const maxFrac = absScaled < 10 ? 2 : absScaled < 100 ? 1 : 0
+      return `${scaled.toLocaleString('fr-FR', {
+        maximumFractionDigits: maxFrac,
+      })} ${suffix}`
+    }
+  }
+  // Filet de sécurité (théoriquement inatteignable car le test < 1e6 est
+  // déjà fait au-dessus).
   return value.toLocaleString('fr-FR')
 }

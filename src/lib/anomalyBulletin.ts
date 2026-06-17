@@ -48,15 +48,18 @@ export type BulletinStatus = 'Resolu' | 'Clos' | 'Tous'
  * sur les inputs HTML).
  */
 export interface BulletinFilters {
-  search: string         // recherche libre dans tous les textes du bulletin
+  search: string             // recherche libre dans tous les textes du bulletin
   status: BulletinStatus
-  classification: string // ex : 'Operationnel', 'Fraude', 'Commercial'
-  criticite: string      // ex : 'Faible', 'Moyenne', 'Haute', 'Critique'
-  agence: string         // ID de l'agence (string pour cohérence avec le select)
-  agent: string          // nom OU email de l'auteur (recherche partielle)
-  affecte: string        // nom OU email de la personne affectée
-  closureFrom: string    // date min de clôture (format YYYY-MM-DD)
-  closureTo: string      // date max de clôture
+  classification: string     // ex : 'Operationnel', 'Fraude', 'Commercial'
+  criticite: string          // ex : 'Faible', 'Moyenne', 'Haute', 'Critique'
+  agence: string             // ID de l'agence (string pour cohérence avec le select)
+  reseau: string             // ID du réseau (string)
+  domaineActivite: string    // ex : 'Crédit', 'Caisse', 'Conformité'...
+  agent: string              // nom OU email de l'auteur (recherche partielle)
+  affecte: string            // nom OU email de la personne affectée
+  declarant: string          // nom OU email du déclarant (recherche partielle)
+  dateFrom: string           // date min de clôture (format YYYY-MM-DD)
+  dateTo: string             // date max de clôture
 }
 
 /** État initial des filtres : tout vide, statut "Tous". */
@@ -66,10 +69,13 @@ export const EMPTY_BULLETIN_FILTERS: BulletinFilters = {
   classification: '',
   criticite: '',
   agence: '',
+  reseau: '',
+  domaineActivite: '',
   agent: '',
   affecte: '',
-  closureFrom: '',
-  closureTo: '',
+  declarant: '',
+  dateFrom: '',
+  dateTo: '',
 }
 
 /**
@@ -723,8 +729,9 @@ export function applyBulletinFilters(
   const search = filters.search.trim().toLowerCase()
   const agentTerm = filters.agent.trim().toLowerCase()
   const affecteTerm = filters.affecte.trim().toLowerCase()
-  const fromDate = filters.closureFrom ? new Date(`${filters.closureFrom}T00:00:00`) : undefined
-  const toDate = filters.closureTo ? new Date(`${filters.closureTo}T23:59:59`) : undefined
+  const declarantTerm = filters.declarant.trim().toLowerCase()
+  const fromDate = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : undefined
+  const toDate = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59`) : undefined
 
   return bulletins.filter(b => {
     // Filtres simples (égalité) — exclusion rapide
@@ -732,6 +739,11 @@ export function applyBulletinFilters(
     if (filters.classification && b.classification !== filters.classification) return false
     if (filters.criticite && b.criticite !== filters.criticite) return false
     if (filters.agence && String(b.ticket.field_6 ?? '') !== filters.agence) return false
+    if (filters.reseau && String(b.ticket.field_7 ?? '') !== filters.reseau) return false
+    if (
+      filters.domaineActivite &&
+      (b.ticket.domaineActivite ?? '') !== filters.domaineActivite
+    ) return false
 
     // Filtres texte (recherche partielle dans nom + email)
     if (agentTerm) {
@@ -741,6 +753,10 @@ export function applyBulletinFilters(
     if (affecteTerm) {
       const haystack = `${b.affecteName} ${b.ticket.personneAffecter?.Email ?? ''}`.toLowerCase()
       if (!haystack.includes(affecteTerm)) return false
+    }
+    if (declarantTerm) {
+      const haystack = `${b.declarantName} ${b.ticket.declarant_anormalie?.Email ?? ''}`.toLowerCase()
+      if (!haystack.includes(declarantTerm)) return false
     }
 
     // Filtre par intervalle de dates de clôture

@@ -563,12 +563,16 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    * (chaîne vide = pas de filtre = toutes les anomalies retournées).
    */
   const [filterStatut, setFilterStatut] = useState('')
-  // Filtres client (champs personne, gérés côté frontend)
+  // Filtres client (champs personne + recherche libre, gérés côté frontend)
   const [filterAgent, setFilterAgent] = useState('')
   const [filterAffecte, setFilterAffecte] = useState('')
+  const [filterDeclarant, setFilterDeclarant] = useState('')
+  const [filterSearch, setFilterSearch] = useState('')
   // Snapshot des filtres client au moment du clic "Rechercher"
   const [appliedAgent, setAppliedAgent] = useState('')
   const [appliedAffecte, setAppliedAffecte] = useState('')
+  const [appliedDeclarant, setAppliedDeclarant] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
 
 
   /* ──────────────────────────────────────────────────────────────────────
@@ -1390,6 +1394,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const handleSearch = () => {
     setAppliedAgent(filterAgent)
     setAppliedAffecte(filterAffecte)
+    setAppliedDeclarant(filterDeclarant)
+    setAppliedSearch(filterSearch)
     fetchItems()
   }
 
@@ -1410,8 +1416,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setFilterStatut('')
     setFilterAgent('')
     setFilterAffecte('')
+    setFilterDeclarant('')
+    setFilterSearch('')
     setAppliedAgent('')
     setAppliedAffecte('')
+    setAppliedDeclarant('')
+    setAppliedSearch('')
     setTimeout(() => fetchItems(), 0)
   }
 
@@ -1428,11 +1438,13 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const filteredItems = useMemo(() => {
     const agentTerm = appliedAgent.trim().toLowerCase()
     const affecteTerm = appliedAffecte.trim().toLowerCase()
+    const declarantTerm = appliedDeclarant.trim().toLowerCase()
+    const searchTerm = appliedSearch.trim().toLowerCase()
     // Tous les utilisateurs (y compris les Controleurs) voient l'ensemble des
     // anomalies "en cours" — pas de restriction de visibilité par rôle ici.
-    // Seuls les filtres saisis dans la barre (agent / personne affectée)
-    // peuvent restreindre la liste.
-    if (!agentTerm && !affecteTerm) return items
+    // Seuls les filtres saisis dans la barre (agent / personne affectée /
+    // déclarant / recherche libre) peuvent restreindre la liste.
+    if (!agentTerm && !affecteTerm && !declarantTerm && !searchTerm) return items
     return items.filter(it => {
       if (agentTerm) {
         const haystack = `${it.auteur_anormalie?.DisplayName ?? ''} ${it.auteur_anormalie?.Email ?? ''}`.toLowerCase()
@@ -1442,9 +1454,29 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         const haystack = `${it.personneAffecter?.DisplayName ?? ''} ${it.personneAffecter?.Email ?? ''}`.toLowerCase()
         if (!haystack.includes(affecteTerm)) return false
       }
+      if (declarantTerm) {
+        const haystack = `${it.declarant_anormalie?.DisplayName ?? ''} ${it.declarant_anormalie?.Email ?? ''}`.toLowerCase()
+        if (!haystack.includes(declarantTerm)) return false
+      }
+      if (searchTerm) {
+        const haystack = [
+          it.ID ? `T-${it.ID}` : '',
+          it.Title ?? '',
+          it.field_3 ?? '',
+          it.field_4 ?? '',
+          it.field_5 ?? '',
+          it.field_10 ?? '',
+          it.criticiteAnomalie ?? '',
+          it.domaineActivite ?? '',
+          it.declarant_anormalie?.DisplayName ?? '',
+          it.auteur_anormalie?.DisplayName ?? '',
+          it.personneAffecter?.DisplayName ?? '',
+        ].join(' ').toLowerCase()
+        if (!haystack.includes(searchTerm)) return false
+      }
       return true
     })
-  }, [items, appliedAgent, appliedAffecte])
+  }, [items, appliedAgent, appliedAffecte, appliedDeclarant, appliedSearch])
 
   /* ──────────────────────────────────────────────────────────────────────
    * PAGINATION
@@ -1455,7 +1487,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    * ────────────────────────────────────────────────────────────────────── */
   const pagination = usePagination({
     total: filteredItems.length,
-    resetKey: `${items.length}|${appliedAgent}|${appliedAffecte}`,
+    resetKey: `${items.length}|${appliedAgent}|${appliedAffecte}|${appliedDeclarant}|${appliedSearch}`,
   })
   const pagedItems = useMemo(
     () => filteredItems.slice(pagination.start, pagination.end),
@@ -1694,6 +1726,17 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       {/* Les inputs sont liés à filter* (saisie libre).
           Le bouton Rechercher fait le snapshot vers applied* + refetch. */}
       <div className="filters-bar">
+        <div className="filter-field" style={{ flex: '1 1 220px' }}>
+          <label>Recherche</label>
+          <input
+            type="text"
+            placeholder="N°, titre, description, classification..."
+            value={filterSearch}
+            onChange={e => setFilterSearch(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleSearch() }}
+            aria-label="Recherche libre"
+          />
+        </div>
         <div className="filter-field">
           <label>Date du</label>
           <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
@@ -1774,6 +1817,15 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             placeholder="Nom ou email..."
             value={filterAffecte}
             onChange={e => setFilterAffecte(e.target.value)}
+          />
+        </div>
+        <div className="filter-field">
+          <label>Déclarant</label>
+          <input
+            type="text"
+            placeholder="Nom ou email..."
+            value={filterDeclarant}
+            onChange={e => setFilterDeclarant(e.target.value)}
           />
         </div>
         <button className="btn-search-filters" onClick={handleSearch} disabled={loading}>

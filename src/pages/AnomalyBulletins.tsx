@@ -47,6 +47,7 @@ import {
 } from '../lib/anomalyBulletin'
 import { getAttachmentIcon, getTicketAttachments } from '../lib/ticketAttachments'
 import { formatMontantCompact } from '../lib/formatters'
+import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
@@ -295,6 +296,25 @@ export default function AnomalyBulletins() {
             </select>
           </div>
           <div className="filter-field">
+            <label>Réseau</label>
+            <select value={filters.reseau} onChange={e => updateFilter('reseau', e.target.value)}>
+              <option value="">Tous</option>
+              {reseaux.map(r => (
+                <option key={r.ID} value={String(r.ID)}>{r.field_1 ?? r.Title}</option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label>Domaine d'activité</label>
+            <select
+              value={filters.domaineActivite}
+              onChange={e => updateFilter('domaineActivite', e.target.value)}
+            >
+              <option value="">Tous</option>
+              {DOMAINE_ACTIVITE_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div className="filter-field">
             <label>Agent (auteur)</label>
             <input
               type="text"
@@ -313,12 +333,21 @@ export default function AnomalyBulletins() {
             />
           </div>
           <div className="filter-field">
-            <label>Clôture du</label>
-            <input type="date" value={filters.closureFrom} onChange={e => updateFilter('closureFrom', e.target.value)} />
+            <label>Déclarant</label>
+            <input
+              type="text"
+              placeholder="Nom ou email..."
+              value={filters.declarant}
+              onChange={e => updateFilter('declarant', e.target.value)}
+            />
           </div>
           <div className="filter-field">
-            <label>Clôture au</label>
-            <input type="date" value={filters.closureTo} onChange={e => updateFilter('closureTo', e.target.value)} />
+            <label>Date du</label>
+            <input type="date" value={filters.dateFrom} onChange={e => updateFilter('dateFrom', e.target.value)} />
+          </div>
+          <div className="filter-field">
+            <label>Date au</label>
+            <input type="date" value={filters.dateTo} onChange={e => updateFilter('dateTo', e.target.value)} />
           </div>
           <button type="button" className="btn-search-filters" onClick={applyFilters} disabled={loading}>
             Rechercher
