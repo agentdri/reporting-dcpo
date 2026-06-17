@@ -1319,23 +1319,22 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       clauses.push("field_10 ne 'Resolu'")
     }
     /**
-     * Restriction de visibilité par rôle (côté SERVEUR pour ne pas charger
-     * en mémoire ce que l'utilisateur n'a pas le droit de voir) :
-     *   - Controleur → ne voit QUE les anomalies qui LUI sont affectées
-     *     (personneAffecter/Email eq <userEmail>).
-     *   - Manager (Chef_Departement / Directeur) → voit tout (pas de clause).
-     *   - Rôle inconnu / vide → comportement par défaut (= voit tout) pour
-     *     ne pas bloquer en cas de mauvaise config de DCPO_LISTE_USER.
+     * /!\ La restriction de visibilité par rôle (Controleur ne voit que ses
+     * propres anomalies) N'EST PLUS APPLIQUÉE ICI côté serveur.
      *
-     * Le chemin `personneAffecter/Email` est l'OData expand standard pour
-     * un champ Person — c'est le même que celui des autres listes Person
-     * dans ce projet.
+     * Pourquoi : le filtre OData `personneAffecter/Email eq '...'` provoque
+     * un HTTP 400 sur l'environnement publié — le connecteur SharePoint
+     * Power Platform n'expose `eq` que sur la propriété `Claims` du champ
+     * Personne (cf. schéma `dcpo_liste_anormalie` x-ms-capabilities). En
+     * local, le runtime de dev tolère plus de variantes ; en publié, c'est
+     * strict → l'utilisateur reçoit le 400 et la liste ne se charge pas.
+     *
+     * La restriction est désormais appliquée CÔTÉ CLIENT après le fetch
+     * (cf. filteredItems plus bas). Trade-off : on télécharge plus de données
+     * pour un Controleur, mais c'est compatible avec le connecteur publié et
+     * cohérent avec les autres restrictions client de ce fichier
+     * (filterAgent / filterAffecte).
      */
-    if (userRole === 'Controleur' && userEmail) {
-      // Échappement des single-quotes éventuels dans l'email (cas rare)
-      const safeEmail = userEmail.replace(/'/g, "''")
-      clauses.push(`personneAffecter/Email eq '${safeEmail}'`)
-    }
     return clauses.join(' and ')
   }
 
@@ -1430,8 +1429,19 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const filteredItems = useMemo(() => {
     const agentTerm = appliedAgent.trim().toLowerCase()
     const affecteTerm = appliedAffecte.trim().toLowerCase()
-    if (!agentTerm && !affecteTerm) return items
+    // Restriction de visibilité par rôle (déportée du filtre serveur — cf.
+    // buildFilter). Pour un Controleur, on ne garde que les anomalies dont
+    // il est la personne affectée. Comparaison case-insensitive pour
+    // absorber les variations de casse SharePoint vs Office 365.
+    const restrictToMine = userRole === 'Controleur'
+    const myEmail = userEmail?.toLowerCase() ?? ''
+
+    if (!agentTerm && !affecteTerm && !restrictToMine) return items
     return items.filter(it => {
+      if (restrictToMine) {
+        const affecteEmail = it.personneAffecter?.Email?.toLowerCase() ?? ''
+        if (!myEmail || affecteEmail !== myEmail) return false
+      }
       if (agentTerm) {
         const haystack = `${it.auteur_anormalie?.DisplayName ?? ''} ${it.auteur_anormalie?.Email ?? ''}`.toLowerCase()
         if (!haystack.includes(agentTerm)) return false
@@ -1442,7 +1452,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       }
       return true
     })
-  }, [items, appliedAgent, appliedAffecte])
+  }, [items, appliedAgent, appliedAffecte, userRole, userEmail])
 
   /* ──────────────────────────────────────────────────────────────────────
    * PAGINATION
