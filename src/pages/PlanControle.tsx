@@ -71,6 +71,7 @@ import {
   type ControleEvaluation,
 } from '../lib/planControleService'
 import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
+import { notifyAffectation } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
@@ -530,6 +531,15 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
         setAffectError("Échec de l'affectation. Réessayer.")
         return
       }
+
+      // Notification Teams au nouveau responsable (fire-and-forget).
+      notifyAffectation({
+        type: 'plan-controle',
+        email: affectSelectedEmail.trim(),
+        subject: affectTarget.libelle || `Plan de contrôle #${affectTarget.id}`,
+        details: `Catégorie : ${affectTarget.categorie || '—'}. Fréquence : ${affectTarget.frequence}. Année : ${affectTarget.annee}.`,
+      })
+
       // Refresh complet de la liste pour que la nouvelle affectation apparaisse
       const refreshed = await listControles()
       setControles(refreshed)
@@ -567,12 +577,34 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
         natureActivicte: form.natureActivicte,
       }
 
+      // Mémo de l'ancien responsable AVANT update — sert à détecter un
+      // changement de personne affectée (afin de notifier uniquement le
+      // NOUVEAU responsable, pas l'ancien qui n'a plus rien à faire).
+      const previousResponsableEmail = editingId
+        ? controles.find(c => c.id === editingId)?.responsableEmail ?? ''
+        : ''
+
       const saved = editingId
         ? await updateControle(editingId, input)
         : await createControle(input)
 
       if (!saved?.id) {
         throw new Error(editingId ? 'Échec de la mise à jour.' : 'Échec de la création.')
+      }
+
+      // Notification Teams si :
+      //   - création avec responsable renseigné
+      //   - OU édition qui change l'email du responsable
+      const responsableChanged =
+        !!input.responsableEmail &&
+        input.responsableEmail.toLowerCase() !== previousResponsableEmail.toLowerCase()
+      if (responsableChanged) {
+        notifyAffectation({
+          type: 'plan-controle',
+          email: input.responsableEmail,
+          subject: saved.libelle || `Plan de contrôle #${saved.id}`,
+          details: `Catégorie : ${saved.categorie || '—'}. Fréquence : ${saved.frequence}. Année : ${saved.annee}.`,
+        })
       }
 
       // Upload optionnel via workflow Power Automate + persistance de l'URL.

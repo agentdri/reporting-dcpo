@@ -69,6 +69,7 @@ import {
   type PacStatus,
 } from '../lib/pacService'
 import { formatDateOnlyFR } from '../lib/formatters'
+import { notifyAffectation } from '../lib/teamsNotifications'
 import {
   listDirections,
   getDirectionLabelFromList,
@@ -293,6 +294,15 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
         setAffectError("Échec de l'affectation. Réessayer.")
         return
       }
+
+      // Notification Teams au nouveau responsable de mise en œuvre.
+      notifyAffectation({
+        type: 'pac',
+        email: affectSelectedEmail.trim(),
+        subject: affectTarget.intitule || `PAC #${affectTarget.id}`,
+        details: `Source : ${affectTarget.sourcePac || '—'}. Échéance : ${affectTarget.echeance || '—'}. Statut : ${affectTarget.statut}.`,
+      })
+
       await refresh()
       closeAffectation()
     } catch (err) {
@@ -594,6 +604,12 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
         observations: form.observations.trim() || undefined,
       }
 
+      // Mémo de l'ancien responsable AVANT update — pour ne notifier que
+      // si le responsable a effectivement CHANGÉ.
+      const previousResponsableEmail = editingId
+        ? pacs.find(p => p.id === editingId)?.responsableEmail ?? ''
+        : ''
+
       // Création OU édition selon editingId
       const saved = editingId
         ? await updatePAC(editingId, input)
@@ -601,6 +617,21 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
 
       if (!saved?.id) {
         throw new Error(editingId ? 'Échec de la mise à jour.' : 'Échec de la création.')
+      }
+
+      // Notification Teams si :
+      //   - création avec responsable renseigné
+      //   - OU édition qui change l'email du responsable de mise en œuvre
+      const responsableChanged =
+        !!input.responsableEmail &&
+        input.responsableEmail.toLowerCase() !== previousResponsableEmail.toLowerCase()
+      if (responsableChanged) {
+        notifyAffectation({
+          type: 'pac',
+          email: input.responsableEmail,
+          subject: saved.intitule || `PAC #${saved.id}`,
+          details: `Source : ${saved.sourcePac || '—'}. Échéance : ${saved.echeance || '—'}. Statut : ${saved.statut}.`,
+        })
       }
 
       // Upload optionnel de la pièce jointe via le workflow Power Automate dédié.

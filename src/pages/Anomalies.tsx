@@ -101,6 +101,7 @@ import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
 import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
 import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
+import { notifyAffectation } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 
@@ -856,6 +857,20 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         // sans 't' — conservé tel quel pour matcher la colonne réelle).
         dateAffection: new Date().toISOString(),
       })
+
+      // Notification Teams (fire-and-forget). Récupère le titre de
+      // l'anomalie depuis le state local pour donner un contexte clair
+      // au destinataire (numéro de ticket + titre).
+      const affectedItem = items.find(it => it.ID === affectItemId)
+      const ticketNum = affectItemId ? `T-${affectItemId}` : 'Anomalie'
+      const titre = affectedItem?.Title?.trim() || ''
+      notifyAffectation({
+        type: 'anomalie',
+        email: affectSelectedUser.Mail,
+        subject: titre ? `${ticketNum} — ${titre}` : ticketNum,
+        details: `Délai de traitement : ${delaiNum} jour(s).${affectCommentaire.trim() ? ` Commentaire : ${affectCommentaire.trim()}` : ''}`,
+      })
+
       closeAffectModal()
       await fetchItems()
     } catch (err) {
@@ -1565,6 +1580,17 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         } catch (err) {
           console.error('Erreur upload piece jointe:', err)
         }
+      }
+
+      // Notification Teams si une personne a été affectée dès la création
+      // (auquel cas elle vient de se voir attribuer un nouveau dossier).
+      if (affecteFormEmail && result.data?.ID) {
+        notifyAffectation({
+          type: 'anomalie',
+          email: affecteFormEmail,
+          subject: `T-${result.data.ID}${form.field_4 ? ' — ' + stripHtml(form.field_4).slice(0, 80) : ''}`,
+          details: 'Délai de traitement par défaut : 3 jour(s). Voir le détail dans ReportingDCPO.',
+        })
       }
 
       resetForm()
