@@ -450,6 +450,8 @@
 }
 
 /* Couleur par type d'étape : appliquée au point ET à la bordure haute de la carte */
+.timeline-creation { border-top-color: #64748b; }
+.timeline-creation .timeline-dot { background: #64748b; box-shadow: 0 0 0 2px #64748b; }
 .timeline-declaration { border-top-color: #1d4ed8; }
 .timeline-declaration .timeline-dot { background: #1d4ed8; box-shadow: 0 0 0 2px #1d4ed8; }
 .timeline-opening { border-top-color: #f59e0b; }

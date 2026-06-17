@@ -1165,6 +1165,13 @@ export default function ReportingAgent() {
  * sans contrôle assigné par exemple).
  * ══════════════════════════════════════════════════════════════════════════ */
 function BulletinSectionTable({ section }: { section: BulletinSection }) {
+  // Libellés métier spécifiques : pour la section "Surveillance des anomalies",
+  // les contrôleurs notent en termes de détection/correction plutôt que de
+  // prévisionnel/réalisé. Les autres sections (plans de contrôle, PAC) gardent
+  // les libellés génériques.
+  const isAnomaliesSection = /ANOMALIES/i.test(section.titre)
+  const prevuLabel = isAnomaliesSection ? 'Détectée' : 'Prévu'
+  const realiseLabel = isAnomaliesSection ? 'Corrigée' : 'Réalisé'
   return (
     <>
       <h2 className="agent-print-section-title bulletin-section-title">
@@ -1180,8 +1187,8 @@ function BulletinSectionTable({ section }: { section: BulletinSection }) {
           <thead>
             <tr>
               <th>CRITERES DE NOTATION</th>
-              <th style={{ width: 70, textAlign: 'center' }}>Prévu</th>
-              <th style={{ width: 70, textAlign: 'center' }}>Réalisé</th>
+              <th style={{ width: 70, textAlign: 'center' }}>{prevuLabel}</th>
+              <th style={{ width: 70, textAlign: 'center' }}>{realiseLabel}</th>
               <th style={{ width: 70, textAlign: 'center' }}>Écart</th>
             </tr>
           </thead>

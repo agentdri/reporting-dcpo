@@ -100,7 +100,7 @@ export interface LifecycleStep {
   date?: string
   label: string
   description?: string
-  type: 'declaration' | 'opening' | 'regularization' | 'closure' | 'log' | 'event'
+  type: 'creation' | 'declaration' | 'opening' | 'regularization' | 'closure' | 'log' | 'event'
 }
 
 
@@ -372,10 +372,25 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
   const steps: LifecycleStep[] = []
 
   // ─── Étape 1 : Dates clés ──────────────────────────────────────────
-  const declared = parseDateSafe(ticket.field_0) ?? parseDateSafe(ticket.Created)
+  // `Created` = horodatage système (auto SharePoint au moment de la création
+  // de l'item). Différent de `field_0` qui est la date métier saisie par
+  // l'agent (= date à laquelle l'anomalie a été constatée sur le terrain).
+  const systemCreated = parseDateSafe(ticket.Created)
+  const declared = parseDateSafe(ticket.field_0) ?? systemCreated
   const opened = parseDateSafe(ticket.dateOuvertureTicket) ?? declared
   const regularized = parseDateSafe(ticket.field_9)
   const closed = parseDateSafe(ticket.date_cloture_ticket)
+
+  // L'étape "Création système" n'est ajoutée que si elle apporte une info
+  // distincte de la déclaration (sinon doublon visuel — cas où l'agent n'a
+  // pas saisi field_0 et où declared retombe sur Created).
+  if (systemCreated && systemCreated.getTime() !== declared?.getTime()) {
+    steps.push({
+      type: 'creation',
+      label: 'Création système',
+      date: systemCreated.toISOString(),
+    })
+  }
 
   if (declared) {
     steps.push({

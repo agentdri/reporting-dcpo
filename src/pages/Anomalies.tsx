@@ -1319,21 +1319,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       clauses.push("field_10 ne 'Resolu'")
     }
     /**
-     * /!\ La restriction de visibilité par rôle (Controleur ne voit que ses
-     * propres anomalies) N'EST PLUS APPLIQUÉE ICI côté serveur.
-     *
-     * Pourquoi : le filtre OData `personneAffecter/Email eq '...'` provoque
-     * un HTTP 400 sur l'environnement publié — le connecteur SharePoint
-     * Power Platform n'expose `eq` que sur la propriété `Claims` du champ
-     * Personne (cf. schéma `dcpo_liste_anormalie` x-ms-capabilities). En
-     * local, le runtime de dev tolère plus de variantes ; en publié, c'est
-     * strict → l'utilisateur reçoit le 400 et la liste ne se charge pas.
-     *
-     * La restriction est désormais appliquée CÔTÉ CLIENT après le fetch
-     * (cf. filteredItems plus bas). Trade-off : on télécharge plus de données
-     * pour un Controleur, mais c'est compatible avec le connecteur publié et
-     * cohérent avec les autres restrictions client de ce fichier
-     * (filterAgent / filterAffecte).
+     * Pas de restriction de visibilité par rôle : tous les utilisateurs
+     * (Controleur compris) voient l'ensemble des anomalies en cours, y
+     * compris celles affectées à d'autres contrôleurs. Cela facilite la
+     * coordination intra-équipe (vision partagée du backlog DCPO).
      */
     return clauses.join(' and ')
   }
@@ -1429,19 +1418,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const filteredItems = useMemo(() => {
     const agentTerm = appliedAgent.trim().toLowerCase()
     const affecteTerm = appliedAffecte.trim().toLowerCase()
-    // Restriction de visibilité par rôle (déportée du filtre serveur — cf.
-    // buildFilter). Pour un Controleur, on ne garde que les anomalies dont
-    // il est la personne affectée. Comparaison case-insensitive pour
-    // absorber les variations de casse SharePoint vs Office 365.
-    const restrictToMine = userRole === 'Controleur'
-    const myEmail = userEmail?.toLowerCase() ?? ''
-
-    if (!agentTerm && !affecteTerm && !restrictToMine) return items
+    // Tous les utilisateurs (y compris les Controleurs) voient l'ensemble des
+    // anomalies "en cours" — pas de restriction de visibilité par rôle ici.
+    // Seuls les filtres saisis dans la barre (agent / personne affectée)
+    // peuvent restreindre la liste.
+    if (!agentTerm && !affecteTerm) return items
     return items.filter(it => {
-      if (restrictToMine) {
-        const affecteEmail = it.personneAffecter?.Email?.toLowerCase() ?? ''
-        if (!myEmail || affecteEmail !== myEmail) return false
-      }
       if (agentTerm) {
         const haystack = `${it.auteur_anormalie?.DisplayName ?? ''} ${it.auteur_anormalie?.Email ?? ''}`.toLowerCase()
         if (!haystack.includes(agentTerm)) return false
@@ -1452,7 +1434,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       }
       return true
     })
-  }, [items, appliedAgent, appliedAffecte, userRole, userEmail])
+  }, [items, appliedAgent, appliedAffecte])
 
   /* ──────────────────────────────────────────────────────────────────────
    * PAGINATION
