@@ -75,6 +75,7 @@ import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGEN
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ExportButtons } from '../components/ExportButtons'
 import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
 import {
   listControles,
@@ -721,6 +722,27 @@ export default function ReportingAgent() {
             </select>
           </div>
         )}
+        {!selectedAgent && (
+          <ExportButtons
+            filename={groupingMode === 'auteur' ? 'reporting_par_auteur' : 'reporting_par_agent'}
+            pdfTitle={`Reporting par ${groupingMode === 'auteur' ? 'auteur' : 'agent affecté'}`}
+            getHeaders={() => [
+              'Agent', 'Email', 'Total anomalies', 'Ouvert', 'En cours',
+              'Résolu', 'Clos', 'Montant total', 'Domaines',
+            ]}
+            getRows={() => agents.map(a => [
+              a.displayName,
+              a.email,
+              a.total,
+              a.ouvert,
+              a.enCours,
+              a.resolu,
+              a.clos,
+              a.montantTotal,
+              a.domaines.join(', '),
+            ])}
+          />
+        )}
         {selectedAgent && (
           <button className="btn-add" onClick={() => setSelectedAgent(null)}>
             Retour à la liste
@@ -834,7 +856,7 @@ export default function ReportingAgent() {
                     <th>Clos</th>
                     <th>Montant total</th>
                     <th style={{ minWidth: 180 }}>Domaines d'activité</th>
-                    <th style={{ minWidth: 180 }}>Types d'action / sanction</th>
+                    <th style={{ minWidth: 180 }}>mode de traitement</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1057,7 +1079,7 @@ export default function ReportingAgent() {
                   <th>Montant</th>
                   <th>Date regularisation</th>
                   <th>Statut</th>
-                  <th>Type d'action / sanction</th>
+                  <th>Mode de traitement</th>
                   <th>Personne affectee</th>
                 </tr>
               </thead>

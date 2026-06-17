@@ -32,6 +32,8 @@ import {
 } from '../lib/activityService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ExportButtons } from '../components/ExportButtons'
+import { formatDateForExport } from '../lib/exporters'
 import './ControllerReporting.css'
 
 /** Identité du manager courant (passée par Dashboard). */
@@ -278,9 +280,34 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     <>
       <div className="content-header">
         <h2>Reportings soumis — Validation manager</h2>
-        <button className="btn-add" type="button" onClick={refresh} disabled={loadingReports}>
-          {loadingReports ? 'Chargement...' : 'Actualiser'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ExportButtons
+            filename="reportings_soumis"
+            pdfTitle="Reportings soumis — Validation manager"
+            getHeaders={() => [
+              'ID', 'Contrôleur', 'Email', 'Date activité', 'Statut',
+              'Statut journée', 'Total heures', 'Temps occupé',
+              'Anomalies détectées', 'Motif rejet', 'Soumis le',
+            ]}
+            getRows={() => filtered.map(r => [
+              r.id,
+              r.controleurName,
+              r.controleurEmail,
+              formatDateForExport(r.date),
+              r.statut,
+              r.statutJournee,
+              r.totalHeures,
+              r.tempsOccupe,
+              r.anomaliesDetectees ?? '',
+              r.motifRejet ?? '',
+              formatDateForExport(r.submittedAt),
+            ])}
+            disabled={loadingReports}
+          />
+          <button className="btn-add" type="button" onClick={refresh} disabled={loadingReports}>
+            {loadingReports ? 'Chargement...' : 'Actualiser'}
+          </button>
+        </div>
       </div>
 
       <div className="stats-cards">

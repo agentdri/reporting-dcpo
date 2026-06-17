@@ -51,7 +51,7 @@
  *   5. CLÔTURE DE LA RÉSOLUTION (resolutionItem)
  *      Formulaire complet pour passer une anomalie en Resolu/Clos :
  *      statut final, dates, auteur, causes immédiate/racine, actions menées,
- *      observations, pièce jointe, type d'action/sanction (typeSanction).
+ *      observations, pièce jointe, mode de traitement (typeSanction).
  *      → Crée aussi une description structurée concaténée dans field_4.
  *
  * RÈGLES MÉTIER CLÉS
@@ -104,6 +104,9 @@ import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
 import { notifyAffectation } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ExportButtons } from '../components/ExportButtons'
+import { findAgenceLabel, findReseauLabel } from '../lib/spReferenceRows'
+import { formatDateForExport } from '../lib/exporters'
 
 /**
  * Props passées par Dashboard.tsx — identité de l'utilisateur courant.
@@ -199,7 +202,7 @@ const CLASSIFICATION_OPTIONS = [
 // (partagé avec le Plan de Contrôle qui utilise le même référentiel).
 
 /**
- * Type d'action ou de sanction à appliquer suite à l'anomalie (champ
+ * Mode de traitement appliqué à l'anomalie à sa clôture (champ
  * `typeSanction`). Renseigné UNIQUEMENT à la clôture (cf. modale de
  * résolution) — pas à la création.
  *
@@ -455,10 +458,15 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    *
    * Règle métier :
    *   - Chef_Departement / Directeur → peuvent éditer N'IMPORTE quelle anomalie
-   *   - Controleur                   → ne peut éditer QUE les anomalies qui
-   *                                    LUI SONT affectées (personneAffecter.Email
-   *                                    match userEmail, comparaison
-   *                                    case-insensitive)
+   *   - Controleur                   → peut éditer si :
+   *                                      • il est la personne affectée, OU
+   *                                      • il est le déclarant de l'anomalie
+   *                                    (la propriété est attachée à
+   *                                    l'utilisateur qui a soumis le
+   *                                    formulaire de création — cf.
+   *                                    declarant_anormalie). Cas d'usage :
+   *                                    le contrôleur veut corriger une faute
+   *                                    de saisie sur sa propre anomalie.
    *   - Autre rôle / pas de rôle     → permissif (true) pour ne pas bloquer
    *                                    en cas de configuration manquante
    *
@@ -472,9 +480,11 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     if (!item) return false
     if (userRole === 'Chef_Departement' || userRole === 'Directeur') return true
     if (userRole === 'Controleur') {
-      const affecteEmail = item.personneAffecter?.Email?.toLowerCase()
       const myEmail = userEmail?.toLowerCase()
-      return !!affecteEmail && !!myEmail && affecteEmail === myEmail
+      if (!myEmail) return false
+      const affecteEmail = item.personneAffecter?.Email?.toLowerCase()
+      const declarantEmail = item.declarant_anormalie?.Email?.toLowerCase()
+      return affecteEmail === myEmail || declarantEmail === myEmail
     }
     // Rôle inconnu : permissif (cf. note canAffect).
     return true
@@ -669,7 +679,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     actionsMenees: '',
     observations: '',
     /**
-     * Type d'action ou de sanction décidée à la clôture. Référentiel
+     * Mode de traitement décidé à la clôture. Référentiel
      * TYPE_SANCTION_OPTIONS. Champ propre à la clôture — pas saisi à la
      * création. Optionnel (un blâme/avertissement n'est pas systématique).
      */
@@ -1605,17 +1615,48 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
    * ════════════════════════════════════════════════════════════════════════ */
   return (
     <>
-      {/* ─── HEADER : titre + bouton "Nouvelle anomalie" ─────────────── */}
+      {/* ─── HEADER : titre + boutons export + "Nouvelle anomalie" ───── */}
       <div className="content-header">
         <h2>Liste des anomalies</h2>
-        <button
-          type="button"
-          className={`btn-cta btn-cta-primary btn-cta-add ${showForm ? 'is-active' : ''}`}
-          onClick={() => setShowForm(!showForm)}
-          aria-expanded={showForm}
-        >
-          {showForm ? '× Annuler' : '+ Nouvelle anomalie'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ExportButtons
+            filename="anomalies_en_cours"
+            pdfTitle="Liste des anomalies en cours"
+            getHeaders={() => [
+              'Numéro', 'Titre', 'Statut', 'Criticité', 'Classification',
+              'Agence', 'Réseau', 'Domaine activité', 'Date déclaration',
+              'Date ouverture', 'Date régularisation', 'Date clôture',
+              'Déclarant', 'Auteur', 'Personne affectée', 'Montant',
+            ]}
+            getRows={() => filteredItems.map(it => [
+              it.ID ? `T-${it.ID}` : '',
+              it.Title ?? '',
+              it.field_10 ?? '',
+              it.criticiteAnomalie ?? '',
+              it.field_5 ?? '',
+              findAgenceLabel(agences, it.field_6),
+              findReseauLabel(reseaux, it.field_7),
+              it.domaineActivite ?? '',
+              formatDateForExport(it.field_0),
+              formatDateForExport(it.dateOuvertureTicket),
+              formatDateForExport(it.field_9),
+              formatDateForExport(it.date_cloture_ticket),
+              it.declarant_anormalie?.DisplayName ?? '',
+              it.auteur_anormalie?.DisplayName ?? '',
+              it.personneAffecter?.DisplayName ?? '',
+              it.field_8 ?? '',
+            ])}
+            disabled={loading}
+          />
+          <button
+            type="button"
+            className={`btn-cta btn-cta-primary btn-cta-add ${showForm ? 'is-active' : ''}`}
+            onClick={() => setShowForm(!showForm)}
+            aria-expanded={showForm}
+          >
+            {showForm ? '× Annuler' : '+ Nouvelle anomalie'}
+          </button>
+        </div>
       </div>
 
       {/* ─── STATS CARDS : compteurs basés sur filteredItems ─────────── */}
@@ -2202,7 +2243,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   </dd>
                   <dt>Classification</dt><dd>{detailItem.field_5 ?? '-'}</dd>
                   <dt>Domaine d'activité</dt><dd>{detailItem.domaineActivite ?? '-'}</dd>
-                  <dt>Type d'action / sanction</dt><dd>{detailItem.typeSanction ?? '-'}</dd>
+                  <dt>Mode de traitement</dt><dd>{detailItem.typeSanction ?? '-'}</dd>
                   <dt>Agence</dt><dd>{agences.find(a => String(a.ID) === detailItem.field_6)?.Title ?? detailItem.field_6 ?? '-'}</dd>
                   <dt>Reseau</dt><dd>{reseaux.find(r => String(r.ID) === detailItem.field_7)?.field_1 ?? detailItem.field_7 ?? '-'}</dd>
                   <dt>Montant</dt><dd>{detailItem.field_8?.toLocaleString() ?? '-'}</dd>
@@ -2827,14 +2868,14 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 />
               </div>
 
-              {/* Type d'action / sanction : saisi UNIQUEMENT à la clôture
+              {/* Mode de traitement : saisi UNIQUEMENT à la clôture
                   (pas à la création de l'anomalie). Référentiel mixte
                   TYPE_SANCTION_OPTIONS (relance, demande, sanction…).
-                  Champ optionnel — on peut clôturer sans action/sanction
-                  particulière dans les cas simples. */}
+                  Champ optionnel — on peut clôturer sans mode de
+                  traitement particulier dans les cas simples. */}
               <div className="form-field">
                 <label htmlFor="resolution-typeSanction">
-                  Type d'action / sanction
+                  Mode de traitement
                   <small className="field-hint" style={{ marginLeft: 8 }}>optionnel</small>
                 </label>
                 <select

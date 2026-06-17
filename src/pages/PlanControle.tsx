@@ -76,6 +76,8 @@ import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
 import { ProgressBar } from '../components/ProgressBar'
+import { ExportButtons } from '../components/ExportButtons'
+import { formatDateForExport } from '../lib/exporters'
 import {
   uploadPlanControleAttachment,
   uploadEvaluationAttachment,
@@ -641,11 +643,38 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
     <>
       <div className="content-header">
         <h2>Plan de Contrôle</h2>
-        {canManage && (
-          <button className="btn-add" type="button" onClick={openForm}>
-            + Nouveau contrôle
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ExportButtons
+            filename="plans_de_controle"
+            pdfTitle="Plans de contrôle"
+            getHeaders={() => [
+              'ID', 'Libellé', 'Catégorie', 'Nature activité', 'Fréquence',
+              'Année', 'Responsable', 'Email responsable', 'Statut',
+              'Objectif', 'Objectif chiffré', 'Créé le', 'Modifié le',
+            ]}
+            getRows={() => filtered.map(c => [
+              c.id,
+              c.libelle,
+              c.categorie,
+              c.natureActivicte,
+              c.frequence,
+              c.annee,
+              c.responsable,
+              c.responsableEmail,
+              c.statut,
+              c.objectif,
+              c.objectifChiffre,
+              formatDateForExport(c.createdAt),
+              formatDateForExport(c.updatedAt),
+            ])}
+            disabled={loading}
+          />
+          {canManage && (
+            <button className="btn-add" type="button" onClick={openForm}>
+              + Nouveau contrôle
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── Stats cards ───────────────────────────────────────────── */}

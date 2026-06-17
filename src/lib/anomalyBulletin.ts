@@ -100,7 +100,7 @@ export interface LifecycleStep {
   date?: string
   label: string
   description?: string
-  type: 'creation' | 'declaration' | 'opening' | 'regularization' | 'closure' | 'log' | 'event'
+  type: 'declaration' | 'survenance' | 'opening' | 'regularization' | 'closure' | 'log' | 'event'
 }
 
 
@@ -151,7 +151,7 @@ export interface ConsolidatedBulletin {
   domaine: string
   natureRisque: string
   /**
-   * Type d'action / sanction appliquée à la clôture de l'anomalie
+   * Mode de traitement appliqué à la clôture de l'anomalie
    * (champ SP `typeSanction`). Vide tant que l'anomalie n'a pas été
    * clôturée — c'est le contrôleur qui le renseigne dans le formulaire
    * de résolution.
@@ -369,47 +369,59 @@ function splitActions(raw: string): string[] {
  */
 export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): LifecycleStep[] {
   const ext = ticket as ExtendedTicket
-  const steps: LifecycleStep[] = []
 
   // ─── Étape 1 : Dates clés ──────────────────────────────────────────
-  // `Created` = horodatage système (auto SharePoint au moment de la création
-  // de l'item). Différent de `field_0` qui est la date métier saisie par
-  // l'agent (= date à laquelle l'anomalie a été constatée sur le terrain).
+  // Sémantique métier :
+  //   - `Created` (horodatage SP auto à la soumission) → "Déclaration"
+  //     (= moment où le déclarant a soumis le ticket dans le système).
+  //   - `field_0` (date métier saisie dans le formulaire) → "Survenance"
+  //     (= date à laquelle l'anomalie a réellement eu lieu sur le terrain).
+  //
+  // L'ordre d'affichage demandé n'est PAS chronologique : on veut
+  // "Déclaration" puis "Survenance" en tête de timeline, puis les autres
+  // étapes (ouverture du ticket, régularisation, clôture, journal) triées
+  // chronologiquement à la suite.
   const systemCreated = parseDateSafe(ticket.Created)
-  const declared = parseDateSafe(ticket.field_0) ?? systemCreated
-  const opened = parseDateSafe(ticket.dateOuvertureTicket) ?? declared
+  const survenance = parseDateSafe(ticket.field_0)
+  const opened = parseDateSafe(ticket.dateOuvertureTicket)
   const regularized = parseDateSafe(ticket.field_9)
   const closed = parseDateSafe(ticket.date_cloture_ticket)
 
-  // L'étape "Création système" n'est ajoutée que si elle apporte une info
-  // distincte de la déclaration (sinon doublon visuel — cas où l'agent n'a
-  // pas saisi field_0 et où declared retombe sur Created).
-  if (systemCreated && systemCreated.getTime() !== declared?.getTime()) {
-    steps.push({
-      type: 'creation',
-      label: 'Création système',
-      date: systemCreated.toISOString(),
-    })
-  }
-
-  if (declared) {
-    steps.push({
+  // Étapes "en tête" : ordre fixe (Déclaration → Survenance), non triées.
+  const head: LifecycleStep[] = []
+  if (systemCreated) {
+    head.push({
       type: 'declaration',
       label: 'Déclaration',
-      date: declared.toISOString(),
+      date: systemCreated.toISOString(),
       description: ticket.declarant_anormalie?.DisplayName,
     })
   }
-  // On évite un step "Ouverture" doublon si la date est == Déclaration
-  if (opened && opened.getTime() !== declared?.getTime()) {
-    steps.push({
+  if (survenance && survenance.getTime() !== systemCreated?.getTime()) {
+    head.push({
+      type: 'survenance',
+      label: 'Survenance',
+      date: survenance.toISOString(),
+    })
+  }
+
+  // Étapes "queue" : triées chronologiquement entre elles.
+  const tail: LifecycleStep[] = []
+  // On évite un step "Ouverture" doublon si la date est == Survenance OU
+  // == Déclaration (cas d'un ticket ouvert le jour de sa survenance).
+  if (
+    opened &&
+    opened.getTime() !== survenance?.getTime() &&
+    opened.getTime() !== systemCreated?.getTime()
+  ) {
+    tail.push({
       type: 'opening',
       label: 'Ouverture du ticket',
       date: opened.toISOString(),
     })
   }
   if (regularized) {
-    steps.push({
+    tail.push({
       type: 'regularization',
       label: 'Régularisation',
       date: regularized.toISOString(),
@@ -417,7 +429,7 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
     })
   }
   if (closed) {
-    steps.push({
+    tail.push({
       type: 'closure',
       label: 'Clôture',
       date: closed.toISOString(),
@@ -433,14 +445,14 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
       // Groupe 1 : date ISO ; Groupe 2 : reste de la ligne
       const dateMatch = line.match(/^\[?(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)\]?\s*[:\-–]?\s*(.*)$/)
       if (dateMatch) {
-        steps.push({
+        tail.push({
           type: 'log',
           label: dateMatch[2] || 'Note',
           date: dateMatch[1],
         })
       } else {
         // Note sans date détectable
-        steps.push({
+        tail.push({
           type: 'log',
           label: line,
         })
@@ -448,14 +460,14 @@ export function buildLifecycleSteps(ticket: DCPO_LISTE_ANORMALIERead): Lifecycle
     })
   }
 
-  // ─── Étape 3 : Tri chronologique ───────────────────────────────────
-  steps.sort((a, b) => {
+  // ─── Étape 3 : Tri chronologique de la queue, head intouché ────────
+  tail.sort((a, b) => {
     const da = a.date ? new Date(a.date).getTime() : 0
     const db = b.date ? new Date(b.date).getTime() : 0
     return da - db
   })
 
-  return steps
+  return [...head, ...tail]
 }
 
 

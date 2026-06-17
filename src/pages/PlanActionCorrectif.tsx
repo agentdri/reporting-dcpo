@@ -78,6 +78,8 @@ import {
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
+import { ExportButtons } from '../components/ExportButtons'
+import { formatDateForExport } from '../lib/exporters'
 import { uploadPacAttachment, uploadPacEvaluationAttachment, getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
 
 
@@ -671,11 +673,42 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
       {/* ─── Header ────────────────────────────────────────────────── */}
       <div className="content-header">
         <h2>Plan d'Action Correctif</h2>
-        {canManage && (
-          <button className="btn-add" type="button" onClick={openForm}>
-            + Nouveau PAC
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ExportButtons
+            filename="plans_action_correctif"
+            pdfTitle="Plans d'action correctif"
+            getHeaders={() => [
+              'ID', 'Source', 'Intitulé', 'Description', 'Cause immédiate',
+              'Cause racine', 'Actions correctives', 'Directions concernées',
+              'Date création', 'Échéance', 'Année', 'KPI', 'Responsable',
+              'Email responsable', 'Statut', 'Observations',
+            ]}
+            getRows={() => filtered.map(p => [
+              p.id,
+              p.sourcePac,
+              p.intitule,
+              p.descriptionProbleme,
+              p.causeImmediate,
+              p.causeRacine,
+              p.actionsCorrectives,
+              (p.directionsConcernees ?? []).join(', '),
+              formatDateForExport(p.dateCreation),
+              formatDateForExport(p.echeance),
+              p.annee,
+              p.kpi,
+              p.responsable,
+              p.responsableEmail,
+              p.statut,
+              p.observations ?? '',
+            ])}
+            disabled={loading}
+          />
+          {canManage && (
+            <button className="btn-add" type="button" onClick={openForm}>
+              + Nouveau PAC
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── Stats cards ───────────────────────────────────────────── */}

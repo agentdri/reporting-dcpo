@@ -62,6 +62,8 @@ import {
 import { getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ExportButtons } from '../components/ExportButtons'
+import { formatDateForExport } from '../lib/exporters'
 import './ControllerReporting.css'
 
 
@@ -392,9 +394,33 @@ export default function ControllerMyReports({ userEmail, onEditRejected }: Contr
       {/* ─── Header ────────────────────────────────────────────────── */}
       <div className="content-header">
         <h2>Mes rapports — historique d'activité</h2>
-        <button className="btn-add" type="button" onClick={refresh} disabled={loading}>
-          {loading ? 'Chargement...' : 'Actualiser'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ExportButtons
+            filename="mes_rapports_activite"
+            pdfTitle="Mes rapports — historique d'activité"
+            getHeaders={() => [
+              'ID', 'Date activité', 'Statut', 'Statut journée',
+              'Total heures', 'Temps occupé', 'Anomalies détectées',
+              'Motif rejet', 'Observations', 'Soumis le',
+            ]}
+            getRows={() => filteredReports.map(r => [
+              r.id,
+              formatDateForExport(r.date),
+              r.statut,
+              r.statutJournee,
+              r.totalHeures,
+              r.tempsOccupe,
+              r.anomaliesDetectees ?? '',
+              r.motifRejet ?? '',
+              r.observationsGlobales ?? '',
+              formatDateForExport(r.submittedAt),
+            ])}
+            disabled={loading}
+          />
+          <button className="btn-add" type="button" onClick={refresh} disabled={loading}>
+            {loading ? 'Chargement...' : 'Actualiser'}
+          </button>
+        </div>
       </div>
 
       {/* ─── Stats cards ───────────────────────────────────────────── */}

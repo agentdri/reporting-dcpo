@@ -164,7 +164,7 @@ avec son cycle de vie complet (création → affectation → traitement → clô
 | Colonne | Libellé | Type | Description |
 |---|---|---|---|
 | `actionsMenees` | actionsMenees | string | Actions menées pour résoudre — saisi à la clôture (textarea, retours à la ligne préservés) |
-| `typeSanction` | typeSanction | string (max 255) | Type d'action / sanction appliquée — référentiel **`TYPE_SANCTION_OPTIONS`** dans `Anomalies.tsx` (Avertissement, Blâme, Suspension, etc.) |
+| `typeSanction` | typeSanction | string (max 255) | Mode de traitement appliqué — référentiel **`TYPE_SANCTION_OPTIONS`** dans `Anomalies.tsx` (Avertissement, Blâme, Suspension, etc.) |
 
 ### Pièces jointes
 

@@ -49,6 +49,8 @@ import { getAttachmentIcon, getTicketAttachments } from '../lib/ticketAttachment
 import { formatMontantCompact } from '../lib/formatters'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ExportButtons } from '../components/ExportButtons'
+import { formatDateForExport } from '../lib/exporters'
 import './AnomalyBulletins.css'
 
 // Listes fermées pour les selects de filtre
@@ -191,9 +193,39 @@ export default function AnomalyBulletins() {
     <>
       <div className="content-header">
         <h2>Fiche récapitulatif de l'anomalie</h2>
-        <button className="btn-add" onClick={fetchData} disabled={loading} type="button">
-          {loading ? 'Actualisation...' : 'Actualiser'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <ExportButtons
+            filename="bulletins_anomalies"
+            pdfTitle="Bulletins d'anomalies"
+            getHeaders={() => [
+              'Numéro', 'Titre', 'Statut', 'Criticité', 'Classification',
+              'Agence', 'Réseau', 'Date déclaration', 'Date clôture',
+              'Délai (jours)', 'Déclarant', 'Auteur', 'Personne affectée',
+              'Montant', 'Description',
+            ]}
+            getRows={() => filtered.map(b => [
+              b.numero,
+              b.titre,
+              b.statut,
+              b.criticite,
+              b.classification,
+              b.agenceLabel,
+              b.reseauLabel,
+              formatDateForExport(b.declarationDate?.toISOString()),
+              formatDateForExport(b.closureDate?.toISOString()),
+              b.delayDays ?? '',
+              b.declarantName,
+              b.auteurName,
+              b.affecteName,
+              b.montant ?? '',
+              b.description,
+            ])}
+            disabled={loading}
+          />
+          <button className="btn-add" onClick={fetchData} disabled={loading} type="button">
+            {loading ? 'Actualisation...' : 'Actualiser'}
+          </button>
+        </div>
       </div>
 
       <div className="stats-cards">
@@ -488,7 +520,7 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
               {/* typeSanction : renseigné à la clôture par le contrôleur
                   via la modale de résolution. Sert au suivi disciplinaire
                   ou opérationnel des suites données à l'anomalie. */}
-              <div><dt>Type d'action / sanction</dt><dd>{bulletin.typeSanction || '—'}</dd></div>
+              <div><dt>Mode de traitement</dt><dd>{bulletin.typeSanction || '—'}</dd></div>
             </dl>
           </section>
 

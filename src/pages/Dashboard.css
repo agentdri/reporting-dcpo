@@ -1859,3 +1859,33 @@ tr.row-clickable:hover {
     display: block !important;
   }
 }
+
+/* ============================================================
+ * EXPORT BUTTONS — boutons Excel / PDF (composant ExportButtons)
+ * ============================================================ */
+.btn-export {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-export:not(:disabled):hover { filter: brightness(1.05); }
+.btn-export:not(:disabled):active { transform: translateY(1px); }
+
+.btn-export-excel {
+  background: #1f7a3e;
+  color: #fff;
+  border-color: #166030;
+}
+.btn-export-pdf {
+  background: #c0392b;
+  color: #fff;
+  border-color: #962d21;
+}

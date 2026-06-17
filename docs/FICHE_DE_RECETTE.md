@@ -101,7 +101,7 @@ Navigateur ▶ shell Power Apps (apps.powerapps.com) ▶ App React (Vite)
 | Bouton Affecter (managers uniquement) | Modale en 2 étapes : recherche O365 → délai (défaut 3j) + commentaire d'affectation | Le responsable, dateAffection, délai et commentaire sont mis à jour ; le contrôleur est notifié implicitement |
 | Bouton Ticket | Ouvre la modale de suivi avec actions disponibles (Détail, Changer statut, Clore résolution) | Vue synthétique avec actions contextuelles |
 | Bouton Changer le statut (managers uniquement) | Modale rapide pour passer Ouvert ↔ En cours | Le statut est mis à jour ; les options Resolu / Clos sont masquées (passage par la modale Clôture) |
-| Bouton Clore la résolution | Formulaire complet : statut final (Resolu / Clos), dates, auteur, causes immédiate/racine, actions menées, observations, type d'action/sanction, pièce jointe | L'anomalie disparaît de la liste « Anomalies en cours » et apparaît dans « Anomalies résolues » |
+| Bouton Clore la résolution | Formulaire complet : statut final (Resolu / Clos), dates, auteur, causes immédiate/racine, actions menées, observations, mode de traitement, pièce jointe | L'anomalie disparaît de la liste « Anomalies en cours » et apparaît dans « Anomalies résolues » |
 | Restriction de clôture | Un contrôleur ne peut clore qu'une anomalie qui lui est affectée | Le bouton Clore n'apparaît pas pour les autres contrôleurs |
 | Mode édition inline (modale Détail) | Bouton Modifier permet d'éditer tous les champs métier sauf le statut (et personne affectée pour les contrôleurs) | Les modifications sont persistées en SharePoint au clic Enregistrer |
 | Restriction d'édition contrôleur | Un contrôleur ne peut éditer que les anomalies qui lui sont affectées | Le bouton Modifier n'apparaît pas sur les autres |
@@ -116,7 +116,7 @@ Navigateur ▶ shell Power Apps (apps.powerapps.com) ▶ App React (Vite)
 | Card cliquable | Clic ouvre la modale de fiche détaillée | Tous les détails affichés en mode read-only |
 | Modale fiche détaillée | Sections : Identification, Dates clés, Caractérisation, Description & causes parsées, Cycle de vie (timeline), Actions à mener, Pièces jointes | Affichage structuré et complet |
 | Parsing automatique des causes | Si les colonnes dédiées (causeImmediate / causeRacine / etc.) sont vides, extraction depuis la description concaténée | Les sections Cause immédiate / Cause racine / Observations s'affichent correctement même sur les anciennes anomalies |
-| Affichage typeSanction | Type d'action / sanction décidée à la clôture | Visible dans la section Caractérisation |
+| Affichage typeSanction | Mode de traitement décidé à la clôture | Visible dans la section Caractérisation |
 | Délai calculé (audit) | Différence en jours entre date de déclaration et date de clôture | Affichage du nombre de jours réels de traitement |
 | Bouton Imprimer | Lance window.print() ; les éléments hors fiche sont masqués via @media print | Fiche prête pour PDF ou impression papier |
 | Bouton SharePoint | Ouvre l'item dans l'UI SharePoint native | Utile pour accéder aux pièces jointes natives ou aux versions |
