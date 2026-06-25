@@ -89,7 +89,8 @@
  * ============================================================================
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useStagger } from '../lib/useGsap'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import { DCPO_LISTE_AGENCESService } from '../generated/services/DCPO_LISTE_AGENCESService'
 import { DCPO_LISTE_RESEAUXService } from '../generated/services/DCPO_LISTE_RESEAUXService'
@@ -1494,6 +1495,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     [filteredItems, pagination.start, pagination.end],
   )
 
+  // Apparition en cascade des lignes du tableau au (re)chargement des données
+  const tableRef = useRef<HTMLDivElement>(null)
+  useStagger(tableRef, { selector: 'tbody tr', deps: [pagedItems] })
+
 
   /* ──────────────────────────────────────────────────────────────────────
    * HANDLERS — FORMULAIRE DE CRÉATION
@@ -2091,7 +2096,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       ) : filteredItems.length === 0 ? (
         <p className="loading-text">Aucune anomalie trouvée.</p>
       ) : (
-        <div className="table-wrapper">
+        <div className="table-wrapper" ref={tableRef}>
           <table className={`data-table anomalies-table ${expandedColumns ? 'is-expanded' : 'is-compact'}`}>
             <thead>
               <tr>
@@ -2496,7 +2501,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   </div>
 
                   {detailError && (
-                    <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                    <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                       {detailError}
                     </p>
                   )}
@@ -2646,7 +2651,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   </div>
 
                   {affectError && (
-                    <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0 0' }} role="alert">
+                    <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0 0' }} role="alert">
                       {affectError}
                     </p>
                   )}

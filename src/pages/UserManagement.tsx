@@ -477,7 +477,7 @@ export default function UserManagement({ userEmail, userRole }: UserManagementPr
 
       {/* ─── Erreur de chargement ──────────────────────────────────── */}
       {loadError && (
-        <p className="loading-text" style={{ color: '#c0392b', marginTop: 16 }} role="alert">
+        <p className="loading-text" style={{ color: 'var(--rdcpo-red)', marginTop: 16 }} role="alert">
           {loadError}
         </p>
       )}
@@ -604,7 +604,7 @@ export default function UserManagement({ userEmail, userRole }: UserManagementPr
               </div>
 
               {formError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
                 </p>
               )}

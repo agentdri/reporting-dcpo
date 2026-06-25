@@ -675,7 +675,7 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
             individuelle reconstituée depuis le champ actionDeLaJournee.
           */}
           <section>
-            <h3 style={{ margin: '0 0 8px', fontSize: 13, color: '#1a1a2e' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>
               Actions de la journée
             </h3>
             {(!report.lines || report.lines.length === 0) ? (
@@ -713,7 +713,7 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
           {/* ─── Observations globales (si présentes) ───────────── */}
           {report.observationsGlobales && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>
                 Observations globales
               </h3>
               <p style={{ margin: 0, fontSize: 13, whiteSpace: 'pre-wrap' }}>
@@ -730,7 +730,7 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
           */}
           {report.attachments && report.attachments.length > 0 && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>
                 Pièces jointes ({report.attachments.length})
               </h3>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -781,7 +781,7 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
           */}
           {report.statut !== 'Soumis' && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>
                 Décision du manager
               </h3>
               <ul className="manager-history">

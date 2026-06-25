@@ -136,7 +136,7 @@ export default function DashboardPowerBI({ title, url }: DashboardPowerBIProps) 
                 height: 36,
                 borderRadius: '50%',
                 border: '3px solid #e0e0e0',
-                borderTopColor: '#e63946',
+                borderTopColor: 'var(--rdcpo-red-bright)',
                 animation: 'pbi-spin 0.8s linear infinite',
               }}
               aria-hidden="true"

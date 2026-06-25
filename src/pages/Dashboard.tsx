@@ -71,7 +71,10 @@
  * ============================================================================
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useFadeUp, useNavReveal } from '../lib/useGsap'
+import NavIcon from '../components/NavIcon'
+import Accueil from './Accueil'
 import Anomalies from './Anomalies'
 import AnomalyBulletins from './AnomalyBulletins'
 import ReportingAgent from './ReportingAgent'
@@ -150,6 +153,7 @@ const ROLE_LABELS: Record<string, string> = {
  * et ajouter la condition de rendu en bas du composant.
  */
 type Tab =
+  | 'accueil'
   | 'anomalie'
   | 'bulletins'
   | 'reporting-agent'
@@ -165,15 +169,36 @@ type Tab =
   | 'dashboard-comex'        // Groupe Dashboards Power BI → Apurement Comex
 
 /**
+ * Libellés des onglets pour le fil d'Ariane de la topbar (« ReportingDCPO / … »).
+ * Toute key de Tab doit y figurer. Sert uniquement à l'affichage du titre de page.
+ */
+const TAB_TITLES: Record<Tab, string> = {
+  'accueil': "Vue d'ensemble",
+  'anomalie': 'Anomalies en cours',
+  'bulletins': 'Anomalies résolues',
+  'reporting-agent': 'Reporting par Agent',
+  'reporting-saisie': 'Saisie du rapport',
+  'reporting-mes-rapports': 'Mes rapports',
+  'reporting-validation': 'Validation reportings',
+  'plan-controle': 'Plan de Contrôle',
+  'plan-action-correctif': "Plan d'Action Correctif",
+  'user-management': 'Gestion des utilisateurs',
+  'config-directions': 'Directions',
+  'dashboard-numerisation': 'Numérisation des journées',
+  'dashboard-creance': 'Créance Hors Bilan',
+  'dashboard-comex': 'Apurement Comex',
+}
+
+/**
  * Item de nav simple (feuille de l'arbre).
  *   - type discriminant 'leaf' (vs 'group') pour le pattern matching
  *   - key : identifiant unique. Pour les liens INTERNES, c'est une valeur
  *     de Tab activée au clic. Pour les liens EXTERNES (`href` défini), c'est
  *     juste un identifiant React (typage élargi à string)
  *   - label : texte affiché
- *   - icon : (optionnel) emoji ou caractère unicode affiché à gauche du label
- *     pour faciliter la lecture visuelle de la sidebar. Pas d'asset à charger,
- *     compatible multiplateforme.
+ *   - icon : (optionnel) clé d'icône SVG (cf. composant NavIcon) affichée à
+ *     gauche du label. Jeu d'icônes « line » de la charte modernisée, rendu
+ *     en SVG inline (stroke=currentColor) — pas d'asset externe à charger.
  *   - href : (optionnel) URL externe. Si défini, l'item est rendu comme un
  *     `<a target="_blank">` qui ouvre l'URL dans un nouvel onglet sans
  *     changer l'onglet interne actif. Sert à intégrer des applications
@@ -232,18 +257,20 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
    */
   const navItems = useMemo<NavEntry[]>(() => {
     const items: NavEntry[] = [
+      // Accueil : tableau de bord d'entrée (vue d'ensemble + graphiques)
+      { type: 'leaf', key: 'accueil', label: 'Accueil', icon: 'home' },
       // Groupe Anomalies : 2 sous-onglets toujours visibles
       {
         type: 'group',
         key: 'anomalies',
         label: 'Anomalies',
-        icon: '⚠️',
+        icon: 'alert',
         children: [
-          { type: 'leaf', key: 'anomalie', label: 'Anomalies en cours', icon: '📋' },
-          { type: 'leaf', key: 'bulletins', label: 'Anomalies résolues', icon: '📄' },
+          { type: 'leaf', key: 'anomalie', label: 'Anomalies en cours', icon: 'list' },
+          { type: 'leaf', key: 'bulletins', label: 'Anomalies résolues', icon: 'file' },
         ],
       },
-      { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent', icon: '👤' },
+      { type: 'leaf', key: 'reporting-agent', label: 'Reporting par Agent', icon: 'user' },
     ]
     // Onglets conditionnels selon rôle
     //
@@ -259,21 +286,21 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         type: 'group',
         key: 'rapport-quotidien',
         label: 'Rapport quotidien',
-        icon: '📅',
+        icon: 'calendar',
         children: [
-          { type: 'leaf', key: 'reporting-saisie', label: 'Saisie du rapport', icon: '📝' },
-          { type: 'leaf', key: 'reporting-mes-rapports', label: 'Mes rapports', icon: '📂' },
+          { type: 'leaf', key: 'reporting-saisie', label: 'Saisie du rapport', icon: 'edit' },
+          { type: 'leaf', key: 'reporting-mes-rapports', label: 'Mes rapports', icon: 'folder' },
         ],
       })
     }
     if (isManager) {
       // Validation des rapports soumis par les contrôleurs (manager uniquement)
-      items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings', icon: '✅' })
+      items.push({ type: 'leaf', key: 'reporting-validation', label: 'Validation reportings', icon: 'check' })
     }
     // Onglets toujours en queue
     items.push(
-      { type: 'leaf', key: 'plan-controle', label: 'Plan de Contrôle', icon: '🎯' },
-      { type: 'leaf', key: 'plan-action-correctif', label: "Plan d'Action Correctif", icon: '🛠️' },
+      { type: 'leaf', key: 'plan-controle', label: 'Plan de Contrôle', icon: 'target' },
+      { type: 'leaf', key: 'plan-action-correctif', label: "Plan d'Action Correctif", icon: 'tool' },
     )
     // Groupe "Dashboards Power BI" — visible par tous les rôles autorisés.
     // Chaque sous-onglet rend un iframe pointant vers un rapport Power BI
@@ -286,16 +313,16 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
       type: 'group',
       key: 'dashboards',
       label: 'Dashboards',
-      icon: '📊',
+      icon: 'bar',
       children: [
-        { type: 'leaf', key: 'dashboard-numerisation', label: 'Numérisation des journées', icon: '📑' },
-        { type: 'leaf', key: 'dashboard-creance', label: 'Créance Hors Bilan', icon: '💰' },
-        { type: 'leaf', key: 'dashboard-comex', label: 'Apurement Comex', icon: '📈' },
+        { type: 'leaf', key: 'dashboard-numerisation', label: 'Numérisation des journées', icon: 'file' },
+        { type: 'leaf', key: 'dashboard-creance', label: 'Créance Hors Bilan', icon: 'money' },
+        { type: 'leaf', key: 'dashboard-comex', label: 'Apurement Comex', icon: 'trend' },
         {
           type: 'leaf',
           key: 'ext-cloture-journees',
           label: 'Clôture des journées',
-          icon: '📒',
+          icon: 'link',
           // App Power Apps externe — ouvre dans un nouvel onglet
           // (cf. logique des leaves avec `href` dans le rendu de la sidebar).
           href: 'https://apps.powerapps.com/play/e/e78a17af-caf0-e888-989b-beca000173f8/a/8d342307-2ae1-4d55-ac08-414d26a60449',
@@ -315,10 +342,10 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         type: 'group',
         key: 'configuration',
         label: 'Configuration',
-        icon: '⚙️',
+        icon: 'settings',
         children: [
-          { type: 'leaf', key: 'config-directions', label: 'Directions', icon: '🏛️' },
-          { type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs', icon: '👥' },
+          { type: 'leaf', key: 'config-directions', label: 'Directions', icon: 'building' },
+          { type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs', icon: 'users' },
         ],
       })
     }
@@ -327,8 +354,8 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
 
   // ─── États ─────────────────────────────────────────────────────────────
 
-  /** Onglet courant. 'anomalie' (Liste) par défaut au montage. */
-  const [activeTab, setActiveTab] = useState<Tab>('anomalie')
+  /** Onglet courant. 'accueil' (Vue d'ensemble) par défaut au montage. */
+  const [activeTab, setActiveTab] = useState<Tab>('accueil')
 
   /**
    * Date cible passée à <ControllerReporting> quand on navigue depuis la
@@ -374,18 +401,39 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
     setOpenGroups(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
+  // Titre de la page courante (fil d'Ariane topbar)
+  const pageTitle = TAB_TITLES[activeTab] ?? 'ReportingDCPO'
+
+  // Animation d'entrée du contenu : rejouée à chaque changement d'onglet
+  // (équivalent JS du `animation:fadeUp` appliqué par page dans le template).
+  const contentRef = useRef<HTMLDivElement>(null)
+  useFadeUp(contentRef, [activeTab])
+
+  // Animation d'entrée de la sidebar : logo + items en cascade + bloc user
+  // (orchestrée en timeline GSAP, cf. useNavReveal). Jouée une fois au montage.
+  const navRef = useRef<HTMLElement>(null)
+  useNavReveal(navRef)
+
+  // Initiales de l'utilisateur pour l'avatar du pied de sidebar
+  const userInitials = (userName ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() ?? '')
+    .join('') || '?'
+
   return (
     <div className="dashboard">
-      {/* ─── TOPBAR : titre app + identité utilisateur ─────────────── */}
+      {/* ─── TOPBAR : fil d'Ariane + sélecteur de rôle ──────────────── */}
       <header className="dashboard-topbar">
         <div className="topbar-left">
           <h1 className="topbar-title">
-            <span aria-hidden="true" style={{ marginRight: 8 }}>📋</span>
-            ReportingDCPO
+            <span className="topbar-crumb-root">ReportingDCPO</span>
+            <span className="topbar-crumb-sep" aria-hidden="true">/</span>
+            <span className="topbar-crumb-current">{pageTitle}</span>
           </h1>
         </div>
         <div className="topbar-user">
-          <span className="topbar-user-name">{userName}</span>
           {/* Sélecteur de rôle : affiché uniquement pour les rôles qui peuvent
               en simuler d'autres (Directeur / Chef_Departement). Sinon, simple
               libellé du rôle. */}
@@ -418,8 +466,19 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
       </header>
 
       <div className="dashboard-body">
-        {/* ─── SIDEBAR : navigation principale ─────────────────────── */}
-        <nav className="dashboard-nav" aria-label="Navigation principale">
+        {/* ─── SIDEBAR : logo + navigation + bloc utilisateur ──────── */}
+        <nav ref={navRef} className="dashboard-nav" aria-label="Navigation principale">
+          {/* Bloc logo */}
+          <div className="nav-logo">
+            <div className="nav-logo-mark" aria-hidden="true">A</div>
+            <div>
+              <div className="nav-logo-title">ReportingDCPO</div>
+              <div className="nav-logo-sub">Afriland First Bank</div>
+            </div>
+          </div>
+
+          {/* Liste des items de navigation */}
+          <div className="nav-list">
           {navItems.map(item => {
             // Branche feuille : un simple bouton qui change activeTab,
             // OU un lien externe (<a target="_blank">) si `href` est défini.
@@ -438,7 +497,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                     className="nav-item"
                     style={{ textDecoration: 'none' }}
                   >
-                    {item.icon && <span className="nav-icon" aria-hidden="true">{item.icon}</span>}
+                    {item.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>}
                     {item.label}
                     <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>↗</span>
                   </a>
@@ -453,7 +512,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                   aria-current={activeTab === item.key ? 'page' : undefined}
                 >
                   {/* Icône optionnelle : `aria-hidden` car redondante avec le label texte */}
-                  {item.icon && <span className="nav-icon" aria-hidden="true">{item.icon}</span>}
+                  {item.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>}
                   {item.label}
                 </button>
               )
@@ -472,7 +531,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                   aria-expanded={isOpen}
                 >
                   <span>
-                    {item.icon && <span className="nav-icon" aria-hidden="true">{item.icon}</span>}
+                    {item.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>}
                     {item.label}
                   </span>
                   <span className="nav-chevron" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
@@ -493,7 +552,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                             className="nav-item nav-child"
                             style={{ textDecoration: 'none' }}
                           >
-                            {child.icon && <span className="nav-icon" aria-hidden="true">{child.icon}</span>}
+                            {child.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={child.icon} /></span>}
                             {child.label}
                             <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>↗</span>
                           </a>
@@ -507,7 +566,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                         onClick={() => setActiveTab(child.key as Tab)}
                         aria-current={activeTab === child.key ? 'page' : undefined}
                       >
-                        {child.icon && <span className="nav-icon" aria-hidden="true">{child.icon}</span>}
+                        {child.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={child.icon} /></span>}
                         {child.label}
                       </button>
                       )
@@ -517,11 +576,29 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
               </div>
             )
           })}
+          </div>
+
+          {/* Bloc utilisateur en pied de sidebar */}
+          <div className="nav-user">
+            <div className="nav-user-avatar" aria-hidden="true">{userInitials}</div>
+            <div className="nav-user-info">
+              <div className="nav-user-name">{userName ?? 'Utilisateur'}</div>
+              <div className="nav-user-role">{ROLE_LABELS[userRole ?? ''] ?? userRole}</div>
+            </div>
+          </div>
         </nav>
 
         {/* ─── CONTENU : composant correspondant à activeTab ─────── */}
         {/* Pattern simple "&& render" : un seul des conditions matche */}
-        <div className="dashboard-content">
+        <div className="dashboard-content" ref={contentRef}>
+          {activeTab === 'accueil' && (
+            <Accueil
+              userName={userName}
+              userRole={userRole}
+              userEmail={userEmail}
+              onNavigate={(tab) => setActiveTab(tab as Tab)}
+            />
+          )}
           {activeTab === 'anomalie' && (
             <Anomalies userName={userName} userEmail={userEmail} userRole={userRole} />
           )}

@@ -567,7 +567,7 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
           </dl>
 
           <section>
-            <h3 style={{ margin: '0 0 8px', fontSize: 13, color: '#1a1a2e' }}>Actions réalisées</h3>
+            <h3 style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>Actions réalisées</h3>
             <table className="manager-table">
               <thead>
                 <tr>
@@ -603,14 +603,14 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
 
           {report.observationsGlobales && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>Observations globales</h3>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>Observations globales</h3>
               <p style={{ margin: 0, fontSize: 13, whiteSpace: 'pre-wrap' }}>{report.observationsGlobales}</p>
             </section>
           )}
 
           {report.attachments && report.attachments.length > 0 && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>Pièces jointes</h3>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>Pièces jointes</h3>
               <ul className="bulletin-attachments" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {report.attachments.map((a, i) => (
                   <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0' }}>
@@ -627,7 +627,7 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
               chaque nouvelle décision écrase la précédente). */}
           {report.statut !== 'Soumis' && (
             <section>
-              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: '#1a1a2e' }}>Décision actuelle</h3>
+              <h3 style={{ margin: '0 0 6px', fontSize: 13, color: 'var(--rdcpo-text-strong)' }}>Décision actuelle</h3>
               <ul className="manager-history">
                 <li>
                   <div>

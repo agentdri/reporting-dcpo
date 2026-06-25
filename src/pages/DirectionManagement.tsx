@@ -340,7 +340,7 @@ export default function DirectionManagement() {
               </div>
 
               {formError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
                 </p>
               )}
@@ -384,7 +384,7 @@ export default function DirectionManagement() {
                 <dt>Sigle</dt><dd><strong>{pendingDelete.sigle}</strong></dd>
                 <dt>Libellé</dt><dd>{pendingDelete.libelle}</dd>
               </dl>
-              <p style={{ fontSize: 12, color: '#c0392b', margin: 0 }}>
+              <p style={{ fontSize: 12, color: 'var(--rdcpo-red)', margin: 0 }}>
                 Cette action est définitive. Si des PAC référencent encore ce sigle,
                 ils continueront d'afficher le code brut sans son libellé.
               </p>

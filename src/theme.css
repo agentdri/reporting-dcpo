@@ -1,0 +1,132 @@
+/**
+ * ============================================================================
+ * THEME — JETONS DE DESIGN « ReportingDCPO – Interface Modernisée »
+ * ============================================================================
+ *
+ * Source : template "ReportingDCPO - Interface Modernisée.html" (export Power
+ * Apps). Centralise la charte (couleurs, surfaces, rayons, ombres, police) sous
+ * forme de variables CSS `--rdcpo-*` afin que TOUTES les feuilles de style et
+ * styles inline puissent y faire référence via var(...).
+ *
+ * Importé EN PREMIER dans main.tsx (avant index.css) pour que ces jetons
+ * gagnent la cascade face aux résidus de l'ancien thème.
+ *
+ * Contient aussi :
+ *   - les @keyframes d'entrée (fadeUp / slideIn / overlayIn) — fallback CSS des
+ *     animations GSAP (cf. src/lib/useGsap.ts) ;
+ *   - un garde prefers-reduced-motion qui neutralise toute animation/transition
+ *     pour les utilisateurs sensibles au mouvement.
+ * ============================================================================
+ */
+
+:root {
+  /* ── Police ─────────────────────────────────────────────────────────── */
+  --rdcpo-font: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  /* ── Surfaces & fonds ───────────────────────────────────────────────── */
+  --rdcpo-bg: #f3f5fa;          /* fond global de l'app */
+  --rdcpo-surface: #ffffff;     /* cartes, topbar, panneaux */
+  --rdcpo-surface-alt: #f8f9fd; /* entêtes de tableau, remplissages subtils */
+  --rdcpo-row-hover: #f7f8fc;   /* survol de ligne de tableau */
+
+  /* ── Textes ─────────────────────────────────────────────────────────── */
+  --rdcpo-text: #1a2238;        /* corps de texte */
+  --rdcpo-text-strong: #141c2e; /* titres (22px / 800) */
+  --rdcpo-text-muted: #8891b0;  /* sous-titres, libellés */
+  --rdcpo-text-soft: #6b7598;   /* sous-titre sidebar, rôle */
+
+  /* ── Bordures & rayons ──────────────────────────────────────────────── */
+  --rdcpo-border: #e5e9f2;
+  --rdcpo-border-soft: #f3f5fa;
+  --rdcpo-radius-sm: 8px;
+  --rdcpo-radius: 9px;          /* boutons outline */
+  --rdcpo-radius-md: 12px;      /* cartes, tableaux */
+
+  /* ── Ombres ─────────────────────────────────────────────────────────── */
+  --rdcpo-shadow-sm: 0 1px 4px rgba(20, 28, 46, 0.05);
+  --rdcpo-shadow-md: 0 6px 18px rgba(20, 28, 46, 0.08);
+  --rdcpo-shadow-logo: 0 4px 14px -4px rgba(200, 16, 46, 0.6);
+
+  /* ── Sidebar ────────────────────────────────────────────────────────── */
+  --rdcpo-sidebar-w: 252px;
+  --rdcpo-sidebar-bg: linear-gradient(180deg, #141c2e 0%, #1a2440 100%);
+  --rdcpo-sidebar-group: #8891b0; /* entêtes de groupe (majuscules) */
+  --rdcpo-sidebar-item: #d0d5e6;  /* texte des items de nav */
+  --rdcpo-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --rdcpo-sidebar-active: rgba(255, 255, 255, 0.10);
+  --rdcpo-user-avatar: #2a3456;
+
+  /* ── Rouge marque (Afriland) + dégradé logo ─────────────────────────── */
+  --rdcpo-red: #c8102e;
+  --rdcpo-red-bright: #d42235;
+  --rdcpo-red-deep: #a8172a;
+  --rdcpo-logo-grad: linear-gradient(135deg, #d42235, #a8172a);
+  --rdcpo-red-ring: rgba(200, 16, 46, 0.15); /* anneau de focus */
+
+  /* ── Palette d'accents ──────────────────────────────────────────────── */
+  --rdcpo-blue: #3465d6;
+  --rdcpo-green: #1b8a4f;
+  --rdcpo-orange: #e08a1e;
+  --rdcpo-purple: #8255c9;
+
+  /* ── Fonds de badges doux ───────────────────────────────────────────── */
+  --rdcpo-soft-red: #fdedef;
+  --rdcpo-soft-green: #e6f4ec;
+  --rdcpo-soft-orange: #fff4e6;
+  --rdcpo-soft-blue: #edf2fe;
+
+  /* ── Scrollbar ──────────────────────────────────────────────────────── */
+  --rdcpo-scroll-thumb: #cdd4e4;
+
+  /* Force le mode clair (l'ancien index.css activait color-scheme:light dark) */
+  color-scheme: light;
+}
+
+/* ── Reset global appliquant la charte ────────────────────────────────── */
+body {
+  margin: 0;
+  font-family: var(--rdcpo-font);
+  background: var(--rdcpo-bg);
+  color: var(--rdcpo-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar fine (WebKit) — homogène avec le template */
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--rdcpo-scroll-thumb);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Keyframes d'entrée (fallback CSS des animations GSAP) ─────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Respect de prefers-reduced-motion ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

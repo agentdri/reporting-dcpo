@@ -1,0 +1,175 @@
+/**
+ * Accueil.css — Vue d'ensemble (tableau de bord d'entrée).
+ * Charte modernisée : cartes blanches arrondies, accents --rdcpo-*, grille
+ * responsive de graphiques. Réutilise .stats-cards / .stat-card de Dashboard.css.
+ */
+
+.accueil {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ─── Bandeau de bienvenue ──────────────────────────────────────────── */
+.accueil-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.accueil-hello {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: var(--rdcpo-text-strong);
+}
+
+.accueil-sub {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rdcpo-text-muted);
+  margin-top: 2px;
+}
+
+/* ─── Cartes-chiffres cliquables ────────────────────────────────────── */
+/* Les cartes Total/Ouvert/… sont des <button> : on neutralise le style natif
+   et on ajoute un retour visuel au survol. La carte Montant reste un <div>. */
+button.stat-card {
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+button.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--rdcpo-shadow-md);
+}
+
+button.stat-card:focus-visible {
+  outline: 2px solid var(--rdcpo-red-ring);
+  outline-offset: 2px;
+}
+
+/* ─── Grille de graphiques ──────────────────────────────────────────── */
+.accueil-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.chart-panel {
+  background: var(--rdcpo-surface);
+  border: 1px solid var(--rdcpo-border);
+  border-radius: var(--rdcpo-radius-md);
+  padding: 16px 16px 14px;
+  box-shadow: var(--rdcpo-shadow-sm);
+  min-width: 0; /* autorise les graphiques responsive à rétrécir dans la grille */
+}
+
+/* Panneaux pleine largeur (tendance, top classifications) */
+.chart-panel.span-2 {
+  grid-column: 1 / -1;
+}
+
+.chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.chart-head h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: var(--rdcpo-text-strong);
+}
+
+/* ─── Donut : total centré ──────────────────────────────────────────── */
+.donut-wrap {
+  position: relative;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.donut-total {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: var(--rdcpo-text-strong);
+}
+
+.donut-total-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--rdcpo-text-muted);
+  margin-top: 3px;
+}
+
+/* ─── Légende custom (donut) ────────────────────────────────────────── */
+.chart-legend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+}
+
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--rdcpo-text);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-name {
+  flex: 1;
+  color: var(--rdcpo-text-soft);
+  font-weight: 600;
+}
+
+.legend-val {
+  font-weight: 800;
+  color: var(--rdcpo-text-strong);
+}
+
+/* ─── État vide / chargement ────────────────────────────────────────── */
+.chart-empty {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rdcpo-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ─── Responsive : une colonne sous 900px ───────────────────────────── */
+@media (max-width: 900px) {
+  .accueil-charts {
+    grid-template-columns: 1fr;
+  }
+}

@@ -921,7 +921,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               </div>
 
               {affectError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {affectError}
                 </p>
               )}
@@ -1018,7 +1018,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               </div>
 
               {evalError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {evalError}
                 </p>
               )}
@@ -1360,7 +1360,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               </div>
 
               {formError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
                 </p>
               )}

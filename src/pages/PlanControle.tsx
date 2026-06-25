@@ -957,7 +957,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
               </div>
 
               {affectError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {affectError}
                 </p>
               )}
@@ -1125,7 +1125,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
               </div>
 
               {formError && (
-                <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+                <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
                   {formError}
                 </p>
               )}
@@ -1277,7 +1277,7 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
                           boxShadow: `0 0 0 2px ${colorOf(step.type)}`,
                         }}
                       />
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e' }}>{step.label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rdcpo-text-strong)' }}>{step.label}</div>
                       {step.date && (
                         <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
                           {new Date(step.date).toLocaleString('fr-FR')}
@@ -1539,7 +1539,7 @@ function EvaluationModal({
           </div>
 
           {error && (
-            <p style={{ color: '#c0392b', fontSize: 13, margin: '8px 0' }} role="alert">
+            <p style={{ color: 'var(--rdcpo-red)', fontSize: 13, margin: '8px 0' }} role="alert">
               {error}
             </p>
           )}

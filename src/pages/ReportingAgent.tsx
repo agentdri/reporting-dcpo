@@ -1129,7 +1129,7 @@ export default function ReportingAgent() {
                   ? "FICHE DE NOTATION DE L'AUTEUR"
                   : 'FICHE DE NOTATION DU CONTROLEUR'}
               </h1>
-              <p style={{ textAlign: 'center', color: '#c0392b' }}>
+              <p style={{ textAlign: 'center', color: 'var(--rdcpo-red)' }}>
                 Édité le {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
               </p>
               <p>
@@ -1220,7 +1220,7 @@ function BulletinSectionTable({ section }: { section: BulletinSection }) {
                 <td>{r.critere}</td>
                 <td style={{ textAlign: 'center' }}>{r.prevu}</td>
                 <td style={{ textAlign: 'center' }}>{r.realise}</td>
-                <td style={{ textAlign: 'center', color: r.ecart < 0 ? '#c0392b' : '#10b981' }}>
+                <td style={{ textAlign: 'center', color: r.ecart < 0 ? 'var(--rdcpo-red)' : '#10b981' }}>
                   {r.ecart > 0 ? `+${r.ecart}` : r.ecart}
                 </td>
               </tr>
@@ -1230,7 +1230,7 @@ function BulletinSectionTable({ section }: { section: BulletinSection }) {
               <th>TAUX DE CONFORMITE</th>
               <th style={{ textAlign: 'center' }}>{section.totalPrevu}</th>
               <th style={{ textAlign: 'center' }}>{section.totalRealise}</th>
-              <th style={{ textAlign: 'center', color: section.totalEcart < 0 ? '#c0392b' : '#10b981' }}>
+              <th style={{ textAlign: 'center', color: section.totalEcart < 0 ? 'var(--rdcpo-red)' : '#10b981' }}>
                 {section.totalEcart > 0 ? `+${section.totalEcart}` : section.totalEcart}
               </th>
             </tr>
