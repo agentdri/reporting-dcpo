@@ -35,6 +35,7 @@ import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
 import './ControllerReporting.css'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 /** Identité du manager courant (passée par Dashboard). */
 interface ControllerReportingListProps {
@@ -532,7 +533,7 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
   }, [onClose])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div
         className="modal manager-modal"
         onClick={e => e.stopPropagation()}
@@ -683,6 +684,6 @@ function ManagerDetailModal({ report, onClose, onValidate }: ManagerDetailModalP
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

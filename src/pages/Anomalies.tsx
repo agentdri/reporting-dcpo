@@ -108,6 +108,7 @@ import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
 import { findAgenceLabel, findReseauLabel } from '../lib/spReferenceRows'
 import { formatDateForExport } from '../lib/exporters'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 /**
  * Props passées par Dashboard.tsx — identité de l'utilisateur courant.
@@ -2260,8 +2261,8 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             - Champs personnes (auteur/déclarant/affectée) NE SONT PAS éditables
               ici → la personne affectée se change via le bouton "Affecter" */}
       {detailItem && (
-        <div className="modal-overlay" onClick={closeDetailModal}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 560 }}>
+        <ModalOverlay onClose={closeDetailModal}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 100%)' }}>
             <div className="modal-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <h2 style={{ flex: 1 }}>{detailEditMode ? "Modifier l'anomalie" : "Detail de l'anomalie"}</h2>
               {/* Bouton "Modifier" : visible si user a les droits ET pas déjà en édition */}
@@ -2560,7 +2561,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── MODALE AFFECTATION ────────────────────────────────────── */}
@@ -2569,7 +2570,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
           2. Saisie du délai + commentaire → clic "Valider" (confirmAffect)
           → écrit personneAffecter + delai + commentaireAffectation en SharePoint */}
       {affectItemId !== null && (
-        <div className="modal-overlay" onClick={closeAffectModal}>
+        <ModalOverlay onClose={closeAffectModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Affecter l'anomalie</h2>
@@ -2680,14 +2681,14 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               {affectLoading && !affectSelectedUser && <p className="loading-text">Affectation en cours...</p>}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── MODALE SUIVI DU TICKET (ouverte par bouton "Ticket") ───── */}
       {/* Vue synthétique avec 3 actions : détail complet, changer statut,
           clore la résolution (cachée si déjà Resolu/Clos) */}
       {ticketItem !== null && (
-        <div className="modal-overlay" onClick={() => setTicketItem(null)}>
+        <ModalOverlay onClose={() => setTicketItem(null)}>
           <div className="modal ticket-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="ticket-modal-title">
@@ -2792,14 +2793,14 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── MODALE CLÔTURE DE LA RÉSOLUTION ───────────────────────── */}
       {/* Workflow complet contrôleur : statut, dates, auteur (modifiable),
           causes, actions menées (obligatoire), observations, pièce jointe */}
       {resolutionItem !== null && (
-        <div className="modal-overlay" onClick={closeResolution}>
+        <ModalOverlay onClose={closeResolution}>
           <form className="modal resolution-modal" onClick={e => e.stopPropagation()} onSubmit={saveResolution}>
             <div className="modal-header">
               <div className="ticket-modal-title">
@@ -2974,14 +2975,14 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               </div>
             </div>
           </form>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── MODALE CHANGEMENT DE STATUT (workflow rapide) ─────────── */}
       {/* Permet de basculer le statut sans formulaire complet */}
       {statusItem !== null && (
-        <div className="modal-overlay" onClick={closeStatusModal}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 460 }}>
+        <ModalOverlay onClose={closeStatusModal}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(460px, 100%)' }}>
             <div className="modal-header">
               <h2>Changer le statut — Ticket T-{statusItem.ID}</h2>
               <button className="modal-close" onClick={closeStatusModal}>&times;</button>
@@ -3050,7 +3051,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </>
   )

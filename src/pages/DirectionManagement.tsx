@@ -29,6 +29,7 @@ import {
 } from '../lib/directionService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 
 /** État vide du formulaire (création + reset). */
@@ -308,7 +309,7 @@ export default function DirectionManagement() {
 
       {/* ─── Modale création / édition ─────────────────────────────── */}
       {showForm && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <ModalOverlay onClose={closeForm}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)' }}>
             <div className="modal-header">
               <h2>{editingId ? 'Modifier la direction' : 'Nouvelle direction'}</h2>
@@ -365,12 +366,12 @@ export default function DirectionManagement() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── Modale de confirmation suppression ────────────────────── */}
       {pendingDelete && (
-        <div className="modal-overlay" onClick={() => !deleting && setPendingDelete(null)}>
+        <ModalOverlay onClose={() => !deleting && setPendingDelete(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 100%)' }}>
             <div className="modal-header">
               <h2>Confirmer la suppression</h2>
@@ -408,7 +409,7 @@ export default function DirectionManagement() {
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </>
   )

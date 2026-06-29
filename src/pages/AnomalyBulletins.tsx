@@ -53,6 +53,7 @@ import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
 import './AnomalyBulletins.css'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 // Listes fermées pour les selects de filtre
 const STATUS_OPTIONS: BulletinStatus[] = ['Tous', 'Resolu', 'Clos']
@@ -474,7 +475,7 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
   }, [onClose])
 
   return (
-    <div className="modal-overlay bulletin-modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose} className="bulletin-modal-overlay">
       <div
         className="modal bulletin-modal"
         onClick={e => e.stopPropagation()}
@@ -628,6 +629,6 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
           </section>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

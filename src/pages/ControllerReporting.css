@@ -4,11 +4,11 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  background: #fff;
+  background: var(--rdcpo-surface);
   border: 1px solid var(--rdcpo-border);
-  border-radius: 10px;
+  border-radius: var(--rdcpo-radius-md);
   padding: 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--rdcpo-shadow-sm);
 }
 
 .reporting-toprow {
@@ -111,8 +111,8 @@
 .reporting-table input[aria-invalid='true'],
 .reporting-table textarea[aria-invalid='true'],
 .reporting-table select[aria-invalid='true'] {
-  border-color: #b91c1c;
-  background: #fef2f2;
+  border-color: var(--rdcpo-red);
+  background: var(--rdcpo-soft-red);
 }
 
 .row-num {
@@ -144,7 +144,7 @@
 }
 
 .field-error {
-  color: #b91c1c;
+  color: var(--rdcpo-red);
   font-size: 11px;
   font-weight: 600;
   display: block;
@@ -166,9 +166,9 @@
 }
 
 .totals-card {
-  background: #fafafa;
+  background: var(--rdcpo-surface-alt);
   border: 1px solid var(--rdcpo-border);
-  border-radius: 8px;
+  border-radius: var(--rdcpo-radius-sm);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -207,12 +207,12 @@
   align-self: flex-start;
 }
 
-.totals-status-calme { background: #dcfce7; color: #166534; }
-.totals-status-normal { background: #dbeafe; color: #1d4ed8; }
+.totals-status-calme { background: var(--rdcpo-stat-resolu-bg); color: var(--rdcpo-stat-resolu); }
+.totals-status-normal { background: var(--rdcpo-soft-blue); color: var(--rdcpo-blue); }
 .totals-status-charge,
-.totals-status-chargeé { background: #fef3c7; color: #92400e; }
+.totals-status-chargeé { background: var(--rdcpo-soft-orange); color: var(--rdcpo-orange); }
 .totals-status-tres-charge,
-.totals-status-très-chargé { background: #fee2e2; color: #b91c1c; }
+.totals-status-très-chargé { background: var(--rdcpo-soft-red); color: var(--rdcpo-red); }
 
 /* Pièces jointes preview */
 .attachment-preview-list {
@@ -228,9 +228,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
-  border-radius: 5px;
+  background: var(--rdcpo-surface-alt);
+  border: 1px solid var(--rdcpo-border);
+  border-radius: var(--rdcpo-radius-sm);
   padding: 6px 10px;
   font-size: 13px;
 }
@@ -255,18 +255,18 @@
 }
 
 .reporting-message-ok {
-  background: #d1fae5;
-  color: #047857;
+  background: var(--rdcpo-stat-resolu-bg);
+  color: var(--rdcpo-stat-resolu);
 }
 
 .reporting-message-err {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--rdcpo-soft-red);
+  color: var(--rdcpo-red);
 }
 
 .reporting-draft-tag {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--rdcpo-soft-orange);
+  color: var(--rdcpo-orange);
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 11px;
@@ -281,12 +281,12 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
-  background: #fff;
+  background: var(--rdcpo-surface);
   border: 1px solid var(--rdcpo-border);
-  border-radius: 8px;
+  border-radius: var(--rdcpo-radius-sm);
   padding: 14px 16px;
   margin-bottom: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--rdcpo-shadow-sm);
 }
 
 .manager-controls label {
@@ -307,18 +307,18 @@
 }
 
 .manager-empty {
-  background: #fff;
-  border: 1px dashed #d0d0d0;
-  border-radius: 8px;
+  background: var(--rdcpo-surface);
+  border: 1px dashed var(--rdcpo-border);
+  border-radius: var(--rdcpo-radius-sm);
   padding: 30px;
   text-align: center;
   color: var(--rdcpo-text-muted);
 }
 
 .manager-group {
-  background: #fff;
+  background: var(--rdcpo-surface);
   border: 1px solid var(--rdcpo-border);
-  border-radius: 8px;
+  border-radius: var(--rdcpo-radius-sm);
   margin-bottom: 14px;
   overflow: hidden;
 }
@@ -329,7 +329,7 @@
   gap: 10px;
   align-items: center;
   justify-content: space-between;
-  background: #f8fafc;
+  background: var(--rdcpo-surface-alt);
   padding: 10px 14px;
   border-bottom: 1px solid var(--rdcpo-border);
 }
@@ -357,7 +357,7 @@
 }
 
 .manager-pill {
-  background: #f1f5f9;
+  background: var(--rdcpo-soft-neutral);
   color: var(--rdcpo-text-strong);
   border-radius: 999px;
   padding: 3px 10px;
@@ -367,9 +367,9 @@
   letter-spacing: 0.4px;
 }
 
-.manager-pill-pending { background: #fef3c7; color: #92400e; }
-.manager-pill-realise { background: #d1fae5; color: #047857; }
-.manager-pill-reporte { background: #fee2e2; color: #b91c1c; }
+.manager-pill-pending { background: var(--rdcpo-soft-orange); color: var(--rdcpo-orange); }
+.manager-pill-realise { background: var(--rdcpo-stat-resolu-bg); color: var(--rdcpo-stat-resolu); }
+.manager-pill-reporte { background: var(--rdcpo-soft-red); color: var(--rdcpo-red); }
 
 .manager-table {
   width: 100%;
@@ -444,9 +444,9 @@
 }
 
 .manager-summary-cell {
-  background: #fafafa;
+  background: var(--rdcpo-surface-alt);
   border: 1px solid var(--rdcpo-border);
-  border-radius: 6px;
+  border-radius: var(--rdcpo-radius-sm);
   padding: 10px 12px;
 }
 
@@ -476,9 +476,9 @@
 }
 
 .manager-history li {
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
-  border-radius: 6px;
+  background: var(--rdcpo-surface-alt);
+  border: 1px solid var(--rdcpo-border);
+  border-radius: var(--rdcpo-radius-sm);
   padding: 8px 12px;
   font-size: 12px;
 }
@@ -487,8 +487,8 @@
   font-weight: 700;
 }
 
-.manager-history-decision.realise { color: #047857; }
-.manager-history-decision.reporte { color: #b91c1c; }
+.manager-history-decision.realise { color: var(--rdcpo-stat-resolu); }
+.manager-history-decision.reporte { color: var(--rdcpo-red); }
 
 .manager-decision-row {
   display: flex;
@@ -518,25 +518,25 @@
 .btn-validate {
   padding: 8px 18px;
   border: none;
-  border-radius: 6px;
-  background: #10b981;
+  border-radius: var(--rdcpo-radius-sm);
+  background: var(--rdcpo-green);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
 }
 
-.btn-validate:hover { background: #047857; }
+.btn-validate:hover { background: var(--rdcpo-stat-resolu); }
 .btn-validate:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btn-invalidate {
   padding: 8px 18px;
   border: none;
-  border-radius: 6px;
-  background: #ef4444;
+  border-radius: var(--rdcpo-radius-sm);
+  background: var(--rdcpo-red);
   color: #fff;
   font-weight: 700;
   cursor: pointer;
 }
 
-.btn-invalidate:hover { background: #b91c1c; }
+.btn-invalidate:hover { background: var(--rdcpo-red-deep); }
 .btn-invalidate:disabled { opacity: 0.6; cursor: not-allowed; }

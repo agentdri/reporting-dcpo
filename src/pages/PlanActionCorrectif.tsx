@@ -81,6 +81,7 @@ import { UserPicker } from '../components/UserPicker'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
 import { uploadPacAttachment, uploadPacEvaluationAttachment, getAttachmentIcon, getAttachmentIconType } from '../lib/ticketAttachments'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 
 /**
@@ -881,7 +882,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
           (le bouton qui ouvre cette modale n'est rendu que si canManage).
           Le picker est pré-rempli avec la personne déjà affectée. */}
       {affectTarget && (
-        <div className="modal-overlay" onClick={closeAffectation}>
+        <ModalOverlay onClose={closeAffectation}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)' }}>
             <div className="modal-header">
               <h2>Affecter un responsable</h2>
@@ -946,7 +947,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── Modale ÉVALUATION PAC ─────────────────────────────────── */}
@@ -958,7 +959,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               éviter les races (le statut peut changer pendant l'ouverture).
             - L'historique des évaluations existantes est listé en bas. */}
       {evalTarget && (
-        <div className="modal-overlay" onClick={closeEvaluation}>
+        <ModalOverlay onClose={closeEvaluation}>
           <div
             className="modal"
             onClick={e => e.stopPropagation()}
@@ -1107,12 +1108,12 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── Modale de création ────────────────────────────────────── */}
       {showForm && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <ModalOverlay onClose={closeForm}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)' }}>
             <div className="modal-header">
               <h2>{editingId ? 'Modifier le PAC' : "Nouveau Plan d'Action Correctif"}</h2>
@@ -1377,7 +1378,7 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </>
   )
@@ -1429,7 +1430,7 @@ function PacDetailModal({ pac, directions, onClose, onEdit }: PacDetailModalProp
   const attachments = pac.attachments ?? []
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)' }}>
         <div className="modal-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h2 style={{ flex: 1 }}>Détail du PAC</h2>
@@ -1561,6 +1562,6 @@ function PacDetailModal({ pac, directions, onClose, onEdit }: PacDetailModalProp
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

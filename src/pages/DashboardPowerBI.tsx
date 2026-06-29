@@ -81,17 +81,7 @@ export default function DashboardPowerBI({ title, url }: DashboardPowerBIProps) 
       </div>
 
       {/* ─── Zone iframe ────────────────────────────────────────────────── */}
-      <div
-        style={{
-          minHeight: 'calc(100vh - 200px)',
-          marginTop: 16,
-          background: '#f5f5f5',
-          borderRadius: 8,
-          overflow: 'hidden',
-          border: '1px solid #e0e0e0',
-          position: 'relative',
-        }}
-      >
+      <div className="powerbi-embed-wrap">
         {/* key={url} : remonte un iframe FRESH à chaque changement de
             dashboard (sinon onLoad d'un ancien iframe contamine le nouveau). */}
         <iframe
@@ -110,46 +100,13 @@ export default function DashboardPowerBI({ title, url }: DashboardPowerBIProps) 
           }}
         />
 
-        {/* Overlay spinner pendant le chargement initial.
-            Disparaît dès que onLoad se déclenche.
-            pointerEvents: none → si l'utilisateur clique pendant que le
-            spinner est encore là, le clic passe à l'iframe en dessous. */}
         {!loaded && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(245, 245, 245, 0.85)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 12,
-              color: '#666',
-              fontSize: 14,
-              pointerEvents: 'none',
-            }}
-          >
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                border: '3px solid #e0e0e0',
-                borderTopColor: 'var(--rdcpo-red-bright)',
-                animation: 'pbi-spin 0.8s linear infinite',
-              }}
-              aria-hidden="true"
-            />
+          <div className="powerbi-embed-loading" role="status" aria-live="polite">
+            <div className="app-loading-spinner" aria-hidden="true" />
             <span>Chargement du tableau de bord…</span>
           </div>
         )}
       </div>
-
-      {/* Keyframes inline (évite un fichier CSS pour 4 lignes). */}
-      <style>{`
-        @keyframes pbi-spin { to { transform: rotate(360deg); } }
-      `}</style>
     </>
   )
 }

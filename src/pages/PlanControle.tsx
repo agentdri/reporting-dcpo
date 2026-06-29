@@ -84,6 +84,7 @@ import {
   getAttachmentIcon,
   getAttachmentIconType,
 } from '../lib/ticketAttachments'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 
 interface PlanControleProps {
@@ -917,7 +918,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
           Le picker est pré-rempli avec la personne déjà affectée pour
           éviter de saisir un changement par erreur. */}
       {affectTarget && (
-        <div className="modal-overlay" onClick={closeAffectation}>
+        <ModalOverlay onClose={closeAffectation}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 100%)' }}>
             <div className="modal-header">
               <h2>Affecter un responsable</h2>
@@ -982,12 +983,12 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
       {/* ─── Modale création ───────────────────────────────────────── */}
       {showForm && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <ModalOverlay onClose={closeForm}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(720px, 100%)' }}>
             <div className="modal-header">
               <h2>{editingId ? 'Modifier le contrôle' : 'Nouveau contrôle'}</h2>
@@ -1142,7 +1143,7 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
     </>
   )
@@ -1190,7 +1191,7 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
   const attachments = entry.attachments ?? []
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(640px, 100%)' }}>
         <div className="modal-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h2 style={{ flex: 1 }}>Détail du contrôle</h2>
@@ -1389,7 +1390,7 @@ function ControleDetailModal({ entry, onClose, onEdit }: ControleDetailModalProp
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }
 
@@ -1454,7 +1455,7 @@ function EvaluationModal({
   const yearMax = 2099
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div
         className="modal"
         onClick={e => e.stopPropagation()}
@@ -1627,6 +1628,6 @@ function EvaluationModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

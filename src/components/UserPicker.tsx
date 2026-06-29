@@ -79,11 +79,11 @@ export function UserPicker({
   // ─── Mode "sélectionné" : récap + bouton Changer ──────────────────────
   if (selectedName || selectedEmail) {
     return (
-      <div className="user-picker-selected" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 4, background: '#f8fafc' }}>
+      <div className="user-picker-selected">
         <div>
           <strong>{selectedName || selectedEmail}</strong>
           {selectedEmail && selectedName && (
-            <div style={{ fontSize: 11, color: '#666' }}>{selectedEmail}</div>
+            <div className="user-picker-email">{selectedEmail}</div>
           )}
         </div>
         <button
@@ -110,7 +110,7 @@ export function UserPicker({
         disabled={disabled}
         autoComplete="off"
       />
-      {loading && <span style={{ fontSize: 11, color: '#888' }}>Recherche...</span>}
+      {loading && <span className="user-picker-hint">Recherche…</span>}
       {results.length > 0 && (
         <ul className="autocomplete-dropdown">
           {results.map(u => (

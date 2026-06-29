@@ -65,6 +65,7 @@ import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
 import './ControllerReporting.css'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 
 /**
@@ -620,7 +621,7 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
   }, [onClose])
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div
         className="modal manager-modal"
         onClick={e => e.stopPropagation()}
@@ -824,6 +825,6 @@ function MyReportDetailModal({ report, onClose }: MyReportDetailModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   )
 }

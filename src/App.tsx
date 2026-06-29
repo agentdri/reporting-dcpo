@@ -165,8 +165,11 @@ function App() {
   // ─── Rendu : écran de chargement ──────────────────────────────────────
   if (loading) {
     return (
-      <section id="center">
-        <p>Chargement du profil...</p>
+      <section className="app-center">
+        <div className="app-loading" role="status" aria-live="polite">
+          <div className="app-loading-spinner" aria-hidden="true" />
+          <p>Chargement du profil…</p>
+        </div>
       </section>
     )
   }
@@ -174,8 +177,8 @@ function App() {
   // ─── Rendu : écran d'erreur (profil introuvable / SDK KO) ─────────────
   if (error || !user) {
     return (
-      <section id="center">
-        <p>{error ?? 'Utilisateur introuvable.'}</p>
+      <section className="app-center">
+        <p className="app-error">{error ?? 'Utilisateur introuvable.'}</p>
       </section>
     )
   }
@@ -186,7 +189,7 @@ function App() {
   // Les autorisés voient le bouton "Voir le dashboard" pour entrer dans l'app.
   return (
     <>
-      <section id="center">
+      <section className="app-center">
         <h1 className="welcome-title">Bienvenue, {user.displayName}</h1>
         <div className="user-card">
           {/* Tableau récapitulatif des infos utilisateur (Graph) */}

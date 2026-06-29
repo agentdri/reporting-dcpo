@@ -34,9 +34,9 @@ export interface ProgressBarProps {
 
 /** Détermine la couleur de remplissage selon le seuil (couleur automatique). */
 function colorForValue(pct: number): string {
-  if (pct < 30) return '#ef4444' // rouge
-  if (pct < 70) return '#f59e0b' // orange
-  return '#10b981'                // vert
+  if (pct < 30) return 'var(--rdcpo-red)'
+  if (pct < 70) return 'var(--rdcpo-orange)'
+  return 'var(--rdcpo-green)'
 }
 
 export function ProgressBar({ value, label, title, color }: ProgressBarProps) {

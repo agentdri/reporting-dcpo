@@ -44,7 +44,13 @@ export function useFadeUp(
     if (!el) return
     const mm = gsap.matchMedia()
     mm.add(MOTION_OK, () => {
-      gsap.from(el, { opacity: 0, y: 10, duration: 0.35, ease: 'power2.out' })
+      gsap.from(el, {
+        opacity: 0,
+        y: 10,
+        duration: 0.35,
+        ease: 'power2.out',
+        onComplete: () => { gsap.set(el, { clearProps: 'opacity,transform' }) },
+      })
     })
     return () => mm.revert()
     // eslint-disable-next-line react-hooks/exhaustive-deps

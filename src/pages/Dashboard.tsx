@@ -74,6 +74,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useFadeUp, useNavReveal } from '../lib/useGsap'
 import NavIcon from '../components/NavIcon'
+import { RoleSelect } from '../components/RoleSelect'
 import Accueil from './Accueil'
 import Anomalies from './Anomalies'
 import AnomalyBulletins from './AnomalyBulletins'
@@ -236,6 +237,17 @@ type NavEntry = NavLeaf | NavGroup
  * (validation des reportings).
  */
 const MANAGER_ROLES = ['Chef_Departement', 'Directeur']
+
+/** Icône de nav encapsulée dans un carré (items principaux et sous-menus). */
+function NavItemIcon({ name, size = 16 }: { name: string; size?: number }) {
+  return (
+    <span className="nav-icon-wrap" aria-hidden="true">
+      <span className="nav-icon">
+        <NavIcon name={name} size={size} />
+      </span>
+    </span>
+  )
+}
 
 export default function Dashboard({ userName, userRole, userEmail, realUserRole, onRoleChange }: DashboardProps) {
   // ─── Calculs dérivés du rôle ─────────────────────────────────────────
@@ -438,21 +450,15 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
               en simuler d'autres (Directeur / Chef_Departement). Sinon, simple
               libellé du rôle. */}
           {switchableRoles.length > 0 ? (
-            <label className="topbar-role-switch">
-              <span className="topbar-role-switch-icon" aria-hidden="true">👤</span>
-              <select
-                value={userRole ?? ''}
-                onChange={e => onRoleChange?.(e.target.value)}
-                aria-label="Changer de rôle (simulation)"
-              >
-                {switchableRoles.map(role => (
-                  <option key={role} value={role}>
-                    {ROLE_LABELS[role] ?? role}
-                    {role === realUserRole ? ' (mon rôle)' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <RoleSelect
+              value={userRole ?? ''}
+              options={switchableRoles.map(role => ({
+                value: role,
+                label: `${ROLE_LABELS[role] ?? role}${role === realUserRole ? ' (mon rôle)' : ''}`,
+              }))}
+              onChange={v => onRoleChange?.(v)}
+              aria-label="Changer de rôle (simulation)"
+            />
           ) : (
             <span className="topbar-user-job">{ROLE_LABELS[userRole ?? ''] ?? userRole}</span>
           )}
@@ -497,9 +503,9 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                     className="nav-item"
                     style={{ textDecoration: 'none' }}
                   >
-                    {item.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>}
-                    {item.label}
-                    <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>↗</span>
+                    {item.icon && <NavItemIcon name={item.icon} />}
+                    <span className="nav-item-label">{item.label}</span>
+                    <span className="nav-external-badge" aria-hidden="true">↗</span>
                   </a>
                 )
               }
@@ -511,34 +517,32 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                   onClick={() => setActiveTab(item.key as Tab)}
                   aria-current={activeTab === item.key ? 'page' : undefined}
                 >
-                  {/* Icône optionnelle : `aria-hidden` car redondante avec le label texte */}
-                  {item.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>}
-                  {item.label}
+                  {item.icon && <NavItemIcon name={item.icon} />}
+                  <span className="nav-item-label">{item.label}</span>
                 </button>
               )
             }
             // Branche groupe : parent expansible + enfants conditionnels
             const isOpen = openGroups[item.key] ?? true
-            // hasActiveChild : style distinct pour le parent quand un enfant est actif
             const hasActiveChild = item.children.some(c => c.key === activeTab)
             return (
-              <div key={item.key} className="nav-group">
-                {/* Bouton parent : toggle expand/collapse */}
+              <div key={item.key} className="nav-group" data-open={isOpen ? 'true' : 'false'}>
                 <button
                   type="button"
-                  className={`nav-item nav-parent ${hasActiveChild ? 'active-parent' : ''}`}
+                  className={`nav-parent ${hasActiveChild ? 'active-parent' : ''}`}
                   onClick={() => toggleGroup(item.key)}
                   aria-expanded={isOpen}
                 >
-                  <span>
-                    {item.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} /></span>}
+                  <span className="nav-parent-label">
+                    {item.icon && (
+                      <span className="nav-icon" aria-hidden="true">
+                        <NavIcon name={item.icon} size={14} />
+                      </span>
+                    )}
                     {item.label}
                   </span>
-                  <span className="nav-chevron" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+                  <span className="nav-chevron" aria-hidden="true">▾</span>
                 </button>
-                {/* Enfants visibles uniquement si groupe ouvert.
-                    Comme pour les leaves de niveau racine, on supporte les
-                    liens externes via la prop `href`. */}
                 {isOpen && (
                   <div className="nav-children" role="group" aria-label={item.label}>
                     {item.children.map(child => {
@@ -552,23 +556,23 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
                             className="nav-item nav-child"
                             style={{ textDecoration: 'none' }}
                           >
-                            {child.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={child.icon} /></span>}
-                            {child.label}
-                            <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>↗</span>
+                            {child.icon && <NavItemIcon name={child.icon} size={14} />}
+                            <span className="nav-item-label">{child.label}</span>
+                            <span className="nav-external-badge" aria-hidden="true">↗</span>
                           </a>
                         )
                       }
                       return (
-                      <button
-                        key={child.key}
-                        type="button"
-                        className={`nav-item nav-child ${activeTab === child.key ? 'active' : ''}`}
-                        onClick={() => setActiveTab(child.key as Tab)}
-                        aria-current={activeTab === child.key ? 'page' : undefined}
-                      >
-                        {child.icon && <span className="nav-icon" aria-hidden="true"><NavIcon name={child.icon} /></span>}
-                        {child.label}
-                      </button>
+                        <button
+                          key={child.key}
+                          type="button"
+                          className={`nav-item nav-child ${activeTab === child.key ? 'active' : ''}`}
+                          onClick={() => setActiveTab(child.key as Tab)}
+                          aria-current={activeTab === child.key ? 'page' : undefined}
+                        >
+                          {child.icon && <NavItemIcon name={child.icon} size={14} />}
+                          <span className="nav-item-label">{child.label}</span>
+                        </button>
                       )
                     })}
                   </div>

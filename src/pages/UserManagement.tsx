@@ -37,6 +37,7 @@ import type { DCPO_LISTE_USERRead, DCPO_LISTE_USERWrite } from '../generated/mod
 import type { User } from '../generated/models/Office365UsersModel'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ModalOverlay } from '../components/ModalOverlay'
 
 
 /**
@@ -553,7 +554,7 @@ export default function UserManagement({ userEmail, userRole }: UserManagementPr
 
       {/* ─── Modale création / édition ─────────────────────────────── */}
       {showForm && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <ModalOverlay onClose={closeForm}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ width: 'min(560px, 100%)' }}>
             <div className="modal-header">
               <h2>{editingId ? "Modifier l'utilisateur" : 'Nouvel utilisateur'}</h2>
@@ -629,7 +630,7 @@ export default function UserManagement({ userEmail, userRole }: UserManagementPr
               </div>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       )}
 
     </>

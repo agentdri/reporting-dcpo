@@ -34,6 +34,7 @@
   --rdcpo-text-strong: #141c2e; /* titres (22px / 800) */
   --rdcpo-text-muted: #8891b0;  /* sous-titres, libellés */
   --rdcpo-text-soft: #6b7598;   /* sous-titre sidebar, rôle */
+  --rdcpo-text-secondary: #3a4264; /* boutons outline, cellules tableau */
 
   /* ── Bordures & rayons ──────────────────────────────────────────────── */
   --rdcpo-border: #e5e9f2;
@@ -51,9 +52,10 @@
   --rdcpo-sidebar-w: 252px;
   --rdcpo-sidebar-bg: linear-gradient(180deg, #141c2e 0%, #1a2440 100%);
   --rdcpo-sidebar-group: #8891b0; /* entêtes de groupe (majuscules) */
-  --rdcpo-sidebar-item: #d0d5e6;  /* texte des items de nav */
+  --rdcpo-sidebar-item: #9ba3c2;  /* texte des items de nav (inactif) */
   --rdcpo-sidebar-hover: rgba(255, 255, 255, 0.06);
-  --rdcpo-sidebar-active: rgba(255, 255, 255, 0.10);
+  --rdcpo-sidebar-active: rgba(200, 16, 46, 0.12); /* fond item actif */
+  --rdcpo-sidebar-active-text: #f0a0a8;            /* texte item actif */
   --rdcpo-user-avatar: #2a3456;
 
   /* ── Rouge marque (Afriland) + dégradé logo ─────────────────────────── */
@@ -74,6 +76,17 @@
   --rdcpo-soft-green: #e6f4ec;
   --rdcpo-soft-orange: #fff4e6;
   --rdcpo-soft-blue: #edf2fe;
+  --rdcpo-soft-neutral: #f3f5fa;
+
+  /* ── Sémantique statut / criticité (template) ───────────────────────── */
+  --rdcpo-stat-ouvert: #c8102e;
+  --rdcpo-stat-ouvert-bg: #fdedef;
+  --rdcpo-stat-en-cours: #e08a1e;
+  --rdcpo-stat-en-cours-bg: #fff4e6;
+  --rdcpo-stat-resolu: #1b8a4f;
+  --rdcpo-stat-resolu-bg: #e6f4ec;
+  --rdcpo-stat-clos: #8891b0;
+  --rdcpo-stat-clos-bg: #f3f5fa;
 
   /* ── Scrollbar ──────────────────────────────────────────────────────── */
   --rdcpo-scroll-thumb: #cdd4e4;
@@ -129,4 +142,120 @@ body {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── Écrans centrés (chargement, accueil non autorisé) ───────────────── */
+.app-center {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+  padding: 32px 20px 24px;
+  min-height: 100svh;
+  background: var(--rdcpo-bg);
+}
+
+.app-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--rdcpo-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--rdcpo-border);
+  border-top-color: var(--rdcpo-red);
+  animation: rdcpo-spin 0.8s linear infinite;
+}
+
+@keyframes rdcpo-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Bouton outline (export Excel/PDF du template) ───────────────────── */
+.rdcpo-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: var(--rdcpo-radius);
+  border: 1px solid var(--rdcpo-border);
+  background: var(--rdcpo-surface);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rdcpo-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.rdcpo-btn-outline:hover:not(:disabled) {
+  background: var(--rdcpo-bg);
+  border-color: var(--rdcpo-text-muted);
+}
+
+.rdcpo-btn-outline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── UserPicker ─────────────────────────────────────────────────────── */
+.user-picker-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--rdcpo-border);
+  border-radius: var(--rdcpo-radius-sm);
+  background: var(--rdcpo-surface-alt);
+}
+
+.user-picker-selected strong {
+  color: var(--rdcpo-text-strong);
+  font-size: 13px;
+}
+
+.user-picker-email {
+  font-size: 11px;
+  color: var(--rdcpo-text-muted);
+}
+
+.user-picker-hint {
+  font-size: 11px;
+  color: var(--rdcpo-text-muted);
+}
+
+/* ── Conteneur Power BI embed ─────────────────────────────────────────── */
+.powerbi-embed-wrap {
+  min-height: calc(100vh - 200px);
+  margin-top: 16px;
+  background: var(--rdcpo-bg);
+  border-radius: var(--rdcpo-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--rdcpo-border);
+  position: relative;
+}
+
+.powerbi-embed-loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(243, 245, 250, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--rdcpo-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
 }
