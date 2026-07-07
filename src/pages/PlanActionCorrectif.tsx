@@ -462,13 +462,31 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
     })
   }, [pacs, appliedFilters, userRole, userEmail])
 
-  /** Stats globales pour les cards (recalculées sur la liste filtrée). */
-  const stats = useMemo(() => ({
-    total: filtered.length,
-    enCours: filtered.filter(p => p.statut === 'En cours').length,
-    executees: filtered.filter(p => p.statut === 'Exécutée').length,
-    nonExecutees: filtered.filter(p => p.statut === 'Non Exécutée').length,
-  }), [filtered])
+  /**
+   * Stats globales pour les cards (recalculées sur la liste filtrée).
+   *
+   * `tauxGlobal` = ratio agrégé de PAC exécutés sur l'ensemble des PAC
+   * visibles. Cohérent avec la sémantique de la "Fiche de notation"
+   * (cf. ReportingAgent.tsx buildPACsSection) : chaque PAC compte pour 1
+   * tâche à exécuter, et `realise = 1 si statut === 'Exécutée'`.
+   *
+   * Formule : (PAC exécutées / total PAC) × 100, capé à 100.
+   * Renvoie 0 si la liste est vide (évite division par zéro).
+   */
+  const stats = useMemo(() => {
+    const total = filtered.length
+    const executees = filtered.filter(p => p.statut === 'Exécutée').length
+    const tauxGlobal = total > 0
+      ? Math.max(0, Math.min(100, Math.round((executees / total) * 100)))
+      : 0
+    return {
+      total,
+      enCours: filtered.filter(p => p.statut === 'En cours').length,
+      executees,
+      nonExecutees: filtered.filter(p => p.statut === 'Non Exécutée').length,
+      tauxGlobal,
+    }
+  }, [filtered])
 
   /**
    * Pagination — porte sur la liste filtrée. resetKey = signature des
@@ -729,6 +747,18 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
         <div className="stat-card ouvert">
           <span className="stat-value">{stats.nonExecutees}</span>
           <span className="stat-label">Non Exécutées</span>
+        </div>
+        {/* Taux d'évolution global : ratio PAC exécutées / total PAC sur la
+            liste filtrée. Donne une vision macro de l'avancement collectif,
+            cohérente avec la fiche de notation contrôleur. */}
+        <div className="stat-card resolu">
+          <span
+            className="stat-value"
+            title={`${stats.executees} PAC exécutée(s) sur ${stats.total} au total`}
+          >
+            {stats.tauxGlobal}%
+          </span>
+          <span className="stat-label">Taux d'évolution global</span>
         </div>
       </div>
 

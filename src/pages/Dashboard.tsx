@@ -606,7 +606,9 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
           {activeTab === 'anomalie' && (
             <Anomalies userName={userName} userEmail={userEmail} userRole={userRole} />
           )}
-          {activeTab === 'bulletins' && <AnomalyBulletins />}
+          {activeTab === 'bulletins' && (
+            <AnomalyBulletins userRole={userRole} userEmail={userEmail} />
+          )}
           {activeTab === 'reporting-agent' && <ReportingAgent />}
           {activeTab === 'reporting-saisie' && (
             <ControllerReporting

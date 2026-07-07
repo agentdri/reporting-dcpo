@@ -101,7 +101,7 @@ import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESE
 import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
 import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
-import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
+import { DOMAINE_ACTIVITE_OPTIONS, TYPE_SANCTION_OPTIONS } from '../lib/referentiels'
 import { notifyAffectation } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
@@ -200,36 +200,8 @@ const CLASSIFICATION_OPTIONS = [
   'Dommages occasionnés aux actifs physiques',
 ] as const
 
-// DOMAINE_ACTIVITE_OPTIONS est désormais centralisé dans lib/referentiels.ts
-// (partagé avec le Plan de Contrôle qui utilise le même référentiel).
-
-/**
- * Mode de traitement appliqué à l'anomalie à sa clôture (champ
- * `typeSanction`). Renseigné UNIQUEMENT à la clôture (cf. modale de
- * résolution) — pas à la création.
- *
- * Liste mixte action (Relance, Demande, Formation…) et sanction
- * (Avertissement, Blâme, Suspension…). Ordonnée du plus léger au plus
- * lourd pour aider à la sélection.
- */
-const TYPE_SANCTION_OPTIONS = [
-  'Relance outlook',
-  'Demande d\'informations',
-  'Demande d\'explications',
-  'Ultime relance',
-  'Mise en garde',
-  'Avertissement',
-  'Blâme',
-  'Suspension',
-  'Teams',
-  'Produit de controles',
-  'Demande de régularisation',
-  'Lettre d\'observation',
-  'Mise a pied 3 Jours',
-  'Mise a pied 8 Jours',
-  'Licenciement',
-  'Formations',
-] as const
+// DOMAINE_ACTIVITE_OPTIONS et TYPE_SANCTION_OPTIONS sont désormais centralisés
+// dans lib/referentiels.ts (partagés avec d'autres modules).
 
 /* ──────────────────────────────────────────────────────────────────────────
  * URL DU WORKFLOW POWER AUTOMATE (UPLOAD PIÈCE JOINTE)

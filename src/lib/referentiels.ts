@@ -37,3 +37,34 @@ export const DOMAINE_ACTIVITE_OPTIONS = [
 
 /** Type union des valeurs autorisées (utile pour typer un select). */
 export type DomaineActivite = typeof DOMAINE_ACTIVITE_OPTIONS[number]
+
+/**
+ * Mode de traitement appliqué à une anomalie à sa clôture
+ * (champ SP `typeSanction`).
+ *
+ * Liste mixte action (Relance, Demande, Formation…) et sanction
+ * (Avertissement, Blâme, Suspension…). Ordonnée du plus léger au plus
+ * lourd pour aider à la sélection.
+ *
+ * Utilisé par :
+ *   - `Anomalies.tsx` (formulaire de clôture)
+ *   - `AnomalyBulletins.tsx` (modale d'édition Directeur)
+ */
+export const TYPE_SANCTION_OPTIONS = [
+  'Relance outlook',
+  'Demande d\'informations',
+  'Demande d\'explications',
+  'Ultime relance',
+  'Mise en garde',
+  'Avertissement',
+  'Blâme',
+  'Suspension',
+  'Teams',
+  'Produit de controles',
+  'Demande de régularisation',
+  'Lettre d\'observation',
+  'Mise a pied 3 Jours',
+  'Mise a pied 8 Jours',
+  'Licenciement',
+  'Formations',
+] as const

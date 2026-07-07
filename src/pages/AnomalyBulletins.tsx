@@ -25,7 +25,7 @@
  * ============================================================================
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
@@ -47,7 +47,7 @@ import {
 } from '../lib/anomalyBulletin'
 import { getAttachmentIcon, getTicketAttachments } from '../lib/ticketAttachments'
 import { formatMontantCompact } from '../lib/formatters'
-import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
+import { DOMAINE_ACTIVITE_OPTIONS, TYPE_SANCTION_OPTIONS } from '../lib/referentiels'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
@@ -60,7 +60,14 @@ const STATUS_OPTIONS: BulletinStatus[] = ['Tous', 'Resolu', 'Clos']
 const CLASSIFICATION_OPTIONS = ['Operationnel', 'Fraude', 'Commercial']
 const CRITICITE_OPTIONS = ['Faible', 'Moyenne', 'Haute', 'Critique']
 
-export default function AnomalyBulletins() {
+interface AnomalyBulletinsProps {
+  /** Rôle effectif de l'utilisateur connecté (utilisé pour les permissions d'édition). */
+  userRole?: string
+  /** Email Office 365 (réservé à des extensions futures — non utilisé directement ici). */
+  userEmail?: string
+}
+
+export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {}) {
   /* ──────────────────────────────────────────────────────────────────────
    * ÉTATS
    * ────────────────────────────────────────────────────────────────────── */
@@ -78,6 +85,21 @@ export default function AnomalyBulletins() {
   const [appliedFilters, setAppliedFilters] = useState<BulletinFilters>(EMPTY_BULLETIN_FILTERS)
   /** Bulletin sélectionné pour la modale fiche détaillée. */
   const [selected, setSelected] = useState<ConsolidatedBulletin | null>(null)
+  /**
+   * Bulletin actuellement en cours d'édition (réservé au rôle Directeur).
+   * Décorrélé de `selected` pour permettre une UX claire : on passe d'une
+   * vue lecture seule à une vue formulaire dédiée, sans superposer les
+   * deux modales.
+   */
+  const [editing, setEditing] = useState<ConsolidatedBulletin | null>(null)
+  /**
+   * Permission d'édition rétroactive (Resolu / Clos) — RÉSERVÉE au rôle
+   * Directeur. Comparaison case-insensitive et accent-insensitive pour
+   * absorber les variantes de saisie SP (`Directeur`, `directeur`, etc.).
+   */
+  const canDirectorEdit = (userRole ?? '')
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .trim().toLowerCase() === 'directeur'
 
   /**
    * Récupère depuis SharePoint UNIQUEMENT les anomalies Resolu/Clos.
@@ -382,11 +404,25 @@ export default function AnomalyBulletins() {
         </>
       )}
 
-      {selected && (
+      {selected && !editing && (
         <BulletinModal
           bulletin={selected}
           onClose={() => setSelected(null)}
           onPrint={printBulletin}
+          canEdit={canDirectorEdit}
+          onEdit={() => setEditing(selected)}
+        />
+      )}
+
+      {editing && (
+        <BulletinEditModal
+          bulletin={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null)
+            await fetchData()
+            setSelected(null) // ferme aussi la modale lecture (les données vont être remplacées)
+          }}
         />
       )}
     </>
@@ -445,6 +481,10 @@ interface BulletinModalProps {
   bulletin: ConsolidatedBulletin
   onClose: () => void
   onPrint: () => void
+  /** Si true, affiche le bouton "Modifier" (rôle Directeur). */
+  canEdit?: boolean
+  /** Handler du clic "Modifier" — ouvre la modale d'édition. */
+  onEdit?: () => void
 }
 
 /**
@@ -463,7 +503,7 @@ interface BulletinModalProps {
  *
  * Raccourci clavier : Escape ferme la modale (handler global window).
  */
-function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
+function BulletinModal({ bulletin, onClose, onPrint, canEdit, onEdit }: BulletinModalProps) {
   const attachments = getTicketAttachments(bulletin.ticket)
 
   useEffect(() => {
@@ -489,6 +529,16 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
             <h2 id="bulletin-modal-title">{bulletin.titre}</h2>
           </div>
           <div className="bulletin-modal-actions no-print">
+            {canEdit && onEdit && (
+              <button
+                type="button"
+                className="btn-affect"
+                onClick={onEdit}
+                aria-label="Modifier l'anomalie clôturée"
+              >
+                ✏️ Modifier
+              </button>
+            )}
             <button type="button" className="btn-detail" onClick={onPrint} aria-label="Imprimer le bulletin">
               🖨️ Imprimer
             </button>
@@ -628,6 +678,249 @@ function BulletinModal({ bulletin, onClose, onPrint }: BulletinModalProps) {
             )}
           </section>
         </div>
+      </div>
+    </ModalOverlay>
+  )
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * MODALE D'ÉDITION — RÉSERVÉE AU RÔLE DIRECTEUR
+ *
+ * Permet à un directeur de RECTIFIER une anomalie déjà clôturée (Resolu ou
+ * Clos). Champs éditables limités à ceux susceptibles d'être corrigés
+ * après coup (statut, dates de régularisation/clôture, description
+ * consolidée, montant, mode de traitement, actions menées).
+ *
+ * Les champs identifiants (déclarant, agence, criticité, classification…)
+ * restent NON éditables : ils sont figés métier — modifier ces champs
+ * reviendrait à "réécrire l'histoire" et n'est pas attendu pour une
+ * rectification post-clôture.
+ *
+ * Sauvegarde via DCPO_LISTE_ANORMALIEService.update + refresh complet
+ * de la liste (onSaved).
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+interface BulletinEditModalProps {
+  bulletin: ConsolidatedBulletin
+  onClose: () => void
+  /** Callback déclenché après une sauvegarde réussie (le parent refresh). */
+  onSaved: () => void | Promise<void>
+}
+
+/** Extrait la portion `YYYY-MM-DD` d'un ISO ou `''` si vide. */
+function toDateInput(value?: string | null): string {
+  if (!value) return ''
+  const m = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : ''
+}
+
+function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProps) {
+  const ticket = bulletin.ticket
+  const [statut, setStatut] = useState(ticket.field_10 ?? 'Resolu')
+  const [description, setDescription] = useState(ticket.field_4 ?? '')
+  const [actionsMenees, setActionsMenees] = useState(ticket.actionsMenees ?? '')
+  const [typeSanction, setTypeSanction] = useState(ticket.typeSanction ?? '')
+  const [montant, setMontant] = useState(
+    ticket.field_8 !== undefined && ticket.field_8 !== null ? String(ticket.field_8) : '',
+  )
+  const [dateRegul, setDateRegul] = useState(toDateInput(ticket.field_9))
+  const [dateCloture, setDateCloture] = useState(toDateInput(ticket.date_cloture_ticket))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, saving])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!ticket.ID) {
+      setError('Identifiant de ticket introuvable.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const montantNum = montant.trim() === '' ? undefined : Number(montant.replace(/\s/g, '').replace(',', '.'))
+      if (montant.trim() !== '' && (montantNum === undefined || Number.isNaN(montantNum))) {
+        throw new Error('Le montant doit être un nombre valide.')
+      }
+      const payload: Partial<DCPO_LISTE_ANORMALIERead> = {
+        field_10: statut,
+        field_4: description,
+        actionsMenees,
+        typeSanction,
+        // Dates : on stocke à minuit UTC pour rester cohérent avec le reste
+        // de l'app (cf. formulaire de clôture dans Anomalies.tsx).
+        field_9: dateRegul ? `${dateRegul}T00:00:00Z` : '',
+        date_cloture_ticket: dateCloture ? `${dateCloture}T00:00:00Z` : '',
+      }
+      if (montantNum !== undefined) {
+        payload.field_8 = montantNum
+      }
+      await DCPO_LISTE_ANORMALIEService.update(String(ticket.ID), payload as never)
+      await onSaved()
+    } catch (err) {
+      console.error('Erreur sauvegarde édition Directeur', err)
+      setError(err instanceof Error ? err.message : 'Échec de la sauvegarde.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ModalOverlay onClose={saving ? () => {} : onClose}>
+      <div
+        className="modal bulletin-modal"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulletin-edit-title"
+        style={{ maxWidth: 720 }}
+      >
+        <header className="bulletin-modal-header">
+          <div className="bulletin-modal-title-block">
+            <span className="bulletin-modal-num">{bulletin.numero}</span>
+            <h2 id="bulletin-edit-title">Modifier l'anomalie clôturée</h2>
+          </div>
+          <button
+            className="modal-close"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Fermer sans enregistrer"
+          >
+            &times;
+          </button>
+        </header>
+
+        <form className="bulletin-modal-body" onSubmit={handleSubmit}>
+          {error && (
+            <div className="bulletin-error" role="alert" style={{ marginBottom: 12 }}>
+              {error}
+            </div>
+          )}
+
+          <section className="bulletin-section">
+            <h3>Statut &amp; dates</h3>
+            <div className="form-grid">
+              <div className="form-field">
+                <label htmlFor="edit-statut">Statut</label>
+                <select
+                  id="edit-statut"
+                  value={statut}
+                  onChange={e => setStatut(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="Resolu">Resolu</option>
+                  <option value="Clos">Clos</option>
+                </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-date-regul">Date de régularisation</label>
+                <input
+                  id="edit-date-regul"
+                  type="date"
+                  value={dateRegul}
+                  onChange={e => setDateRegul(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-date-cloture">Date de clôture du ticket</label>
+                <input
+                  id="edit-date-cloture"
+                  type="date"
+                  value={dateCloture}
+                  onChange={e => setDateCloture(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-montant">Montant</label>
+                <input
+                  id="edit-montant"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={montant}
+                  onChange={e => setMontant(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="bulletin-section">
+            <h3>Caractérisation de la clôture</h3>
+            <div className="form-field">
+              <label htmlFor="edit-type-sanction">Mode de traitement</label>
+              <select
+                id="edit-type-sanction"
+                value={typeSanction}
+                onChange={e => setTypeSanction(e.target.value)}
+                disabled={saving}
+              >
+                <option value="">— Aucun —</option>
+                {TYPE_SANCTION_OPTIONS.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          </section>
+
+          <section className="bulletin-section">
+            <h3>Description &amp; actions</h3>
+            <div className="form-field">
+              <label htmlFor="edit-description">Description consolidée</label>
+              <textarea
+                id="edit-description"
+                rows={6}
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                disabled={saving}
+              />
+              <small className="field-hint">
+                Sections concaténées (Cause immédiate, Cause racine, Actions menées, Observations).
+              </small>
+            </div>
+            <div className="form-field">
+              <label htmlFor="edit-actions">Actions menées</label>
+              <textarea
+                id="edit-actions"
+                rows={3}
+                value={actionsMenees}
+                onChange={e => setActionsMenees(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+          </section>
+
+          <footer
+            className="bulletin-modal-actions no-print"
+            style={{ justifyContent: 'flex-end', gap: 8, padding: '12px 0 0' }}
+          >
+            <button
+              type="button"
+              className="btn-cta btn-cta-ghost"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="btn-cta btn-cta-primary"
+              disabled={saving}
+            >
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </footer>
+        </form>
       </div>
     </ModalOverlay>
   )
