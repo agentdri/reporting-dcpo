@@ -24,14 +24,17 @@
  * ============================================================================
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   listReports,
   validateReport,
   type ActivityReport,
 } from '../lib/activityService'
+import { DCPO_LISTE_USERService } from '../generated/services/DCPO_LISTE_USERService'
+import type { DCPO_LISTE_USERRead } from '../generated/models/DCPO_LISTE_USERModel'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { ProgressBar } from '../components/ProgressBar'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
 import './ControllerReporting.css'
@@ -101,6 +104,53 @@ function formatHours(value: number): string {
   return `${value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} h`
 }
 
+/**
+ * Compte le nombre de jours OUVRÉS (Lun-Ven) entre deux dates INCLUSIVES.
+ *
+ * Hypothèse simplifiée : les jours fériés camerounais/français ne sont PAS
+ * exclus (référentiel non disponible côté app). L'attendu peut donc être
+ * légèrement surestimé sur les périodes contenant des jours fériés — au
+ * bénéfice du manager (taux plus sévère). Si un référentiel de jours
+ * fériés est ajouté un jour, cette fonction est le point d'entrée à
+ * modifier.
+ *
+ * Retourne 0 si `to < from` (période vide/inversée).
+ */
+/**
+ * Retourne la LISTE des jours ouvrés d'une période au format 'YYYY-MM-DD'.
+ * Utilisé pour :
+ *   - Le compteur d'attendus (`length`)
+ *   - Le calcul des jours MANQUANTS d'un contrôleur (différence entre
+ *     attendus et couverts)
+ */
+function listBusinessDays(from: Date, to: Date): string[] {
+  if (to < from) return []
+  const days: string[] = []
+  const cursor = new Date(from)
+  cursor.setHours(0, 0, 0, 0)
+  const end = new Date(to)
+  end.setHours(0, 0, 0, 0)
+  while (cursor <= end) {
+    const day = cursor.getDay() // 0 = Dimanche, 6 = Samedi
+    if (day !== 0 && day !== 6) {
+      // Format YYYY-MM-DD sans passer par toISOString() (qui convertit en UTC
+      // et pourrait décaler d'un jour selon le fuseau).
+      const y = cursor.getFullYear()
+      const m = String(cursor.getMonth() + 1).padStart(2, '0')
+      const d = String(cursor.getDate()).padStart(2, '0')
+      days.push(`${y}-${m}-${d}`)
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return days
+}
+
+/** Identité minimale d'un contrôleur (pour la table de taux de soumission). */
+interface Controleur {
+  email: string
+  name: string
+}
+
 /** Date jj/mm/aaaa, "—" si vide ou invalide. */
 function formatDate(value?: string): string {
   if (!value) return '—'
@@ -120,11 +170,32 @@ export default function ControllerReportingList({ userName, userEmail }: Control
 
   /** Liste des rapports — chargée via useEffect (async SharePoint). */
   const [reports, setReports] = useState<ActivityReport[]>([])
+  /**
+   * Liste des CONTRÔLEURS actifs (DCPO_LISTE_USER filtrés sur fonction=Controleur).
+   * Sert de dénominateur pour le calcul du taux de soumission — chaque
+   * contrôleur doit soumettre 1 rapport par jour ouvré. On charge cette
+   * liste une seule fois au montage (les changements de rôle sont rares
+   * et n'ont pas besoin d'être rechargés en continu).
+   */
+  const [controleurs, setControleurs] = useState<Controleur[]>([])
   /** Indicateur de chargement initial (réseau en cours). */
   const [loadingReports, setLoadingReports] = useState(true)
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   /** Rapport sélectionné pour la modale détail (null = pas de modale). */
   const [selected, setSelected] = useState<ActivityReport | null>(null)
+  /**
+   * Toggle d'affichage de la section "Taux de soumission des rapports".
+   * Fermée par défaut : le manager clique sur le header pour la déplier.
+   * Évite de charger visuellement la page à l'ouverture — la validation
+   * reste le workflow principal, le taux est une vue analytique secondaire.
+   */
+  const [ratesExpanded, setRatesExpanded] = useState(false)
+  /**
+   * Email du contrôleur dont le détail (jours manquants) est déplié dans
+   * le tableau de taux. `null` = aucun détail visible. Un seul détail à
+   * la fois (accordéon exclusif) pour garder la lisibilité.
+   */
+  const [expandedControleurEmail, setExpandedControleurEmail] = useState<string | null>(null)
 
   /**
    * Recharge la liste depuis SharePoint.
@@ -145,6 +216,31 @@ export default function ControllerReportingList({ userName, userEmail }: Control
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  /**
+   * Chargement UNIQUE au montage de la liste des contrôleurs actifs.
+   * Non rerun sur refresh() car cette liste évolue rarement (ajout/départ
+   * d'un contrôleur) — l'utilisateur peut recharger la page pour la
+   * rafraîchir si besoin.
+   */
+  useEffect(() => {
+    let cancelled = false
+    DCPO_LISTE_USERService.getAll({ orderBy: ['nom asc'] })
+      .then(res => {
+        if (cancelled) return
+        const rows: DCPO_LISTE_USERRead[] = (res.data ?? []) as DCPO_LISTE_USERRead[]
+        const list: Controleur[] = rows
+          .filter((u: DCPO_LISTE_USERRead) => u.fonction?.Value === 'Controleur')
+          .map((u: DCPO_LISTE_USERRead) => ({
+            email: (u.Email ?? '').toLowerCase(),
+            name: u.Title || u.nom || u.Email || '—',
+          }))
+          .filter((c: Controleur) => !!c.email)
+        setControleurs(list)
+      })
+      .catch(err => console.error('Erreur chargement contrôleurs', err))
+    return () => { cancelled = true }
+  }, [])
 
   /**
    * Applique tous les filtres sur la liste brute.
@@ -240,6 +336,116 @@ export default function ControllerReportingList({ userName, userEmail }: Control
       totalHeures: filtered.reduce((s, r) => s + r.totalHeures, 0),
     }
   }, [filtered])
+
+  /**
+   * TAUX DE SOUMISSION DES RAPPORTS PAR CONTRÔLEUR
+   *
+   * Métrique : sur une période donnée, chaque contrôleur est censé soumettre
+   * 1 rapport par jour ouvré (Lun-Ven). Le taux mesure la couverture réelle :
+   *
+   *   taux = (nb de jours DISTINCTS couverts par un rapport non refusé)
+   *          / (nb de jours ouvrés dans la période)
+   *
+   * Règles :
+   *   - On compte les rapports "Soumis" et "Valider" (les Refuser sont
+   *     exclus — ils doivent être resoumis pour compter).
+   *   - Plusieurs rapports pour la même date d'un même contrôleur = 1 date
+   *     couverte (déduplication via Set<date>).
+   *   - Période par défaut (aucun filtre date) = 30 derniers jours.
+   *   - dateTo est capée à `today` — on ne veut pas pénaliser sur des
+   *     jours ouvrés futurs.
+   *   - Contrôleurs sans aucun rapport dans la période apparaissent avec
+   *     taux = 0 % (rendus visibles pour signaler l'absence complète).
+   *
+   * Limite connue : jours fériés non exclus du dénominateur (cf. helper
+   * countBusinessDays). Impact = léger sur-durcissement du taux.
+   */
+  const submissionStats = useMemo(() => {
+    // Bornes de période : par défaut = 30 derniers jours (avec cap à aujourd'hui)
+    // ⚠ `to` DOIT être en fin de journée (23:59:59.999) et non minuit — sinon
+    // les rapports timestampés dans la journée du `to` sont exclus par le
+    // test `rd > to` alors qu'ils devraient être inclus (cas d'un rapport
+    // du 07/07 stocké '2026-07-07T00:00:00Z' → 01:00 local en UTC+1, qui
+    // dépasse `to` = 07/07 00:00 local si on ne fait pas l'ajustement).
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const eodToday = new Date(today)
+    eodToday.setHours(23, 59, 59, 999)
+    const defaultFrom = new Date(today)
+    defaultFrom.setDate(defaultFrom.getDate() - 30)
+
+    const from = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`) : defaultFrom
+    const rawTo = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59.999`) : eodToday
+    // Cap : on n'attend pas des soumissions futures (mais on garde l'EOD)
+    const to = rawTo > eodToday ? eodToday : rawTo
+
+    const expectedDaysList = listBusinessDays(from, to)
+    const expectedDays = expectedDaysList.length
+
+    // Coverage : email contrôleur → Set des dates DISTINCTES couvertes
+    // par un rapport statut != 'Refuser' DANS la période [from, to].
+    const coverage = new Map<string, Set<string>>()
+    for (const r of reports) {
+      if (r.statut === 'Refuser') continue
+      const rd = new Date(r.date)
+      if (Number.isNaN(rd.getTime())) continue
+      if (rd < from || rd > to) continue
+      const email = (r.controleurEmail ?? '').toLowerCase()
+      if (!email) continue
+      if (!coverage.has(email)) coverage.set(email, new Set())
+      coverage.get(email)!.add(r.date.slice(0, 10))
+    }
+
+    // Fusion : on part de la liste RÉFÉRENTIEL (DCPO_LISTE_USER) pour ne
+    // pas oublier les contrôleurs qui n'ont RIEN soumis. Fallback si la
+    // liste des contrôleurs n'est pas encore chargée : on utilise les
+    // emails distincts trouvés dans les rapports (moins rigoureux mais
+    // affiche quelque chose plutôt qu'un tableau vide).
+    const source: Controleur[] = controleurs.length > 0
+      ? controleurs
+      : Array.from(new Set(reports.map(r => (r.controleurEmail ?? '').toLowerCase()).filter(Boolean)))
+          .map(email => {
+            const r = reports.find(x => (x.controleurEmail ?? '').toLowerCase() === email)
+            return { email, name: r?.controleurName || email }
+          })
+
+    const rows = source.map(c => {
+      const coveredSet = coverage.get(c.email) ?? new Set<string>()
+      const covered = coveredSet.size
+      const taux = expectedDays > 0 ? Math.min(100, Math.round((covered / expectedDays) * 100)) : 0
+      // Jours OUVRÉS attendus non couverts = jours de rapport manquants
+      // pour ce contrôleur sur la période. Utile pour lister exactement
+      // ce qui doit être rattrapé.
+      const missingDays = expectedDaysList.filter(d => !coveredSet.has(d))
+      return {
+        email: c.email,
+        name: c.name,
+        covered,
+        expected: expectedDays,
+        taux,
+        coveredDays: Array.from(coveredSet).sort(),
+        missingDays,
+      }
+    }).sort((a, b) => a.taux - b.taux) // pires taux en premier (attire l'œil)
+
+    // Taux global = moyenne pondérée = (soumis totaux) / (attendus totaux)
+    const globalCovered = Array.from(coverage.values())
+      .reduce((s, set) => s + set.size, 0)
+    const globalExpected = expectedDays * source.length
+    const globalTaux = globalExpected > 0
+      ? Math.min(100, Math.round((globalCovered / globalExpected) * 100))
+      : 0
+
+    return {
+      from,
+      to,
+      expectedDays,
+      rows,
+      globalTaux,
+      globalCovered,
+      globalExpected,
+    }
+  }, [reports, controleurs, filters.dateFrom, filters.dateTo])
 
   /** Helper générique de mise à jour partielle des filtres. */
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
@@ -362,6 +568,244 @@ export default function ControllerReportingList({ userName, userEmail }: Control
         </label>
         <button type="button" className="btn-reset-filters" onClick={resetFilters}>Réinitialiser</button>
       </div>
+
+      {/* ─── TAUX DE SOUMISSION DES RAPPORTS PAR CONTRÔLEUR ───────────────
+          Section dédiée qui répond à la question métier : « qui soumet ses
+          rapports quotidiens et à quel rythme sur la période choisie ? »
+          Utilise les filtres date (dateFrom / dateTo) au-dessus ; à défaut,
+          période par défaut = 30 derniers jours.
+
+          UX : la section est REPLIÉE par défaut (le manager ne la voit qu'un
+          clic sur le header) pour ne pas surcharger la vue principale
+          (validation des rapports). Le taux global reste visible dans le
+          header du panneau replié, pour offrir un indicateur macro sans
+          exiger d'action. */}
+      <section
+        className="submission-rate-section"
+        style={{
+          marginBottom: 24,
+          border: '1px solid #e2e8f0',
+          borderRadius: 10,
+          overflow: 'hidden',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setRatesExpanded(v => !v)}
+          aria-expanded={ratesExpanded}
+          aria-controls="submission-rate-body"
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 16px',
+            background: '#f8fafc',
+            border: 'none',
+            borderBottom: ratesExpanded ? '1px solid #e2e8f0' : 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-block',
+                width: 14,
+                fontSize: 12,
+                color: '#475569',
+                transform: ratesExpanded ? 'rotate(90deg)' : 'none',
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              ▶
+            </span>
+            <h3 style={{ margin: 0, fontSize: 15 }}>
+              Taux de soumission des rapports quotidiens
+            </h3>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 12,
+                background: '#0f172a',
+                color: '#fff',
+              }}
+            >
+              {submissionStats.globalTaux}%
+            </span>
+          </div>
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            {submissionStats.from.toLocaleDateString('fr-FR')}
+            {' → '}
+            {submissionStats.to.toLocaleDateString('fr-FR')}
+            {' — '}
+            {submissionStats.expectedDays} j. ouvré(s)
+            {controleurs.length > 0 && ` — ${controleurs.length} contrôleur(s)`}
+            {' — '}
+            <span style={{ textDecoration: 'underline' }}>
+              {ratesExpanded ? 'Masquer le détail' : 'Afficher le détail'}
+            </span>
+          </span>
+        </button>
+
+        {ratesExpanded && (
+          <div id="submission-rate-body" style={{ padding: 14 }}>
+            {/* Bandeau taux global — vue macro instantanée */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                padding: '10px 14px',
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: 8,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ minWidth: 180 }}>
+                <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Taux global
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>
+                  {submissionStats.globalTaux}%
+                </div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>
+                  {submissionStats.globalCovered} soumission(s) / {submissionStats.globalExpected} attendue(s)
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <ProgressBar
+                  value={submissionStats.globalTaux}
+                  title={`Taux global : ${submissionStats.globalCovered}/${submissionStats.globalExpected}`}
+                />
+              </div>
+            </div>
+
+            {submissionStats.rows.length === 0 ? (
+              <p className="loading-text" style={{ fontSize: 13 }}>
+                Aucun contrôleur trouvé pour la période sélectionnée.
+              </p>
+            ) : (
+              <div className="table-wrapper" style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table className="manager-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 24 }} aria-label="Expand" />
+                      <th>Contrôleur</th>
+                      <th>Email</th>
+                      <th style={{ textAlign: 'center', width: 100 }}>Soumis</th>
+                      <th style={{ textAlign: 'center', width: 100 }}>Attendu</th>
+                      <th style={{ minWidth: 180 }}>Taux</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {submissionStats.rows.map(row => {
+                      const isOpen = expandedControleurEmail === row.email
+                      const toggle = () =>
+                        setExpandedControleurEmail(prev => (prev === row.email ? null : row.email))
+                      return (
+                        <Fragment key={row.email}>
+                          <tr
+                            onClick={toggle}
+                            style={{ cursor: 'pointer' }}
+                            title={isOpen ? 'Masquer le détail' : 'Voir les jours manquants'}
+                          >
+                            <td
+                              aria-hidden="true"
+                              style={{
+                                color: '#475569',
+                                fontSize: 11,
+                                transform: isOpen ? 'rotate(90deg)' : 'none',
+                                transition: 'transform 0.15s ease',
+                                textAlign: 'center',
+                              }}
+                            >
+                              ▶
+                            </td>
+                            <td><strong>{row.name}</strong></td>
+                            <td style={{ color: '#64748b', fontSize: 12 }}>{row.email}</td>
+                            <td style={{ textAlign: 'center' }}>{row.covered}</td>
+                            <td style={{ textAlign: 'center' }}>{row.expected}</td>
+                            <td>
+                              <ProgressBar
+                                value={row.taux}
+                                title={`${row.covered} rapport(s) soumis sur ${row.expected} attendu(s)`}
+                              />
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr key={`${row.email}-detail`}>
+                              <td />
+                              <td colSpan={5} style={{ background: '#fafafa', padding: '10px 14px' }}>
+                                <div style={{ fontSize: 12, color: '#334155', marginBottom: 6 }}>
+                                  Détail des jours de rapport{' '}
+                                  <strong>manquants</strong> pour {row.name} sur la
+                                  période{' '}
+                                  {submissionStats.from.toLocaleDateString('fr-FR')}{' → '}
+                                  {submissionStats.to.toLocaleDateString('fr-FR')} :
+                                </div>
+                                {row.missingDays.length === 0 ? (
+                                  <div style={{ fontSize: 12, color: '#059669' }}>
+                                    ✓ Aucun jour manquant — 100 % de couverture.
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 6,
+                                        marginBottom: 6,
+                                      }}
+                                    >
+                                      {row.missingDays.map(d => (
+                                        <span
+                                          key={d}
+                                          style={{
+                                            fontSize: 11,
+                                            padding: '3px 8px',
+                                            borderRadius: 12,
+                                            background: '#fee2e2',
+                                            color: '#991b1b',
+                                            border: '1px solid #fecaca',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                          title={`Jour ouvré sans rapport soumis (${d})`}
+                                        >
+                                          {new Date(`${d}T00:00:00`).toLocaleDateString('fr-FR', {
+                                            weekday: 'short',
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            year: 'numeric',
+                                          })}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                                      {row.missingDays.length} jour(s) ouvré(s) sans
+                                      rapport non refusé sur les {row.expected} attendu(s).
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {loadingReports ? (
         <p className="loading-text">Chargement des rapports...</p>
