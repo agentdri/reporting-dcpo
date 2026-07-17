@@ -27,6 +27,7 @@ import type {
   DCPO_LISTE_DIRECTIONRead,
   DCPO_LISTE_DIRECTIONWrite,
 } from '../generated/models/DCPO_LISTE_DIRECTIONModel'
+import { getAllPages } from './sharePointPaging'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -87,10 +88,8 @@ function fromItem(item: DCPO_LISTE_DIRECTIONRead): Direction {
  */
 export async function listDirections(): Promise<Direction[]> {
   try {
-    const res = await DCPO_LISTE_DIRECTIONService.getAll()
-    if (!res.data) return []
-    const directions: Direction[] = res.data.map(fromItem)
-    return directions.sort((a, b) => a.sigle.localeCompare(b.sigle))
+    const items = await getAllPages<DCPO_LISTE_DIRECTIONRead>(DCPO_LISTE_DIRECTIONService)
+    return items.map(fromItem).sort((a, b) => a.sigle.localeCompare(b.sigle))
   } catch (err) {
     console.error('listDirections error', err)
     return []

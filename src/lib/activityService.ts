@@ -43,6 +43,7 @@
  */
 
 import { DCPO_ACTIVICTE_CONTROLLERService } from '../generated/services/DCPO_ACTIVICTE_CONTROLLERService'
+import { getAllPages } from './sharePointPaging'
 import type {
   DCPO_ACTIVICTE_CONTROLLERRead,
   DCPO_ACTIVICTE_CONTROLLERWrite,
@@ -548,16 +549,81 @@ function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
  * ────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Liste tous les rapports depuis SharePoint, triés du plus récent au plus ancien.
- * Robuste : retourne [] en cas d'erreur (logs en console).
+ * Bornes YYYY-MM-DD d'une période de lecture. Les deux bornes sont
+ * INCLUSIVES côté métier ; côté OData on les traduit en `T00:00:00Z`
+ * pour `from` et `T23:59:59Z` pour `to` (jour entier).
  */
-export async function listReports(): Promise<ActivityReport[]> {
+export interface DateRange {
+  /** Borne basse au format YYYY-MM-DD (00:00:00 UTC inclus). */
+  from?: string
+  /** Borne haute au format YYYY-MM-DD (23:59:59 UTC inclus). */
+  to?: string
+}
+
+/**
+ * Calcule la période par défaut = **année en cours entière**.
+ *   from = 1er janvier de l'année courante
+ *   to   = 31 décembre de l'année courante
+ *
+ * Rationale : la liste `DCPO_ACTIVICTE_CONTROLLER` grossit d'~250 items
+ * par contrôleur par an (1 rapport par jour ouvré). Sans filtre, on
+ * tirerait potentiellement des milliers d'items de plusieurs années.
+ * L'année en cours couvre le use-case normal ("où en sont mes rapports
+ * de cette année ?"). Pour l'historique multi-annuel, l'appelant peut
+ * passer un `range` explicite.
+ */
+function defaultCurrentYearRange(): { from: string; to: string } {
+  const year = new Date().getFullYear()
+  return {
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
+  }
+}
+
+/**
+ * Construit la clause OData `filter` pour une période sur la colonne
+ * `Date`. Retourne `undefined` si aucune borne — mais dans la pratique,
+ * `listReports` fournit toujours une période par défaut.
+ */
+function buildDateFilter(range: DateRange): string | undefined {
+  const clauses: string[] = []
+  if (range.from) clauses.push(`Date ge '${range.from}T00:00:00Z'`)
+  if (range.to) clauses.push(`Date le '${range.to}T23:59:59Z'`)
+  return clauses.length > 0 ? clauses.join(' and ') : undefined
+}
+
+/**
+ * Liste TOUS les rapports d'une période depuis SharePoint, triés du
+ * plus récent au plus ancien.
+ *
+ * ⚠ CORRECTIF PAGINATION : utilise `getAllPages` qui boucle sur toutes
+ * les pages SP via `skipToken` — sinon seuls les 100 premiers items
+ * étaient renvoyés (bug de prod du 09/07/2026 : rapports anciens
+ * invisibles côté "Validation reporting" et "Mes rapports").
+ *
+ * ⚠ CORRECTIF VOLUMÉTRIE : filtre systématiquement sur une période, par
+ * défaut l'année en cours (cf. defaultCurrentYearRange). Évite de tirer
+ * tout l'historique et couvre le use-case courant.
+ *
+ * @param range Bornes de dates optionnelles. Défaut : année en cours.
+ *              Passer `{ from: '2020-01-01', to: '2026-12-31' }` pour
+ *              élargir manuellement (rapports d'audit rétrospectif).
+ * @returns Tous les rapports de la période. Retourne `[]` en cas d'erreur.
+ */
+export async function listReports(range?: DateRange): Promise<ActivityReport[]> {
   try {
-    const result = await DCPO_ACTIVICTE_CONTROLLERService.getAll({
-      orderBy: ['Date desc'],
-    })
-    if (!result.data) return []
-    return result.data.map(reportFromItem)
+    const effectiveRange: DateRange = {
+      from: range?.from ?? defaultCurrentYearRange().from,
+      to: range?.to ?? defaultCurrentYearRange().to,
+    }
+    const items = await getAllPages<DCPO_ACTIVICTE_CONTROLLERRead>(
+      DCPO_ACTIVICTE_CONTROLLERService,
+      {
+        orderBy: ['Date desc'],
+        filter: buildDateFilter(effectiveRange),
+      },
+    )
+    return items.map(reportFromItem)
   } catch (err) {
     console.error('listReports error', err)
     return []
@@ -590,17 +656,21 @@ export async function findReportByControleurAndDate(
 ): Promise<ActivityReport | undefined> {
   if (!controleurEmail || !date) return undefined
   try {
-    const result = await DCPO_ACTIVICTE_CONTROLLERService.getAll({
-      // Filtre sur la date — bornes large pour absorber les variations
-      // d'heure (un rapport stocké à 00:00 UTC reste dans le jour métier).
-      filter: `Date ge '${date}T00:00:00Z' and Date le '${date}T23:59:59Z'`,
-    })
-    if (!result.data) return undefined
+    // Utilise getAllPages par cohérence (même si en pratique une seule date
+    // ne devrait jamais dépasser 1 page — mais si un bug crée des doublons,
+    // on veut TOUS les voir pour pouvoir détecter le problème).
+    const items = await getAllPages<DCPO_ACTIVICTE_CONTROLLERRead>(
+      DCPO_ACTIVICTE_CONTROLLERService,
+      {
+        // Filtre sur la date — bornes large pour absorber les variations
+        // d'heure (un rapport stocké à 00:00 UTC reste dans le jour métier).
+        filter: `Date ge '${date}T00:00:00Z' and Date le '${date}T23:59:59Z'`,
+      },
+    )
     const target = controleurEmail.toLowerCase()
-    const found = result.data
+    return items
       .map(reportFromItem)
       .find((r: ActivityReport) => r.controleurEmail.toLowerCase() === target)
-    return found
   } catch (err) {
     console.error('findReportByControleurAndDate error', err)
     return undefined

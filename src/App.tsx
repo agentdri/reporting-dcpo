@@ -28,6 +28,7 @@ import { Office365UsersService } from './generated/services/Office365UsersServic
 import { DCPO_LISTE_USERService } from './generated/services/DCPO_LISTE_USERService'
 import type { GraphUser_V1 } from './generated/models/Office365UsersModel'
 import type { DCPO_LISTE_USERRead } from './generated/models/DCPO_LISTE_USERModel'
+import { getAllPages } from './lib/sharePointPaging'
 import Dashboard from './pages/Dashboard'
 import './App.css'
 
@@ -105,9 +106,9 @@ function App() {
         const userEmail = profileResult.data.mail?.toLowerCase()
 
         // 2. Liste DCPO_LISTE_USER — cherche l'utilisateur par email
-        const usersResult = await DCPO_LISTE_USERService.getAll()
-        if (usersResult.data) {
-          const match = usersResult.data.find(
+        const usersRows = await getAllPages<DCPO_LISTE_USERRead>(DCPO_LISTE_USERService)
+        if (usersRows.length > 0) {
+          const match = usersRows.find(
             (u: DCPO_LISTE_USERRead) => u.Email?.toLowerCase() === userEmail
           )
           // 3. Vérification du rôle (fonction) — doit être dans ALLOWED_ROLES

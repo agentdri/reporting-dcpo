@@ -92,8 +92,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useStagger } from '../lib/useGsap'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
-import { DCPO_LISTE_AGENCESService } from '../generated/services/DCPO_LISTE_AGENCESService'
-import { DCPO_LISTE_RESEAUXService } from '../generated/services/DCPO_LISTE_RESEAUXService'
 import { Office365UsersService } from '../generated/services/Office365UsersService'
 import type { DCPO_LISTE_ANORMALIERead, DCPO_LISTE_ANORMALIEWrite } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
@@ -106,8 +104,9 @@ import { notifyAffectation } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
-import { findAgenceLabel, findReseauLabel } from '../lib/spReferenceRows'
+import { findAgenceLabel, findReseauLabel, loadAgences, loadReseaux } from '../lib/spReferenceRows'
 import { formatDateForExport } from '../lib/exporters'
+import { getAllPages } from '../lib/sharePointPaging'
 import { ModalOverlay } from '../components/ModalOverlay'
 
 /**
@@ -1332,8 +1331,11 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       }
       if (filter) options.filter = filter
 
-      const result = await DCPO_LISTE_ANORMALIEService.getAll(options)
-      if (result.data) setItems(result.data)
+      const items = await getAllPages<DCPO_LISTE_ANORMALIERead>(
+        DCPO_LISTE_ANORMALIEService,
+        options,
+      )
+      setItems(items)
     } catch (err) { console.error('Erreur chargement anomalies', err) }
     finally { setLoading(false) }
   }
@@ -1341,12 +1343,12 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   useEffect(() => {
     const loadLists = async () => {
       try {
-        const [agencesRes, reseauxRes] = await Promise.all([
-          DCPO_LISTE_AGENCESService.getAll(),
-          DCPO_LISTE_RESEAUXService.getAll(),
+        const [agencesRows, reseauxRows] = await Promise.all([
+          loadAgences(),
+          loadReseaux(),
         ])
-        if (agencesRes.data) setAgences(agencesRes.data)
-        if (reseauxRes.data) setReseaux(reseauxRes.data)
+        setAgences(agencesRows)
+        setReseaux(reseauxRows)
       } catch (err) { console.error('Erreur chargement agences/reseaux', err) }
     }
     loadLists()

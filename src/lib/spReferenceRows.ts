@@ -23,6 +23,7 @@ import { DCPO_LISTE_USERService } from '../generated/services/DCPO_LISTE_USERSer
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
 import type { DCPO_LISTE_USERRead } from '../generated/models/DCPO_LISTE_USERModel'
+import { getAllPages } from './sharePointPaging'
 
 /**
  * Bundle de tous les référentiels chargés en une fois.
@@ -47,8 +48,7 @@ export interface ReferenceRows {
  */
 export async function loadAgences(): Promise<DCPO_LISTE_AGENCESRead[]> {
   try {
-    const r = await DCPO_LISTE_AGENCESService.getAll()
-    return r.data ?? []
+    return await getAllPages<DCPO_LISTE_AGENCESRead>(DCPO_LISTE_AGENCESService)
   } catch (err) {
     console.error('loadAgences error', err)
     return []
@@ -61,8 +61,7 @@ export async function loadAgences(): Promise<DCPO_LISTE_AGENCESRead[]> {
  */
 export async function loadReseaux(): Promise<DCPO_LISTE_RESEAUXRead[]> {
   try {
-    const r = await DCPO_LISTE_RESEAUXService.getAll()
-    return r.data ?? []
+    return await getAllPages<DCPO_LISTE_RESEAUXRead>(DCPO_LISTE_RESEAUXService)
   } catch (err) {
     console.error('loadReseaux error', err)
     return []
@@ -76,8 +75,7 @@ export async function loadReseaux(): Promise<DCPO_LISTE_RESEAUXRead[]> {
  */
 export async function loadUsers(): Promise<DCPO_LISTE_USERRead[]> {
   try {
-    const r = await DCPO_LISTE_USERService.getAll()
-    return r.data ?? []
+    return await getAllPages<DCPO_LISTE_USERRead>(DCPO_LISTE_USERService)
   } catch (err) {
     console.error('loadUsers error', err)
     return []

@@ -36,6 +36,7 @@ import {
 } from 'recharts'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
+import { getAllPages } from '../lib/sharePointPaging'
 import { formatMontantCompact } from '../lib/formatters'
 import { useFadeUp, useStagger } from '../lib/useGsap'
 import './Accueil.css'
@@ -86,8 +87,11 @@ export default function Accueil({ userName, onNavigate }: AccueilProps) {
     let alive = true
     ;(async () => {
       try {
-        const res = await DCPO_LISTE_ANORMALIEService.getAll({ orderBy: ['Created desc'] })
-        if (alive && res.data) setItems(res.data)
+        const rows = await getAllPages<DCPO_LISTE_ANORMALIERead>(
+          DCPO_LISTE_ANORMALIEService,
+          { orderBy: ['Created desc'] },
+        )
+        if (alive) setItems(rows)
       } catch (err) {
         console.error('Accueil : échec du chargement des anomalies', err)
       } finally {

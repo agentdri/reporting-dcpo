@@ -68,8 +68,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
-import { DCPO_LISTE_AGENCESService } from '../generated/services/DCPO_LISTE_AGENCESService'
-import { DCPO_LISTE_RESEAUXService } from '../generated/services/DCPO_LISTE_RESEAUXService'
+import { loadAgences, loadReseaux } from '../lib/spReferenceRows'
+import { getAllPages } from '../lib/sharePointPaging'
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
 import type { DCPO_LISTE_RESEAUXRead } from '../generated/models/DCPO_LISTE_RESEAUXModel'
@@ -392,17 +392,17 @@ export default function ReportingAgent() {
         // Chargement parallèle : 6 sources (anomalies, agences, réseaux,
         // contrôles, PAC, évaluations). Tout pour rendre le bulletin agent
         // complet sans appels supplémentaires lors de l'impression.
-        const [anomRes, agencesRes, reseauxRes, controlesRes, pacsRes, evalsRes] = await Promise.all([
-          DCPO_LISTE_ANORMALIEService.getAll(),
-          DCPO_LISTE_AGENCESService.getAll(),
-          DCPO_LISTE_RESEAUXService.getAll(),
+        const [anomRows, agencesRows, reseauxRows, controlesRes, pacsRes, evalsRes] = await Promise.all([
+          getAllPages<DCPO_LISTE_ANORMALIERead>(DCPO_LISTE_ANORMALIEService),
+          loadAgences(),
+          loadReseaux(),
           listControles(),
           listPACs(),
           listAllEvaluations(),
         ])
-        if (anomRes.data) setItems(anomRes.data)
-        if (agencesRes.data) setAgences(agencesRes.data)
-        if (reseauxRes.data) setReseaux(reseauxRes.data)
+        setItems(anomRows)
+        setAgences(agencesRows)
+        setReseaux(reseauxRows)
         setAllControles(controlesRes)
         setAllPacs(pacsRes)
         // Agrégation des évaluations en compteur par planControleId

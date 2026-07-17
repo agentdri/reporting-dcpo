@@ -39,6 +39,7 @@ import type {
   DCPO_EVALUATION_PLAN_CONTROLEWrite,
 } from '../generated/models/DCPO_EVALUATION_PLAN_CONTROLEModel'
 import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
+import { getAllPages } from './sharePointPaging'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -190,9 +191,11 @@ function fromItem(item: DCPO_LISTE_PLAN_CONTROLERead): ControleEntry {
 /** Liste tous les contrôles (du plus récent au plus ancien). */
 export async function listControles(): Promise<ControleEntry[]> {
   try {
-    const res = await DCPO_LISTE_PLAN_CONTROLEService.getAll({ orderBy: ['Created desc'] })
-    if (!res.data) return []
-    return res.data.map(fromItem)
+    const items = await getAllPages<DCPO_LISTE_PLAN_CONTROLERead>(
+      DCPO_LISTE_PLAN_CONTROLEService,
+      { orderBy: ['Created desc'] },
+    )
+    return items.map(fromItem)
   } catch (err) {
     console.error('listControles error', err)
     return []
@@ -434,12 +437,14 @@ export async function listEvaluationsForControle(controleId: string | number): P
   const idNum = Number(controleId)
   if (!Number.isFinite(idNum)) return []
   try {
-    const res = await DCPO_EVALUATION_PLAN_CONTROLEService.getAll({
-      filter: `plan_controle_id eq ${idNum}`,
-      orderBy: ['Created desc'],
-    })
-    if (!res.data) return []
-    return res.data.map(fromEvaluationItem)
+    const items = await getAllPages<DCPO_EVALUATION_PLAN_CONTROLERead>(
+      DCPO_EVALUATION_PLAN_CONTROLEService,
+      {
+        filter: `plan_controle_id eq ${idNum}`,
+        orderBy: ['Created desc'],
+      },
+    )
+    return items.map(fromEvaluationItem)
   } catch (err) {
     console.error('listEvaluationsForControle error', err)
     return []
@@ -461,9 +466,11 @@ export async function listAllEvaluations(year?: number): Promise<ControleEvaluat
     if (year && Number.isFinite(year)) {
       options.filter = `startswith(periode, '${year}')`
     }
-    const res = await DCPO_EVALUATION_PLAN_CONTROLEService.getAll(options)
-    if (!res.data) return []
-    return res.data.map(fromEvaluationItem)
+    const items = await getAllPages<DCPO_EVALUATION_PLAN_CONTROLERead>(
+      DCPO_EVALUATION_PLAN_CONTROLEService,
+      options,
+    )
+    return items.map(fromEvaluationItem)
   } catch (err) {
     console.error('listAllEvaluations error', err)
     return []

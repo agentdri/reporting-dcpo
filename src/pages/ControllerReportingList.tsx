@@ -31,6 +31,7 @@ import {
   type ActivityReport,
 } from '../lib/activityService'
 import { DCPO_LISTE_USERService } from '../generated/services/DCPO_LISTE_USERService'
+import { getAllPages } from '../lib/sharePointPaging'
 import type { DCPO_LISTE_USERRead } from '../generated/models/DCPO_LISTE_USERModel'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
@@ -225,10 +226,9 @@ export default function ControllerReportingList({ userName, userEmail }: Control
    */
   useEffect(() => {
     let cancelled = false
-    DCPO_LISTE_USERService.getAll({ orderBy: ['nom asc'] })
-      .then(res => {
+    getAllPages<DCPO_LISTE_USERRead>(DCPO_LISTE_USERService, { orderBy: ['nom asc'] })
+      .then(rows => {
         if (cancelled) return
-        const rows: DCPO_LISTE_USERRead[] = (res.data ?? []) as DCPO_LISTE_USERRead[]
         const list: Controleur[] = rows
           .filter((u: DCPO_LISTE_USERRead) => u.fonction?.Value === 'Controleur')
           .map((u: DCPO_LISTE_USERRead) => ({

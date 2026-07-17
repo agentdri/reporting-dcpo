@@ -32,6 +32,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { DCPO_LISTE_USERService } from '../generated/services/DCPO_LISTE_USERService'
+import { getAllPages } from '../lib/sharePointPaging'
 import { Office365UsersService } from '../generated/services/Office365UsersService'
 import type { DCPO_LISTE_USERRead, DCPO_LISTE_USERWrite } from '../generated/models/DCPO_LISTE_USERModel'
 import type { User } from '../generated/models/Office365UsersModel'
@@ -167,8 +168,11 @@ export default function UserManagement({ userEmail, userRole }: UserManagementPr
     setLoading(true)
     setLoadError(null)
     try {
-      const result = await DCPO_LISTE_USERService.getAll({ orderBy: ['nom asc'] })
-      setUsers(result.data ?? [])
+      const rows = await getAllPages<DCPO_LISTE_USERRead>(
+        DCPO_LISTE_USERService,
+        { orderBy: ['nom asc'] },
+      )
+      setUsers(rows)
     } catch (err) {
       console.error('UserManagement: échec chargement', err)
       setLoadError('Impossible de charger la liste des utilisateurs.')

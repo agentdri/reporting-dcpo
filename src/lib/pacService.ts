@@ -42,6 +42,7 @@ import type {
   DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite,
 } from '../generated/models/DCPO_LISTE_PLAN_ACTION_CORRECTIFModel'
 import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
+import { getAllPages } from './sharePointPaging'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -172,9 +173,11 @@ function fromItem(item: DCPO_LISTE_PLAN_ACTION_CORRECTIFRead): Pac {
 /** Liste tous les PAC (du plus récent au plus ancien). */
 export async function listPACs(): Promise<Pac[]> {
   try {
-    const res = await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.getAll({ orderBy: ['Created desc'] })
-    if (!res.data) return []
-    return res.data.map(fromItem)
+    const items = await getAllPages<DCPO_LISTE_PLAN_ACTION_CORRECTIFRead>(
+      DCPO_LISTE_PLAN_ACTION_CORRECTIFService,
+      { orderBy: ['Created desc'] },
+    )
+    return items.map(fromItem)
   } catch (err) {
     console.error('listPACs error', err)
     return []
@@ -454,12 +457,14 @@ export async function listEvaluationsForPac(pacId: string | number): Promise<Pac
   const idStr = String(pacId)
   if (!idStr) return []
   try {
-    const res = await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.getAll({
-      filter: `plan_action_correctif_id eq '${idStr}'`,
-      orderBy: ['Created desc'],
-    })
-    if (!res.data) return []
-    return res.data.map(fromPacEvaluationItem)
+    const items = await getAllPages<DCPO_EVALUATION_PLAN_ACTION_CORRECTIFRead>(
+      DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService,
+      {
+        filter: `plan_action_correctif_id eq '${idStr}'`,
+        orderBy: ['Created desc'],
+      },
+    )
+    return items.map(fromPacEvaluationItem)
   } catch (err) {
     console.error('listEvaluationsForPac error', err)
     return []
@@ -469,11 +474,11 @@ export async function listEvaluationsForPac(pacId: string | number): Promise<Pac
 /** Liste TOUTES les évaluations PAC (pour agrégation côté Reporting Agent). */
 export async function listAllPacEvaluations(): Promise<PacEvaluation[]> {
   try {
-    const res = await DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService.getAll({
-      orderBy: ['Created desc'],
-    })
-    if (!res.data) return []
-    return res.data.map(fromPacEvaluationItem)
+    const items = await getAllPages<DCPO_EVALUATION_PLAN_ACTION_CORRECTIFRead>(
+      DCPO_EVALUATION_PLAN_ACTION_CORRECTIFService,
+      { orderBy: ['Created desc'] },
+    )
+    return items.map(fromPacEvaluationItem)
   } catch (err) {
     console.error('listAllPacEvaluations error', err)
     return []
