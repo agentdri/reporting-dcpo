@@ -503,7 +503,7 @@ interface BulletinModalProps {
  *
  * Raccourci clavier : Escape ferme la modale (handler global window).
  */
-function BulletinModal({ bulletin, onClose, onPrint, canEdit, onEdit }: BulletinModalProps) {
+export function BulletinModal({ bulletin, onClose, onPrint, canEdit, onEdit }: BulletinModalProps) {
   const attachments = getTicketAttachments(bulletin.ticket)
 
   useEffect(() => {

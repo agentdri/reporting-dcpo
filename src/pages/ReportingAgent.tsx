@@ -84,6 +84,8 @@ import {
   type ControleEntry,
 } from '../lib/planControleService'
 import { listPACs, type Pac } from '../lib/pacService'
+import { buildConsolidatedBulletin } from '../lib/anomalyBulletin'
+import { BulletinModal } from './AnomalyBulletins'
 
 /** Nettoie un texte HTML pour ne garder que le contenu textuel (DOMParser). */
 function stripHtml(html: string): string {
@@ -368,6 +370,13 @@ export default function ReportingAgent() {
    *   - email : vue détail de cet agent (toutes ses anomalies)
    */
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  /**
+   * Anomalie sélectionnée pour la modale récapitulative (déclenchée par
+   * clic sur le N° de ticket dans le tableau détail). `null` = pas de modale.
+   * On réutilise le composant `BulletinModal` déjà défini dans
+   * AnomalyBulletins.tsx pour garder la même UX de fiche récap partout.
+   */
+  const [detailAnomaly, setDetailAnomaly] = useState<DCPO_LISTE_ANORMALIERead | null>(null)
   /**
    * Mode de regroupement des anomalies :
    *   - 'affecte' : par contrôleur affecté (personneAffecter) — par défaut
@@ -1068,6 +1077,11 @@ export default function ReportingAgent() {
             <table className="data-table">
               <thead>
                 <tr>
+                  {/* N° Ticket : identifiant SharePoint formaté T-{ID} —
+                      cohérent avec le numéro affiché dans Anomalies.tsx et
+                      les bulletins clôturés. Sticky à gauche pour rester
+                      visible lors du scroll horizontal du tableau. */}
+                  <th>N° Ticket</th>
                   <th>Date</th>
                   <th>Declarant</th>
                   <th>Auteur</th>
@@ -1084,8 +1098,33 @@ export default function ReportingAgent() {
                 </tr>
               </thead>
               <tbody>
-                {pagedDetailAnomalies.map(item => (
+                {pagedDetailAnomalies.map(item => {
+                  const numero = item.ID ? `T-${item.ID}` : '—'
+                  return (
                   <tr key={item.ID}>
+                    <td>
+                      {item.ID ? (
+                        <button
+                          type="button"
+                          onClick={() => setDetailAnomaly(item)}
+                          title="Voir le récapitulatif de l'anomalie"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            color: '#1d4ed8',
+                            fontWeight: 700,
+                            textDecoration: 'underline',
+                            cursor: 'pointer',
+                            font: 'inherit',
+                          }}
+                        >
+                          {numero}
+                        </button>
+                      ) : (
+                        <strong>{numero}</strong>
+                      )}
+                    </td>
                     <td>{formatDateOnlyFR(item.field_0, '-')}</td>
                     <td>{item.declarant_anormalie?.DisplayName ?? '-'}</td>
                     <td>{item.auteur_anormalie?.DisplayName ?? '-'}</td>
@@ -1100,7 +1139,8 @@ export default function ReportingAgent() {
                     <td>{item.typeSanction ?? '-'}</td>
                     <td>{item.personneAffecter?.DisplayName ?? '-'}</td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
             <Pagination
@@ -1167,6 +1207,19 @@ export default function ReportingAgent() {
             )}
           </div>
         </>
+      )}
+
+      {/* ─── Modale récap anomalie (clic sur N° Ticket) ─────────────
+          Réutilise le composant BulletinModal d'AnomalyBulletins. On
+          construit à la volée le bulletin consolidé (mapping ID agence/
+          réseau → libellés, timeline, causes parsées, etc.). Bouton
+          Imprimer → window.print() comme sur la vue Anomalies résolues. */}
+      {detailAnomaly && (
+        <BulletinModal
+          bulletin={buildConsolidatedBulletin(detailAnomaly, agences, reseaux)}
+          onClose={() => setDetailAnomaly(null)}
+          onPrint={() => window.print()}
+        />
       )}
     </>
   )
