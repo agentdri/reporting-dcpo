@@ -853,7 +853,7 @@ export default function ReportingAgent() {
             <p className="loading-text">Aucun agent ne correspond aux critères.</p>
           ) : (
             <div className="table-wrapper">
-              <table className="data-table">
+              <table className="data-table" >
                 <thead>
                   <tr>
                     <th>{groupingMode === 'auteur' ? 'Auteur' : 'Personne affectée'}</th>
