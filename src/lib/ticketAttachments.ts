@@ -287,7 +287,8 @@ export function getTicketAttachments(ticket: DCPO_LISTE_ANORMALIERead | null | u
     })
   }
 
-  // ─── Source 2 : champ urlPieceJointe (multi-URLs séparées par |) ──
+  // ─── Source 2 : champ urlPieceJointe (URL simple OU data URI base64
+  //                 contenant plusieurs URLs — parseUrlList gère les deux) ──
   if (ticket.urlPieceJointe) {
     const urls = parseUrlList(ticket.urlPieceJointe)
     for (const url of urls) {
@@ -311,56 +312,137 @@ export function getTicketAttachments(ticket: DCPO_LISTE_ANORMALIERead | null | u
 
 /* ──────────────────────────────────────────────────────────────────────────
  * SECTION 6 — GESTION MULTI-URL DANS urlPieceJointe
+ *
+ * ⚠ CONTRAINTE MAJEURE : le champ SP `urlPieceJointe` est déclaré
+ * `"type": "string", "format": "uri"` dans le schéma SharePoint (cf.
+ * .power/schemas/.../dcpo_liste_anormalie.Schema.json). Le connecteur
+ * Power Apps valide donc que la valeur soit UNE URI unique valide et
+ * rejette avec HTTP 400 toute concaténation naïve (ex : `url1 | url2`
+ * avec espaces = URI invalide → Bad Request).
+ *
+ * Pour stocker néanmoins PLUSIEURS URLs sans changer le schéma SP :
+ *   - 0 URL  → chaîne vide
+ *   - 1 URL  → l'URL directement (reste cliquable dans l'UI native SP)
+ *   - N URLs → encapsulées dans une **data URI base64** :
+ *              `data:text/x-dcpo-urls;base64,<base64(url1|url2|...)>`
+ *              → format RFC 2397 = URI parfaitement valide,
+ *              accepté par la validation du connecteur.
+ *
+ * COMPATIBILITÉ DESCENDANTE : parseUrlList sait aussi lire l'ancien
+ * format "url1 | url2" (données pré-migration), donc les items
+ * SharePoint existants restent lisibles sans migration de données.
  * ────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Caractère utilisé pour séparer plusieurs URLs concaténées dans le
- * champ urlPieceJointe (qui est un text simple SharePoint).
- *
- * Choix de "|" (pipe) :
- *   - URL-safe (n'apparaît pas dans les URLs SharePoint réelles)
- *   - Visuellement distinct
- *   - Compatible single-line ET multi-line text fields
+ * Caractère utilisé en interne (avant encodage base64) pour séparer
+ * les URLs. Ne fuit jamais tel quel dans le champ SP (toujours
+ * encodé en base64) → aucune contrainte de charset URL.
  */
 export const URL_LIST_SEPARATOR = '|'
 
 /**
+ * Préfixe data URI reconnu comme "conteneur multi-URLs DCPO". Choisi
+ * pour :
+ *   - Respecter la RFC 2397 (data URI scheme = URI valide)
+ *   - Être clairement identifiable (`x-dcpo-urls` = type MIME custom)
+ *   - Éviter tout risque de collision avec des `data:image/...` légitimes
+ */
+export const MULTI_URL_PREFIX = 'data:text/x-dcpo-urls;base64,'
+
+/**
+ * Encode une chaîne UTF-8 en base64 (btoa ne supporte que Latin-1
+ * nativement). Nécessaire pour les URLs contenant des noms de fichier
+ * avec accents ou caractères non-ASCII.
+ */
+function utf8ToBase64(str: string): string {
+  return btoa(unescape(encodeURIComponent(str)))
+}
+
+/**
+ * Décode une chaîne base64 en UTF-8 (inverse de utf8ToBase64).
+ */
+function base64ToUtf8(b64: string): string {
+  return decodeURIComponent(escape(atob(b64)))
+}
+
+/**
  * Découpe la valeur brute de urlPieceJointe en URLs individuelles.
  *
- * Étapes :
- *   1. Si raw est null/undefined → []
- *   2. Split sur "|"
- *   3. Trim chaque morceau (supprime les espaces autour de " | ")
- *   4. Filter (Boolean) : élimine les chaînes vides (cas " | | ")
+ * Formats reconnus (dans l'ordre de test) :
+ *   1. `data:text/x-dcpo-urls;base64,<b64>` (nouveau format multi-URL)
+ *      → décodage base64 puis split sur `|`
+ *   2. Ancien format `url1 | url2 | url3` (compatibilité descendante)
+ *   3. URL simple sans séparateur → `[url]`
  *
- * Compatible avec l'ancien format "url unique sans séparateur" :
- *   "https://...pdf" → ["https://...pdf"] ✓
+ * Robuste face aux valeurs invalides : retourne `[]` plutôt que de jeter.
  */
 export function parseUrlList(raw: string | null | undefined): string[] {
   if (!raw) return []
-  return raw
+  const trimmed = raw.trim()
+  if (!trimmed) return []
+
+  // Nouveau format : data URI encodée base64
+  if (trimmed.startsWith(MULTI_URL_PREFIX)) {
+    try {
+      const b64 = trimmed.slice(MULTI_URL_PREFIX.length)
+      const decoded = base64ToUtf8(b64)
+      return decoded
+        .split(URL_LIST_SEPARATOR)
+        .map(s => s.trim())
+        .filter(s => s.length > 0)
+    } catch (err) {
+      console.warn('parseUrlList: décodage data URI échoué', err)
+      return []
+    }
+  }
+
+  // Ancien format ou URL simple
+  return trimmed
     .split(URL_LIST_SEPARATOR)
     .map(s => s.trim())
     .filter(s => s.length > 0)
 }
 
 /**
- * Ajoute une nouvelle URL à une liste existante, sans doublon.
+ * Sérialise une liste d'URLs vers la valeur à stocker dans SP.
  *
- *   1. Parse l'existant
- *   2. Trim newUrl et vérifie qu'elle n'est pas déjà dans la liste
- *   3. Push si nouvelle
- *   4. Re-join avec " | " (avec espaces pour la lisibilité dans SharePoint)
+ * Règles :
+ *   - 0 URL  → ''
+ *   - 1 URL  → l'URL brute (le champ reste cliquable dans l'UI SP native
+ *              → utile pour les items simples qui n'ont qu'une PJ)
+ *   - N URLs → data URI base64 (respecte format:uri, cf. bloc en tête
+ *              de section)
+ *
+ * Déduplique automatiquement (par égalité stricte après trim).
+ */
+export function serializeUrlList(urls: string[]): string {
+  const cleaned = Array.from(
+    new Set(urls.map(u => (u ?? '').trim()).filter(u => u.length > 0)),
+  )
+  if (cleaned.length === 0) return ''
+  if (cleaned.length === 1) return cleaned[0]
+  return `${MULTI_URL_PREFIX}${utf8ToBase64(cleaned.join(URL_LIST_SEPARATOR))}`
+}
+
+/**
+ * Ajoute une nouvelle URL à une liste existante, sans doublon.
+ * Renvoie une valeur PRÊTE à écrire dans le champ SP (format garanti
+ * compatible avec `format: "uri"`).
+ *
+ *   1. Parse l'existant (accepte data URI OU ancien format)
+ *   2. Ajoute newUrl si pas déjà présente
+ *   3. Sérialise (URL brute si 1 seule, data URI si N)
  *
  * Use case typique : à la clôture d'une résolution, on ajoute la nouvelle
  * pièce jointe sans écraser celles existantes.
  */
 export function appendUrl(existing: string | null | undefined, newUrl: string): string {
   const list = parseUrlList(existing)
-  if (newUrl && !list.includes(newUrl.trim())) {
-    list.push(newUrl.trim())
+  const clean = (newUrl ?? '').trim()
+  if (clean && !list.includes(clean)) {
+    list.push(clean)
   }
-  return list.join(` ${URL_LIST_SEPARATOR} `)
+  return serializeUrlList(list)
 }
 
 

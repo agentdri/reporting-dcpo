@@ -1232,11 +1232,21 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       }
 
       // Upload de la pièce jointe (preuve de résolution)
+      //
+      // La concaténation via appendUrl produit une valeur COMPATIBLE avec
+      // le format `uri` du champ SP :
+      //   - 1 seule URL → l'URL brute (cliquable dans l'UI SP native)
+      //   - N URLs      → encapsulées dans une data URI base64
+      //                   (`data:text/x-dcpo-urls;base64,...`) qui reste
+      //                   une URI RFC 2397 valide.
+      // Voir la SECTION 6 de ticketAttachments.ts pour le détail du format.
+      //
+      // Cela permet de conserver l'URL saisie à la déclaration ET d'y
+      // ajouter la nouvelle preuve de résolution sans écraser l'historique.
       if (resolutionAttachment) {
         try {
           const attachmentUrl = await uploadAttachment(String(resolutionItem.ID), resolutionAttachment)
           if (attachmentUrl) {
-            // Concaténer aux URLs existantes (le champ stocke plusieurs URLs séparées par " | ")
             const concatenated = appendUrl(resolutionItem.urlPieceJointe, attachmentUrl)
             await DCPO_LISTE_ANORMALIEService.update(String(resolutionItem.ID), {
               urlPieceJointe: concatenated,
