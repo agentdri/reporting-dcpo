@@ -172,3 +172,153 @@ export async function getAllPages<T>(
 
   return all
 }
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION 2 — CHUNKING PAR MOIS CALENDAIRE
+ *
+ * Contexte : le connecteur SharePoint plafonne pratiquement à ~500 items
+ * par appel `getAll`, `$skip` étant souvent ignoré. Pour dépasser ce
+ * plafond sur une longue période, on émet PLUSIEURS requêtes OData,
+ * chacune filtrée sur un mois calendaire. Les résultats sont fusionnés
+ * et dédoublonnés par ID.
+ *
+ * Utilisation typique :
+ *   const items = await getAllChunkedByMonth(MyService, {
+ *     from: '2026-01-01',
+ *     to: '2026-12-31',
+ *     dateColumn: 'Created',
+ *     extraFilter: "statut eq 'Actif'",
+ *     orderBy: ['Created desc'],
+ *   })
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Découpe une plage `[from, to]` (dates YYYY-MM-DD) en sous-plages
+ * mensuelles calendaires.
+ *
+ * Exemple : `splitRangeByMonth('2026-01-15', '2026-03-10')` →
+ *   [ {from: '2026-01-15', to: '2026-01-31'},
+ *     {from: '2026-02-01', to: '2026-02-28'},
+ *     {from: '2026-03-01', to: '2026-03-10'} ]
+ */
+export function splitRangeByMonth(
+  from: string,
+  to: string,
+): Array<{ from: string; to: string }> {
+  const chunks: Array<{ from: string; to: string }> = []
+  const [fy, fm, fd] = from.split('-').map(Number)
+  const [ty, tm, td] = to.split('-').map(Number)
+
+  let cursorY = fy
+  let cursorM = fm
+  let isFirst = true
+
+  while (cursorY < ty || (cursorY === ty && cursorM <= tm)) {
+    const startDay = isFirst ? fd : 1
+    const startStr = `${cursorY}-${String(cursorM).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`
+
+    const isLast = cursorY === ty && cursorM === tm
+    // `new Date(y, m, 0).getDate()` = dernier jour du mois `m` (mois 1-indexé)
+    const endDay = isLast ? td : new Date(cursorY, cursorM, 0).getDate()
+    const endStr = `${cursorY}-${String(cursorM).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+
+    chunks.push({ from: startStr, to: endStr })
+    isFirst = false
+
+    cursorM++
+    if (cursorM > 12) {
+      cursorM = 1
+      cursorY++
+    }
+  }
+  return chunks
+}
+
+/**
+ * Exécute des tâches asynchrones par vagues de `concurrency` items en
+ * parallèle. Évite d'ouvrir trop de connexions HTTP en même temps sur le
+ * connecteur SP (rate limit + risque de saturation).
+ */
+export async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let index = 0
+  const workers = Array.from(
+    { length: Math.min(concurrency, tasks.length) },
+    async () => {
+      while (index < tasks.length) {
+        const i = index++
+        results[i] = await tasks[i]()
+      }
+    },
+  )
+  await Promise.all(workers)
+  return results
+}
+
+/** Options pour `getAllChunkedByMonth`. */
+export interface ChunkedByMonthOptions {
+  /** Borne basse YYYY-MM-DD (incluse). */
+  from: string
+  /** Borne haute YYYY-MM-DD (incluse). */
+  to: string
+  /** Nom de la colonne SP sur laquelle appliquer le filtre par plage. */
+  dateColumn: string
+  /**
+   * Clause OData additionnelle combinée en AND avec le filtre par plage.
+   * Ex : `"field_10 eq 'Resolu' or field_10 eq 'Clos'"`.
+   * Sera automatiquement entourée de parenthèses.
+   */
+  extraFilter?: string
+  /** orderBy OData standard. Par défaut : `[<dateColumn> desc]`. */
+  orderBy?: string[]
+  /** Nombre max de fetch parallèles. Par défaut : 4. */
+  concurrency?: number
+}
+
+/**
+ * Récupère TOUS les items d'une liste sur une plage de dates, en chunkant
+ * la plage par MOIS calendaire pour contourner le plafond de 500 items du
+ * connecteur SP. Chaque chunk est fetché en parallèle (limité à
+ * `concurrency`), puis les résultats sont fusionnés + dédoublonnés + triés.
+ *
+ * @returns Tous les items uniques de la plage, triés selon `orderBy`.
+ */
+export async function getAllChunkedByMonth<T>(
+  service: SharePointService<T>,
+  options: ChunkedByMonthOptions,
+): Promise<T[]> {
+  const chunks = splitRangeByMonth(options.from, options.to)
+  const orderBy = options.orderBy ?? [`${options.dateColumn} desc`]
+  const concurrency = options.concurrency ?? 4
+
+  const perChunk = await runWithConcurrency(
+    chunks.map(chunk => () => {
+      const rangeClause =
+        `${options.dateColumn} ge '${chunk.from}T00:00:00Z' and ` +
+        `${options.dateColumn} le '${chunk.to}T23:59:59Z'`
+      const filter = options.extraFilter
+        ? `(${options.extraFilter}) and ${rangeClause}`
+        : rangeClause
+      return getAllPages<T>(service, { orderBy, filter })
+    }),
+    concurrency,
+  )
+
+  // Fusion + dédup par ID (belt & braces — les chunks ne se chevauchent pas)
+  const seen = new Set<string>()
+  const merged: T[] = []
+  for (const batch of perChunk) {
+    for (const item of batch) {
+      const rawId = (item as { ID?: string | number }).ID
+      const key = rawId !== undefined && rawId !== null ? String(rawId) : ''
+      if (key && seen.has(key)) continue
+      if (key) seen.add(key)
+      merged.push(item)
+    }
+  }
+  return merged
+}

@@ -25,7 +25,7 @@
  * ============================================================================
  */
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
 import type { DCPO_LISTE_AGENCESRead } from '../generated/models/DCPO_LISTE_AGENCESModel'
@@ -52,6 +52,7 @@ import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
+import { getAllChunkedByMonth } from '../lib/sharePointPaging'
 import './AnomalyBulletins.css'
 import { ModalOverlay } from '../components/ModalOverlay'
 
@@ -104,43 +105,60 @@ export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {
   /**
    * Récupère depuis SharePoint UNIQUEMENT les anomalies Resolu/Clos.
    *
-   * Le $filter serveur est figé : on ne récupère jamais les Ouvert/En cours
-   * dans cette page. Les filtres UI (status='Resolu'/'Clos'/'Tous') sont
-   * appliqués côté client en plus.
+   * ⚠ VOLUMÉTRIE : le connecteur SP plafonne pratiquement à ~500 items
+   * par appel `getAll` (bug historique = seuls les 100/500 items les plus
+   * récents remontaient dès que la liste dépassait ce seuil). On chunke
+   * donc la plage par MOIS calendaire via `getAllChunkedByMonth` — chaque
+   * chunk restant très en-dessous de 500 items dans la pratique métier.
+   *
+   * Plage appliquée :
+   *   - Si l'utilisateur a saisi Date du / Date au (appliqués via
+   *     "Rechercher"), on utilise ces bornes.
+   *   - Sinon défaut = année en cours (1er janvier → 31 décembre).
+   *   La plage porte sur la colonne `Created` (indexée par défaut SP).
+   *
+   * Le filtre `field_10 eq 'Resolu' or field_10 eq 'Clos'` est combiné
+   * avec le filtre de plage — on ne récupère JAMAIS les Ouvert/En cours
+   * sur cette page.
    *
    * En parallèle : agences + réseaux pour résoudre les libellés des cards.
    */
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [ticketsRes, agencesRows, reseauxRows] = await Promise.all([
-        DCPO_LISTE_ANORMALIEService.getAll({
+      const currentYear = new Date().getFullYear()
+      const defaultFrom = `${currentYear}-01-01`
+      const defaultTo = `${currentYear}-12-31`
+      const from = appliedFilters.dateFrom || defaultFrom
+      const to = appliedFilters.dateTo || defaultTo
+
+      const [ticketsData, agencesRows, reseauxRows] = await Promise.all([
+        getAllChunkedByMonth<DCPO_LISTE_ANORMALIERead>(DCPO_LISTE_ANORMALIEService, {
+          from,
+          to,
+          dateColumn: 'Created',
+          extraFilter: "field_10 eq 'Resolu' or field_10 eq 'Clos'",
           orderBy: ['Created desc'],
-          filter: "field_10 eq 'Resolu' or field_10 eq 'Clos'",
         }),
         loadAgences(),
         loadReseaux(),
       ])
       setAgences(agencesRows)
       setReseaux(reseauxRows)
-      if (ticketsRes.data) {
-        setTickets(ticketsRes.data.filter(isBulletinTicket))
-      } else {
-        setTickets([])
-      }
+      setTickets(ticketsData.filter(isBulletinTicket))
     } catch (err) {
       console.error('Erreur chargement bulletins', err)
       setError('Impossible de charger les bulletins.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [appliedFilters.dateFrom, appliedFilters.dateTo])
 
-  // Fetch initial unique au montage
+  // Chargement initial au montage + refetch dès que la plage appliquée change.
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [fetchData])
 
   /**
    * Mappe chaque ticket brut en bulletin consolidé (cf. anomalyBulletin.ts).

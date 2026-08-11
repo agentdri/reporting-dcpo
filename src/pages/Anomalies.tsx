@@ -2105,15 +2105,10 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <option value="Clos">Clos</option>
                 </select>
               </div>
-              <div className="form-field">
-                <label htmlFor="anom-dateRegul">Date régularisation</label>
-                <input
-                  id="anom-dateRegul"
-                  type="date"
-                  value={form.field_9}
-                  onChange={e => handleChange('field_9', e.target.value)}
-                />
-              </div>
+              {/* Date de régularisation : volontairement MASQUÉE à la
+                  création — elle n'a de sens qu'au moment de la clôture
+                  (cf. modale "Clore la résolution" qui la demande alors).
+                  Reste modifiable en édition depuis la modale Détail. */}
             </div>
           </fieldset>
 
