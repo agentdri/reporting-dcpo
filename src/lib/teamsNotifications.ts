@@ -111,3 +111,101 @@ export async function notifyAffectation(input: NotifyAffectationInput): Promise<
     console.warn('notifyAffectation: échec envoi notification Teams', err)
   }
 }
+
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * SECTION HELPERS — WORDING PRÉ-CONSTRUIT PAR SCÉNARIO
+ *
+ * Ces helpers évitent de dupliquer les libellés dans chaque page. Ils
+ * délèguent tous à `notifyAffectation` (même flow Power Automate, même
+ * pattern fire-and-forget) mais préfixent le `subject` pour que la
+ * personne notifiée comprenne immédiatement le CONTEXTE (auteur ? rappel ?
+ * affectation ?), sans qu'on ait besoin de créer de nouveaux types côté
+ * workflow Power Automate.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Notification à l'AUTEUR d'une anomalie (désigné à la création ou modifié
+ * ultérieurement). L'auteur est la personne à l'origine du fait signalé —
+ * elle est prévenue qu'elle apparaît dans le registre DCPO.
+ */
+export interface NotifyAuteurAnomalieInput {
+  /** Email de l'auteur. REQUIS. */
+  email: string
+  /** Numéro / titre court de l'anomalie (ex: "T-46 — Eclatement de pneu"). */
+  anomalieLabel: string
+  /** Nom de la personne qui a désigné l'auteur (pour transparence). */
+  declareParName?: string
+  /** Lien direct vers l'item. Optionnel. */
+  appUrl?: string
+}
+
+export function notifyAuteurAnomalie(input: NotifyAuteurAnomalieInput): Promise<void> {
+  const details = input.declareParName
+    ? `Vous avez été désigné(e) comme AUTEUR de cette anomalie par ${input.declareParName}. Merci de vérifier les faits reportés.`
+    : `Vous avez été désigné(e) comme AUTEUR de cette anomalie. Merci de vérifier les faits reportés.`
+  return notifyAffectation({
+    type: 'anomalie',
+    email: input.email,
+    subject: `[Auteur] ${input.anomalieLabel}`,
+    details,
+    appUrl: input.appUrl,
+  })
+}
+
+/**
+ * Rappel manuel envoyé au RESPONSABLE d'un plan de contrôle — déclenché
+ * par un manager qui clique sur le bouton "Rappeler" dans la liste des
+ * contrôles. Utile quand une évaluation attendue tarde.
+ */
+export interface NotifyRappelPlanControleInput {
+  email: string
+  /** Libellé du contrôle (ex : "Contrôle mensuel caisse agence Yaoundé"). */
+  libelle: string
+  /** Nom du manager qui déclenche le rappel (transparence). */
+  fromName?: string
+  /** Détail additionnel (ex : "Fréquence : mensuelle, dernière évaluation il y a 45 j"). */
+  extraDetails?: string
+  appUrl?: string
+}
+
+export function notifyRappelPlanControle(input: NotifyRappelPlanControleInput): Promise<void> {
+  const parts: string[] = ['Rappel : ce plan de contrôle attend votre évaluation.']
+  if (input.extraDetails) parts.push(input.extraDetails)
+  if (input.fromName) parts.push(`Rappel envoyé par ${input.fromName}.`)
+  return notifyAffectation({
+    type: 'plan-controle',
+    email: input.email,
+    subject: `[Rappel] ${input.libelle}`,
+    details: parts.join(' '),
+    appUrl: input.appUrl,
+  })
+}
+
+/**
+ * Rappel manuel envoyé au RESPONSABLE d'un PAC — déclenché par un manager
+ * qui clique sur le bouton "Rappeler" dans la liste des PAC. Utile quand
+ * une action correctrice tarde à être mise en œuvre.
+ */
+export interface NotifyRappelPacInput {
+  email: string
+  /** Intitulé du PAC. */
+  intitule: string
+  /** Échéance (YYYY-MM-DD) — mise en avant dans le message. Optionnel. */
+  echeance?: string
+  fromName?: string
+  appUrl?: string
+}
+
+export function notifyRappelPac(input: NotifyRappelPacInput): Promise<void> {
+  const parts: string[] = ['Rappel : ce plan d\'action correctif attend votre mise en œuvre.']
+  if (input.echeance) parts.push(`Échéance : ${input.echeance}.`)
+  if (input.fromName) parts.push(`Rappel envoyé par ${input.fromName}.`)
+  return notifyAffectation({
+    type: 'pac',
+    email: input.email,
+    subject: `[Rappel] ${input.intitule}`,
+    details: parts.join(' '),
+    appUrl: input.appUrl,
+  })
+}

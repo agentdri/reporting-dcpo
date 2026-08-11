@@ -33,6 +33,7 @@ import {
 import { DCPO_LISTE_USERService } from '../generated/services/DCPO_LISTE_USERService'
 import { getAllPages } from '../lib/sharePointPaging'
 import type { DCPO_LISTE_USERRead } from '../generated/models/DCPO_LISTE_USERModel'
+import { listAbsences, buildAbsentDaysMap, type Absence } from '../lib/absenceService'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { ProgressBar } from '../components/ProgressBar'
@@ -179,6 +180,13 @@ export default function ControllerReportingList({ userName, userEmail }: Control
    * et n'ont pas besoin d'être rechargés en continu).
    */
   const [controleurs, setControleurs] = useState<Controleur[]>([])
+  /**
+   * Liste des absences (DCPO_LISTE_ABSENCES). Chargée une seule fois au
+   * montage, rafraîchie via `refresh()` en même temps que les rapports.
+   * Sert à retirer les jours d'absence du dénominateur du taux de
+   * soumission (cf. `absentDaysMap` dans submissionStats).
+   */
+  const [absences, setAbsences] = useState<Absence[]>([])
   /** Indicateur de chargement initial (réseau en cours). */
   const [loadingReports, setLoadingReports] = useState(true)
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
@@ -199,21 +207,41 @@ export default function ControllerReportingList({ userName, userEmail }: Control
   const [expandedControleurEmail, setExpandedControleurEmail] = useState<string | null>(null)
 
   /**
-   * Recharge la liste depuis SharePoint.
-   * useCallback : référence stable pour éviter les re-renders inutiles.
-   * Async désormais (SharePoint fetch).
+   * Recharge la liste depuis SharePoint en filtrant CÔTÉ SERVEUR sur la
+   * plage de dates saisie dans les filtres. Pousser le filtre OData au
+   * niveau du service évite deux écueils :
+   *   1. Ramener des milliers d'items pour n'en afficher que quelques-uns
+   *      (coût réseau + limite de pagination du connecteur SP).
+   *   2. Le comportement pathologique du connecteur SP qui, sur certaines
+   *      listes, ignore `$skip` et remonte 100 000 doublons (cf. le fix
+   *      dans sharePointPaging.ts) — un filtre restrictif ramène la liste
+   *      en 1 page et court-circuite complètement le problème.
+   *
+   * Si l'utilisateur n'a saisi aucune date, `listReports()` retombe sur
+   * son défaut = année en cours (cf. defaultCurrentYearRange).
    */
   const refresh = useCallback(async () => {
     setLoadingReports(true)
     try {
-      const data = await listReports()
-      setReports(data)
+      // Rapports ET absences en parallèle — les 2 alimentent le calcul de taux.
+      const [reportsData, absencesData] = await Promise.all([
+        listReports({
+          from: filters.dateFrom || undefined,
+          to: filters.dateTo || undefined,
+        }),
+        listAbsences(),
+      ])
+      setReports(reportsData)
+      setAbsences(absencesData)
     } finally {
       setLoadingReports(false)
     }
-  }, [])
+  }, [filters.dateFrom, filters.dateTo])
 
-  // Chargement initial au montage
+  // Chargement initial au montage + refetch dès que la plage de dates change.
+  // La stabilité du callback via useCallback+deps garantit qu'on ne refetch
+  // QUE quand from/to bougent, pas sur les autres filtres (contrôleur, statut)
+  // qui restent traités côté client.
   useEffect(() => {
     refresh()
   }, [refresh])
@@ -380,6 +408,10 @@ export default function ControllerReportingList({ userName, userEmail }: Control
     const to = rawTo > eodToday ? eodToday : rawTo
 
     const expectedDaysList = listBusinessDays(from, to)
+    // NB : `expectedDays` reste la "capacité BRUTE" de la période (avant
+    // déduction des absences). Elle est conservée pour information mais
+    // le dénominateur EFFECTIF de chaque contrôleur retire ses jours
+    // d'absence (cf. plus bas `expectedEffectifSet`).
     const expectedDays = expectedDaysList.length
 
     // Coverage : email contrôleur → Set des dates DISTINCTES couvertes
@@ -396,6 +428,11 @@ export default function ControllerReportingList({ userName, userEmail }: Control
       coverage.get(email)!.add(r.date.slice(0, 10))
     }
 
+    // Absences : Map<email, Set<jour>> pour la période. Les jours listés
+    // ici seront RETIRÉS du dénominateur du contrôleur concerné (congé,
+    // maladie, formation, mission → pas de rapport attendu).
+    const absentDaysMap = buildAbsentDaysMap(absences, from, to)
+
     // Fusion : on part de la liste RÉFÉRENTIEL (DCPO_LISTE_USER) pour ne
     // pas oublier les contrôleurs qui n'ont RIEN soumis. Fallback si la
     // liste des contrôleurs n'est pas encore chargée : on utilise les
@@ -409,32 +446,56 @@ export default function ControllerReportingList({ userName, userEmail }: Control
             return { email, name: r?.controleurName || email }
           })
 
+    // Cumul global : on additionne les couverts et les attendus EFFECTIFS
+    // (après retrait des jours d'absence) pour un taux global significatif.
+    let globalCoveredEff = 0
+    let globalExpectedEff = 0
+
     const rows = source.map(c => {
       const coveredSet = coverage.get(c.email) ?? new Set<string>()
       const covered = coveredSet.size
-      const taux = expectedDays > 0 ? Math.min(100, Math.round((covered / expectedDays) * 100)) : 0
-      // Jours OUVRÉS attendus non couverts = jours de rapport manquants
-      // pour ce contrôleur sur la période. Utile pour lister exactement
-      // ce qui doit être rattrapé.
-      const missingDays = expectedDaysList.filter(d => !coveredSet.has(d))
+      const absentSet = absentDaysMap.get(c.email) ?? new Set<string>()
+
+      // Dénominateur EFFECTIF : jours ouvrés attendus MOINS les jours
+      // d'absence du contrôleur (intersection déjà calculée par le service).
+      const expectedEffectiveList = expectedDaysList.filter(d => !absentSet.has(d))
+      const expectedEffective = expectedEffectiveList.length
+
+      const taux = expectedEffective > 0
+        ? Math.min(100, Math.round((covered / expectedEffective) * 100))
+        : (covered > 0 ? 100 : 0) // aucun jour attendu (100 % d'absence) → 100 % si couvert, 0 sinon
+
+      // Jours OUVRÉS attendus non couverts ET non absents = jours de rapport
+      // réellement manquants pour ce contrôleur. Exclut les jours d'absence
+      // pour ne pas signaler comme "manquants" des jours légitimement OFF.
+      const missingDays = expectedEffectiveList.filter(d => !coveredSet.has(d))
+
+      // Jours d'absence DANS la période analysée (pour affichage détail)
+      const absentDays = Array.from(absentSet).sort()
+
+      globalCoveredEff += covered
+      globalExpectedEff += expectedEffective
+
       return {
         email: c.email,
         name: c.name,
         covered,
-        expected: expectedDays,
+        expected: expectedEffective,
+        expectedBrut: expectedDays,
+        absent: absentDays.length,
         taux,
         coveredDays: Array.from(coveredSet).sort(),
         missingDays,
+        absentDays,
       }
     }).sort((a, b) => a.taux - b.taux) // pires taux en premier (attire l'œil)
 
-    // Taux global = moyenne pondérée = (soumis totaux) / (attendus totaux)
-    const globalCovered = Array.from(coverage.values())
-      .reduce((s, set) => s + set.size, 0)
-    const globalExpected = expectedDays * source.length
-    const globalTaux = globalExpected > 0
-      ? Math.min(100, Math.round((globalCovered / globalExpected) * 100))
+    // Taux global = ratio agrégé sur les dénominateurs EFFECTIFS
+    const globalTaux = globalExpectedEff > 0
+      ? Math.min(100, Math.round((globalCoveredEff / globalExpectedEff) * 100))
       : 0
+    const globalCovered = globalCoveredEff
+    const globalExpected = globalExpectedEff
 
     return {
       from,
@@ -445,7 +506,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
       globalCovered,
       globalExpected,
     }
-  }, [reports, controleurs, filters.dateFrom, filters.dateTo])
+  }, [reports, controleurs, absences, filters.dateFrom, filters.dateTo])
 
   /** Helper générique de mise à jour partielle des filtres. */
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
@@ -714,7 +775,7 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                           <tr
                             onClick={toggle}
                             style={{ cursor: 'pointer' }}
-                            title={isOpen ? 'Masquer le détail' : 'Voir les jours manquants'}
+                            title={isOpen ? 'Masquer le détail' : 'Voir le détail (manquants + absences)'}
                           >
                             <td
                               aria-hidden="true"
@@ -728,14 +789,39 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                             >
                               ▶
                             </td>
-                            <td><strong>{row.name}</strong></td>
+                            <td>
+                              <strong>{row.name}</strong>
+                              {row.absent > 0 && (
+                                <span
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: 10,
+                                    padding: '2px 6px',
+                                    borderRadius: 10,
+                                    background: '#e2e8f0',
+                                    color: '#475569',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  title={`${row.absent} jour(s) d'absence retiré(s) du dénominateur`}
+                                >
+                                  🏖️ {row.absent}j
+                                </span>
+                              )}
+                            </td>
                             <td style={{ color: '#64748b', fontSize: 12 }}>{row.email}</td>
                             <td style={{ textAlign: 'center' }}>{row.covered}</td>
-                            <td style={{ textAlign: 'center' }}>{row.expected}</td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.expected}
+                              {row.absent > 0 && (
+                                <small style={{ display: 'block', fontSize: 10, color: '#94a3b8' }}>
+                                  ({row.expectedBrut} − {row.absent} abs.)
+                                </small>
+                              )}
+                            </td>
                             <td>
                               <ProgressBar
                                 value={row.taux}
-                                title={`${row.covered} rapport(s) soumis sur ${row.expected} attendu(s)`}
+                                title={`${row.covered} rapport(s) soumis sur ${row.expected} attendu(s) — ${row.absent} jour(s) d'absence exclu(s)`}
                               />
                             </td>
                           </tr>
@@ -792,6 +878,63 @@ export default function ControllerReportingList({ userName, userEmail }: Control
                                       rapport non refusé sur les {row.expected} attendu(s).
                                     </div>
                                   </>
+                                )}
+
+                                {/* ─── Jours d'absence (chips grises) ─────
+                                    Affiché seulement si le contrôleur a des
+                                    absences dans la période. Ces jours ont
+                                    déjà été retirés du dénominateur (cf.
+                                    `expectedEffective` dans submissionStats),
+                                    donc ils n'apparaissent PAS parmi les
+                                    "manquants" — on les liste ici uniquement
+                                    à titre informatif pour justifier visuellement
+                                    l'écart entre `expectedBrut` et `expected`. */}
+                                {row.absentDays.length > 0 && (
+                                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #cbd5e1' }}>
+                                    <div style={{ fontSize: 12, color: '#334155', marginBottom: 6 }}>
+                                      Jours <strong>d'absence</strong> déclarés
+                                      pour {row.name} sur cette période
+                                      <span style={{ color: '#64748b', fontWeight: 'normal' }}>
+                                        {' '}(retirés du dénominateur du taux) :
+                                      </span>
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 6,
+                                        marginBottom: 6,
+                                      }}
+                                    >
+                                      {row.absentDays.map(d => (
+                                        <span
+                                          key={d}
+                                          style={{
+                                            fontSize: 11,
+                                            padding: '3px 8px',
+                                            borderRadius: 12,
+                                            background: '#e2e8f0',
+                                            color: '#475569',
+                                            border: '1px solid #cbd5e1',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                          title={`Jour d'absence (${d})`}
+                                        >
+                                          🏖️{' '}
+                                          {new Date(`${d}T00:00:00`).toLocaleDateString('fr-FR', {
+                                            weekday: 'short',
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            year: 'numeric',
+                                          })}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                                      {row.absentDays.length} jour(s) ouvré(s) d'absence
+                                      sur la période — gérés via <em>Configuration → Gestion des absences</em>.
+                                    </div>
+                                  </div>
                                 )}
                               </td>
                             </tr>

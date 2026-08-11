@@ -86,6 +86,7 @@ import PlanControle from './PlanControle'
 import PlanActionCorrectif from './PlanActionCorrectif'
 import UserManagement from './UserManagement'
 import DirectionManagement from './DirectionManagement'
+import AbsenceManagement from './AbsenceManagement'
 import DashboardPowerBI from './DashboardPowerBI'
 
 /**
@@ -165,6 +166,7 @@ type Tab =
   | 'plan-action-correctif'
   | 'user-management'
   | 'config-directions'      // Groupe Configuration → Directions (référentiel)
+  | 'config-absences'        // Groupe Configuration → Gestion des absences
   | 'dashboard-numerisation' // Groupe Dashboards Power BI → Numérisation
   | 'dashboard-creance'      // Groupe Dashboards Power BI → Créance Hors Bilan
   | 'dashboard-comex'        // Groupe Dashboards Power BI → Apurement Comex
@@ -185,6 +187,7 @@ const TAB_TITLES: Record<Tab, string> = {
   'plan-action-correctif': "Plan d'Action Correctif",
   'user-management': 'Gestion des utilisateurs',
   'config-directions': 'Directions',
+  'config-absences': 'Gestion des absences',
   'dashboard-numerisation': 'Numérisation des journées',
   'dashboard-creance': 'Créance Hors Bilan',
   'dashboard-comex': 'Apurement Comex',
@@ -358,6 +361,7 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
         children: [
           { type: 'leaf', key: 'config-directions', label: 'Directions', icon: 'building' },
           { type: 'leaf', key: 'user-management', label: 'Gestion des utilisateurs', icon: 'users' },
+          { type: 'leaf', key: 'config-absences', label: 'Gestion des absences', icon: 'calendar' },
         ],
       })
     }
@@ -637,6 +641,9 @@ export default function Dashboard({ userName, userRole, userEmail, realUserRole,
             <UserManagement userEmail={userEmail} userRole={userRole} />
           )}
           {activeTab === 'config-directions' && <DirectionManagement />}
+          {activeTab === 'config-absences' && (
+            <AbsenceManagement userName={userName} userEmail={userEmail} />
+          )}
           {/* ─── Dashboards Power BI ──────────────────────────────────
               Trois rapports embarqués via iframe — cf. composant générique
               DashboardPowerBI qui prend titre + URL en props. */}

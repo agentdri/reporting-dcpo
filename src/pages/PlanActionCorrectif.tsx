@@ -69,7 +69,7 @@ import {
   type PacStatus,
 } from '../lib/pacService'
 import { formatDateOnlyFR } from '../lib/formatters'
-import { notifyAffectation } from '../lib/teamsNotifications'
+import { notifyAffectation, notifyRappelPac } from '../lib/teamsNotifications'
 import {
   listDirections,
   getDirectionLabelFromList,
@@ -141,7 +141,7 @@ function formatDate(d: string | undefined): string {
 }
 
 
-export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionCorrectifProps) {
+export default function PlanActionCorrectif({ userName, userEmail, userRole }: PlanActionCorrectifProps) {
   /* ════════════════════════════════════════════════════════════════════════
    * ÉTATS
    * ════════════════════════════════════════════════════════════════════════ */
@@ -880,6 +880,37 @@ export default function PlanActionCorrectif({ userEmail, userRole }: PlanActionC
                       {canManage && (
                         <button type="button" className="btn-cta btn-cta-affect" onClick={() => openAffectation(p)}>
                           Affectation
+                        </button>
+                      )}
+                      {/* Bouton "Rappeler" : réservé aux managers, envoie une
+                          notification Teams pré-formatée au responsable pour
+                          l'inciter à traiter le PAC. Désactivé si aucun
+                          responsable renseigné, ou si le PAC est déjà clôturé
+                          (Exécutée / Non Exécutée) — rappeler un PAC clos
+                          n'a pas de sens métier. */}
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="btn-cta btn-cta-detail"
+                          disabled={!p.responsableEmail || !isPacEvaluable(p.statut)}
+                          title={
+                            !p.responsableEmail
+                              ? 'Aucun responsable affecté à rappeler'
+                              : !isPacEvaluable(p.statut)
+                                ? 'PAC déjà clôturé — rappel inutile'
+                                : `Envoyer un rappel Teams à ${p.responsable}`
+                          }
+                          onClick={() => {
+                            notifyRappelPac({
+                              email: p.responsableEmail,
+                              intitule: p.intitule,
+                              echeance: p.echeance || undefined,
+                              fromName: userName,
+                            })
+                            alert(`Rappel envoyé à ${p.responsable} via Teams.`)
+                          }}
+                        >
+                          🔔 Rappeler
                         </button>
                       )}
                     </div>

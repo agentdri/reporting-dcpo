@@ -71,7 +71,7 @@ import {
   type ControleEvaluation,
 } from '../lib/planControleService'
 import { DOMAINE_ACTIVITE_OPTIONS } from '../lib/referentiels'
-import { notifyAffectation } from '../lib/teamsNotifications'
+import { notifyAffectation, notifyRappelPlanControle } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { UserPicker } from '../components/UserPicker'
@@ -126,7 +126,7 @@ const EMPTY_FORM = {
 }
 
 
-export default function PlanControle({ userEmail, userRole }: PlanControleProps) {
+export default function PlanControle({ userName, userEmail, userRole }: PlanControleProps) {
   /* ════════════════════════════════════════════════════════════════════════
    * ÉTATS
    * ════════════════════════════════════════════════════════════════════════ */
@@ -864,6 +864,34 @@ export default function PlanControle({ userEmail, userRole }: PlanControleProps)
                       {canManage && (
                         <button type="button" className="btn-cta btn-cta-affect" onClick={() => openAffectation(c)}>
                           Affectation
+                        </button>
+                      )}
+                      {/* Bouton "Rappeler" : réservé aux managers, désactivé
+                          si aucun responsable renseigné (rien à notifier).
+                          Envoie un message Teams pré-formaté au responsable
+                          — fire-and-forget, l'utilisateur voit une confirmation
+                          rapide (toast alert) et peut enchaîner. */}
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="btn-cta btn-cta-detail"
+                          disabled={!c.responsableEmail}
+                          title={c.responsableEmail
+                            ? `Envoyer un rappel Teams à ${c.responsable}`
+                            : 'Aucun responsable affecté à rappeler'}
+                          onClick={() => {
+                            const expected = getExpectedEvaluationsPerYear(c.frequence)
+                            const done = evaluationCounts.get(Number(c.id)) ?? 0
+                            notifyRappelPlanControle({
+                              email: c.responsableEmail,
+                              libelle: c.libelle,
+                              fromName: userName,
+                              extraDetails: `Fréquence ${c.frequence.toLowerCase()} (${done}/${expected} évaluation(s) réalisée(s) cette année).`,
+                            })
+                            alert(`Rappel envoyé à ${c.responsable} via Teams.`)
+                          }}
+                        >
+                          🔔 Rappeler
                         </button>
                       )}
                     </div>

@@ -102,6 +102,13 @@ export async function getAllPages<T>(
   options?: Omit<IGetAllOptions, 'top' | 'skip' | 'skipToken'>,
 ): Promise<T[]> {
   const all: T[] = []
+  // Dédoublonnage par ID SharePoint pour se prémunir contre :
+  //   1. Un connecteur qui IGNORE `$skip` (comportement observé sur certaines
+  //      listes SP → chaque page renvoie les mêmes items, ce qui fait boucler
+  //      jusqu'au cap MAX_PAGES et remonter 100 000 items dupliqués).
+  //   2. Une race condition où un item modifié entre 2 pages apparaît sur
+  //      les deux (rare mais possible).
+  const seenIds = new Set<string>()
   let skip = 0
   let pageCount = 0
 
@@ -117,11 +124,40 @@ export async function getAllPages<T>(
       break
     }
     const batch = result.data ?? []
-    all.push(...batch)
+
+    // Ajout dédoublonné : on ne push que les items dont l'ID SP n'a pas
+    // encore été vu. Compte les VRAIS nouveaux items pour détecter le cas
+    // "connecteur ignore $skip".
+    let addedThisPage = 0
+    for (const item of batch) {
+      const rawId = (item as { ID?: string | number }).ID
+      // Fallback défensif : si un item n'a pas d'ID (cas très rare, données
+      // corrompues), on utilise sa position pour éviter de le perdre.
+      const key = rawId !== undefined && rawId !== null
+        ? String(rawId)
+        : `__noid_${all.length + addedThisPage}`
+      if (!seenIds.has(key)) {
+        seenIds.add(key)
+        all.push(item)
+        addedThisPage++
+      }
+    }
     pageCount++
 
     // Fin naturelle : page pas remplie = plus rien à récupérer.
     if (batch.length < PAGE_SIZE) break
+
+    // Fin défensive : le connecteur a renvoyé UNIQUEMENT des items déjà vus
+    // → il ignore probablement `$skip`. On stoppe pour éviter la boucle
+    // pathologique qui accumule 200 × PAGE_SIZE doublons.
+    if (addedThisPage === 0) {
+      console.warn(
+        `getAllPages: page ${pageCount} sans nouveaux items (connecteur ` +
+        `qui ignore $skip ?). Arrêt de la pagination — ${all.length} item(s) ` +
+        `uniques retournés.`,
+      )
+      break
+    }
 
     if (pageCount >= MAX_PAGES) {
       console.warn(

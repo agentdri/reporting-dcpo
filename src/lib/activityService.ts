@@ -585,25 +585,101 @@ function defaultCurrentYearRange(): { from: string; to: string } {
  * `Date`. Retourne `undefined` si aucune borne — mais dans la pratique,
  * `listReports` fournit toujours une période par défaut.
  */
-function buildDateFilter(range: DateRange): string | undefined {
-  const clauses: string[] = []
-  if (range.from) clauses.push(`Date ge '${range.from}T00:00:00Z'`)
-  if (range.to) clauses.push(`Date le '${range.to}T23:59:59Z'`)
-  return clauses.length > 0 ? clauses.join(' and ') : undefined
+function buildDateFilter(from: string, to: string): string {
+  return `Date ge '${from}T00:00:00Z' and Date le '${to}T23:59:59Z'`
+}
+
+/**
+ * Découpe une plage `[from, to]` en sous-plages MENSUELLES calendaires.
+ *
+ * Pourquoi chunker ?
+ *   Le connecteur SharePoint plafonne pratiquement à ~500 items par appel
+ *   `getAll` — au-delà, il retourne toujours les 500 mêmes items (le
+ *   paramètre `$skip` est ignoré sur beaucoup de listes). Résultat : sur
+ *   une année complète avec plusieurs milliers de rapports, la page
+ *   Validation Reportings n'affichait que 500 items.
+ *
+ *   Solution : émettre PLUSIEURS requêtes OData, chacune limitée à un
+ *   mois calendaire. À raison de ~20 contrôleurs × 22 jours ouvrés/mois
+ *   = 440 items par mois maximum, on reste sous le plafond de 500 par
+ *   appel. Les chunks sont ensuite fusionnés + dédupliqués.
+ *
+ * Exemple : split('2026-01-15', '2026-03-10') →
+ *   [ {from: '2026-01-15', to: '2026-01-31'},
+ *     {from: '2026-02-01', to: '2026-02-28'},
+ *     {from: '2026-03-01', to: '2026-03-10'} ]
+ *
+ * Cas limite : si `from === to` (1 seul jour), retourne un seul chunk
+ * identique à l'entrée.
+ */
+function splitRangeByMonth(from: string, to: string): Array<{ from: string; to: string }> {
+  const chunks: Array<{ from: string; to: string }> = []
+  const [fy, fm, fd] = from.split('-').map(Number)
+  const [ty, tm, td] = to.split('-').map(Number)
+
+  let cursorY = fy
+  let cursorM = fm
+  let isFirst = true
+
+  while (cursorY < ty || (cursorY === ty && cursorM <= tm)) {
+    // Début du chunk : 1er du mois courant, sauf pour le PREMIER chunk où
+    // on part de la date `from` exacte (peut être un jour au milieu du mois).
+    const chunkStartDay = isFirst ? fd : 1
+    const chunkStart = `${cursorY}-${String(cursorM).padStart(2, '0')}-${String(chunkStartDay).padStart(2, '0')}`
+
+    // Fin du chunk : dernier jour du mois courant, sauf pour le DERNIER
+    // chunk où on s'arrête à la date `to` exacte.
+    const isLast = cursorY === ty && cursorM === tm
+    const chunkEndDay = isLast ? td : new Date(cursorY, cursorM, 0).getDate()
+    const chunkEnd = `${cursorY}-${String(cursorM).padStart(2, '0')}-${String(chunkEndDay).padStart(2, '0')}`
+
+    chunks.push({ from: chunkStart, to: chunkEnd })
+    isFirst = false
+
+    cursorM++
+    if (cursorM > 12) {
+      cursorM = 1
+      cursorY++
+    }
+  }
+  return chunks
+}
+
+/**
+ * Concurrence-limitée : exécute `tasks` par groupes de `concurrency`.
+ * Évite d'ouvrir 30+ connexions HTTP en parallèle qui feraient exploser
+ * les limites de rate du connecteur SP.
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let index = 0
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
+    while (index < tasks.length) {
+      const i = index++
+      results[i] = await tasks[i]()
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 
 /**
  * Liste TOUS les rapports d'une période depuis SharePoint, triés du
  * plus récent au plus ancien.
  *
- * ⚠ CORRECTIF PAGINATION : utilise `getAllPages` qui boucle sur toutes
- * les pages SP via `skipToken` — sinon seuls les 100 premiers items
- * étaient renvoyés (bug de prod du 09/07/2026 : rapports anciens
- * invisibles côté "Validation reporting" et "Mes rapports").
+ * ⚠ VOLUMÉTRIE : le connecteur SP plafonne à ~500 items par appel. Pour
+ * une période > 1 mois qui contient plus de 500 rapports, la simple
+ * requête OData ne remonte que les 500 premiers. On CHUNKE donc la
+ * période par mois calendaire et on parallélise (4 fetch max simultanés)
+ * pour rapatrier l'intégralité — chaque chunk mensuel restant sous la
+ * limite de 500 items dans la quasi-totalité des cas.
  *
- * ⚠ CORRECTIF VOLUMÉTRIE : filtre systématiquement sur une période, par
- * défaut l'année en cours (cf. defaultCurrentYearRange). Évite de tirer
- * tout l'historique et couvre le use-case courant.
+ * ⚠ DÉDUPLICATION : au cas très improbable où un item apparaîtrait sur
+ * la frontière de 2 chunks (impossible avec la logique de découpe
+ * actuelle, mais safe par précaution), on dédup par ID SP avant retour.
  *
  * @param range Bornes de dates optionnelles. Défaut : année en cours.
  *              Passer `{ from: '2020-01-01', to: '2026-12-31' }` pour
@@ -616,14 +692,42 @@ export async function listReports(range?: DateRange): Promise<ActivityReport[]> 
       from: range?.from ?? defaultCurrentYearRange().from,
       to: range?.to ?? defaultCurrentYearRange().to,
     }
-    const items = await getAllPages<DCPO_ACTIVICTE_CONTROLLERRead>(
-      DCPO_ACTIVICTE_CONTROLLERService,
-      {
-        orderBy: ['Date desc'],
-        filter: buildDateFilter(effectiveRange),
-      },
+    const chunks = splitRangeByMonth(effectiveRange.from!, effectiveRange.to!)
+
+    // Fetch en parallèle (concurrence limitée à 4 pour ne pas saturer le
+    // connecteur SP sur une période longue).
+    const perChunk = await runWithConcurrency(
+      chunks.map(chunk => () =>
+        getAllPages<DCPO_ACTIVICTE_CONTROLLERRead>(
+          DCPO_ACTIVICTE_CONTROLLERService,
+          {
+            orderBy: ['Date desc'],
+            filter: buildDateFilter(chunk.from, chunk.to),
+          },
+        ),
+      ),
+      4,
     )
-    return items.map(reportFromItem)
+
+    // Fusion + dédup par ID (belt & braces — la découpe garantit déjà
+    // l'absence de chevauchement mais on protège contre les régressions).
+    const seenIds = new Set<string>()
+    const merged: DCPO_ACTIVICTE_CONTROLLERRead[] = []
+    for (const batch of perChunk) {
+      for (const item of batch) {
+        const id = String(item.ID ?? '')
+        if (id && seenIds.has(id)) continue
+        if (id) seenIds.add(id)
+        merged.push(item)
+      }
+    }
+
+    // Tri global : les chunks étaient triés en interne mais le merge
+    // les met bout à bout — on re-trie par Date desc pour garantir l'ordre
+    // attendu par l'UI (plus récent en premier).
+    merged.sort((a, b) => (b.Date ?? '').localeCompare(a.Date ?? ''))
+
+    return merged.map(reportFromItem)
   } catch (err) {
     console.error('listReports error', err)
     return []

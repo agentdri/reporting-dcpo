@@ -31,7 +31,8 @@
         "dcpo_liste_plan_action_correctif",
         "dcpo_evaluation_plan_controle",
         "dcpo_liste_direction",
-        "dcpo_evaluation_plan_action_correctif"
+        "dcpo_evaluation_plan_action_correctif",
+        "dcpo_liste_absences"
       ],
       "dataSets": {
         "https%253A%252F%252Fafrilandfirstbankcmr.sharepoint.com%252Fsites%252Fwork": {
@@ -65,6 +66,9 @@
             },
             "dcpo_evaluation_plan_action_correctif": {
               "tableName": "56b71f8b-c6ae-4f4f-80dc-9f1ac80fb3c7"
+            },
+            "dcpo_liste_absences": {
+              "tableName": "3a0884fc-42a1-42bf-acae-7dd0ab328f53"
             }
           }
         }

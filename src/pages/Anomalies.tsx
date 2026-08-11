@@ -100,7 +100,7 @@ import type { User } from '../generated/models/Office365UsersModel'
 import { appendUrl, getTicketAttachments, getAttachmentIcon } from '../lib/ticketAttachments'
 import { formatMontantCompact, formatDateOnlyFR } from '../lib/formatters'
 import { DOMAINE_ACTIVITE_OPTIONS, TYPE_SANCTION_OPTIONS } from '../lib/referentiels'
-import { notifyAffectation } from '../lib/teamsNotifications'
+import { notifyAffectation, notifyAuteurAnomalie } from '../lib/teamsNotifications'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
 import { ExportButtons } from '../components/ExportButtons'
@@ -414,17 +414,28 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   /**
    * Permission "affecter une anomalie".
    *
-   * Règle : seuls les managers (Chef_Departement / Directeur) peuvent
-   * assigner une personne sur une anomalie. Un Controleur peut créer et
-   * consulter les anomalies mais l'affectation est réservée à sa hiérarchie.
-   *
-   * On NIE explicitement le rôle Controleur (plutôt que d'autoriser
-   * uniquement les managers) pour rester permissif en cas de rôle inconnu
-   * ou non renseigné — l'absence de rôle est un cas de bord rare mais
-   * possible, et il ne faut pas bloquer un utilisateur légitime à cause
-   * d'un trou de configuration.
+   * Règle métier :
+   *   - Chef_Departement / Directeur → peuvent affecter N'IMPORTE quelle anomalie
+   *   - Controleur                   → peut affecter UNIQUEMENT les anomalies
+   *                                    qu'il a DÉCLARÉES (declarant_anormalie.Email
+   *                                    match userEmail, comparaison
+   *                                    case-insensitive). Cas d'usage :
+   *                                    un contrôleur qui a saisi une déclaration
+   *                                    peut la réaffecter à un collègue plus
+   *                                    compétent sans passer par un manager.
+   *   - Rôle inconnu / non renseigné → permissif (true) pour ne pas bloquer
+   *                                    en cas de configuration manquante
    */
-  const canAffect = userRole !== 'Controleur'
+  const canAffectAnomaly = (item: DCPO_LISTE_ANORMALIERead | null): boolean => {
+    if (!item) return false
+    if (userRole === 'Chef_Departement' || userRole === 'Directeur') return true
+    if (userRole === 'Controleur') {
+      const myEmail = userEmail?.toLowerCase()
+      const declarantEmail = item.declarant_anormalie?.Email?.toLowerCase()
+      return !!myEmail && declarantEmail === myEmail
+    }
+    return true
+  }
 
   /**
    * Vérifie si l'utilisateur peut éditer une anomalie donnée dans la modale Détail.
@@ -697,10 +708,27 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
   const [showAuteurDropdown, setShowAuteurDropdown] = useState(false)
 
   // Personne affectée (formulaire création)
-  const [affecteFormSearch, setAffecteFormSearch] = useState('')
-  const [affecteFormEmail, setAffecteFormEmail] = useState('')
+  //
+  // ⚠ Pré-remplissage : par défaut, la personne affectée est le déclarant
+  // lui-même (userName / userEmail). Le déclarant peut évidemment modifier
+  // ce choix pour affecter à un collègue. Rationale : dans le workflow
+  // habituel, le contrôleur qui déclare est aussi celui qui va traiter —
+  // on évite ainsi une étape d'affectation systématique. Le manager peut
+  // toujours réaffecter ensuite via le bouton "Affecter" du tableau.
+  const [affecteFormSearch, setAffecteFormSearch] = useState(() => userName ?? '')
+  const [affecteFormEmail, setAffecteFormEmail] = useState(() => userEmail ?? '')
   const [affecteFormResults, setAffecteFormResults] = useState<User[]>([])
   const [showAffecteFormDropdown, setShowAffecteFormDropdown] = useState(false)
+
+  // Re-synchronise le pré-remplissage si l'email/nom du user changent
+  // pendant la vie du composant (rare mais possible via bascule de rôle
+  // simulé). Le useEffect ne s'exécute que si le champ est resté sur le
+  // choix par défaut — on ne veut pas écraser une saisie manuelle.
+  useEffect(() => {
+    setAffecteFormEmail(prev => (prev === '' || prev === userEmail) ? (userEmail ?? '') : prev)
+    setAffecteFormSearch(prev => (prev === '' || prev === userName) ? (userName ?? '') : prev)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail, userName])
 
 
   /* ──────────────────────────────────────────────────────────────────────
@@ -1231,6 +1259,24 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
         return
       }
 
+      // Notification Teams à l'AUTEUR si son email a changé lors de la clôture.
+      // Court-circuit défensif : on ne notifie pas si l'auteur est aussi le
+      // manager qui fait la clôture (inutile de s'auto-notifier).
+      if (
+        resolutionAuteurEmail
+        && resolutionAuteurEmail !== previousAuteurEmail
+        && resolutionAuteurEmail.toLowerCase() !== (userEmail ?? '').toLowerCase()
+      ) {
+        const description = resolutionItem.field_4
+          ? stripHtml(resolutionItem.field_4).slice(0, 80)
+          : ''
+        notifyAuteurAnomalie({
+          email: resolutionAuteurEmail,
+          anomalieLabel: `T-${resolutionItem.ID}${description ? ' — ' + description : ''}`,
+          declareParName: userName,
+        })
+      }
+
       // Upload de la pièce jointe (preuve de résolution)
       //
       // La concaténation via appendUrl produit une valeur COMPATIBLE avec
@@ -1494,11 +1540,13 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
-  /** Reset complet du formulaire après création réussie ou annulation. */
+  /** Reset complet du formulaire après création réussie ou annulation.
+   *  Note : la personne affectée est remise au déclarant (défaut métier),
+   *  pas à une chaîne vide — cohérent avec l'init dans useState. */
   const resetForm = () => {
     setForm(EMPTY_FORM)
     setAuteurSearch(''); setAuteurEmail('')
-    setAffecteFormSearch(''); setAffecteFormEmail('')
+    setAffecteFormSearch(userName ?? ''); setAffecteFormEmail(userEmail ?? '')
     setAttachment(null)
   }
 
@@ -1608,12 +1656,35 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
 
       // Notification Teams si une personne a été affectée dès la création
       // (auquel cas elle vient de se voir attribuer un nouveau dossier).
-      if (affecteFormEmail && result.data?.ID) {
+      // Court-circuit : pas d'auto-notification si le déclarant s'affecte
+      // lui-même (cas par défaut désormais courant — un contrôleur qui
+      // s'attribue sa propre déclaration n'a pas besoin d'un Teams).
+      if (
+        affecteFormEmail
+        && result.data?.ID
+        && affecteFormEmail.toLowerCase() !== (userEmail ?? '').toLowerCase()
+      ) {
         notifyAffectation({
           type: 'anomalie',
           email: affecteFormEmail,
           subject: `T-${result.data.ID}${form.field_4 ? ' — ' + stripHtml(form.field_4).slice(0, 80) : ''}`,
           details: 'Délai de traitement par défaut : 3 jour(s). Voir le détail dans ReportingDCPO.',
+        })
+      }
+
+      // Notification Teams à l'AUTEUR de l'anomalie (personne à l'origine du
+      // fait signalé) — envoyée en fire-and-forget dès qu'un auteur est
+      // désigné. Court-circuit si l'auteur est le déclarant lui-même
+      // (inutile de se notifier soi-même) ou si aucun auteur n'a été saisi.
+      if (
+        auteurEmail
+        && result.data?.ID
+        && auteurEmail.toLowerCase() !== (userEmail ?? '').toLowerCase()
+      ) {
+        notifyAuteurAnomalie({
+          email: auteurEmail,
+          anomalieLabel: `T-${result.data.ID}${form.field_4 ? ' — ' + stripHtml(form.field_4).slice(0, 80) : ''}`,
+          declareParName: userName,
         })
       }
 
@@ -1874,35 +1945,37 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                 </div>
               </div>
 
-              {/* Champ "Personne affectée" : réservé aux managers (cf. canAffect).
-                  Un Controleur crée une anomalie sans pouvoir l'assigner — c'est
-                  ensuite le manager qui réalisera l'affectation depuis le tableau
-                  via le bouton "Affecter". */}
-              {canAffect && (
-                <div className="form-field">
-                  <label htmlFor="anom-affecte">Personne affectée</label>
-                  <div className="autocomplete-wrapper">
-                    <input
-                      id="anom-affecte"
-                      type="text"
-                      value={affecteFormSearch}
-                      placeholder="Rechercher une personne..."
-                      onChange={e => searchAffecteForm(e.target.value)}
-                      onBlur={() => setTimeout(() => setShowAffecteFormDropdown(false), 200)}
-                    />
-                    {affecteFormEmail && <span className="selected-email">{affecteFormEmail}</span>}
-                    {showAffecteFormDropdown && affecteFormResults.length > 0 && (
-                      <ul className="autocomplete-dropdown">
-                        {affecteFormResults.map(u => (
-                          <li key={u.Id} onClick={() => selectAffecteForm(u)}>
-                            <strong>{u.DisplayName}</strong><span>{u.Mail}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+              {/* Champ "Personne affectée" : disponible pour TOUS les rôles.
+                  Pré-rempli avec le déclarant lui-même (défaut métier :
+                  le contrôleur qui déclare prend en charge le traitement).
+                  L'utilisateur peut modifier pour affecter à un collègue,
+                  ou vider le champ pour laisser l'anomalie non affectée. */}
+              <div className="form-field">
+                <label htmlFor="anom-affecte">Personne affectée</label>
+                <div className="autocomplete-wrapper">
+                  <input
+                    id="anom-affecte"
+                    type="text"
+                    value={affecteFormSearch}
+                    placeholder="Rechercher une personne..."
+                    onChange={e => searchAffecteForm(e.target.value)}
+                    onBlur={() => setTimeout(() => setShowAffecteFormDropdown(false), 200)}
+                  />
+                  {affecteFormEmail && <span className="selected-email">{affecteFormEmail}</span>}
+                  {showAffecteFormDropdown && affecteFormResults.length > 0 && (
+                    <ul className="autocomplete-dropdown">
+                      {affecteFormResults.map(u => (
+                        <li key={u.Id} onClick={() => selectAffecteForm(u)}>
+                          <strong>{u.DisplayName}</strong><span>{u.Mail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-              )}
+                <small className="field-hint">
+                  Par défaut : vous-même. Vous pouvez modifier pour affecter à un(e) collègue.
+                </small>
+              </div>
             </div>
           </fieldset>
 
@@ -2205,10 +2278,11 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                       ne pas ouvrir le détail quand on clique sur un bouton. */}
                   <td className="col-actions" onClick={e => e.stopPropagation()}>
                     <div className="actions-col">
-                      {/* Bouton "Affecter" : réservé aux managers (cf. canAffect).
-                          Un Controleur ne voit pas ce bouton — il consulte mais
-                          ne peut pas réassigner l'anomalie. */}
-                      {canAffect && (
+                      {/* Bouton "Affecter" : visible pour les managers sur
+                          toutes les lignes, et pour les Controleurs uniquement
+                          sur les anomalies dont ils sont déclarants (cf.
+                          canAffectAnomaly). */}
+                      {canAffectAnomaly(item) && (
                         <button type="button" className="btn-cta btn-cta-affect" onClick={() => setAffectItemId(item.ID ?? null)}>
                           Affecter
                         </button>

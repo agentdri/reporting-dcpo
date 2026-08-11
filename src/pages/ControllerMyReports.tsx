@@ -225,12 +225,20 @@ export default function ControllerMyReports({ userEmail, onEditRejected }: Contr
    *
    * Étapes :
    *   1. Court-circuit si pas d'email (cas anormal)
-   *   2. listReports() retourne TOUS les rapports en SharePoint
-   *   3. Filtrage côté client par controleurEmail === userEmail
+   *   2. listReports({from, to}) filtre CÔTÉ SERVEUR sur la plage saisie
+   *      dans les filtres appliqués (bouton Rechercher). Sans dates, retombe
+   *      sur le défaut = année en cours.
+   *   3. Filtrage client par controleurEmail === userEmail (le connecteur
+   *      SP ne sait pas filtrer les colonnes Person directement en OData
+   *      sans expand, donc ce dernier filtre reste en mémoire).
    *   4. Stockage local
    *
+   * Le refetch est déclenché à chaque changement de plage (via `appliedFilters`
+   * dans les deps) — l'utilisateur clique "Rechercher", la plage est snapshot,
+   * l'effet re-tire depuis SP avec les nouvelles bornes.
+   *
    * useCallback : référence stable pour éviter de re-trigger l'effet
-   *               qui dépend de cette fonction.
+   *               inutilement (ne bouge que si email OU plage change).
    */
   const refresh = useCallback(async () => {
     if (!email) {
@@ -240,7 +248,10 @@ export default function ControllerMyReports({ userEmail, onEditRejected }: Contr
     }
     setLoading(true)
     try {
-      const all = await listReports()
+      const all = await listReports({
+        from: appliedFilters.dateFrom || undefined,
+        to: appliedFilters.dateTo || undefined,
+      })
       // Filtrage : on ne garde QUE les rapports du contrôleur connecté.
       // Comparaison case-insensitive pour tolérer les variations
       // de casse possibles entre Office 365 et SharePoint.
@@ -252,9 +263,9 @@ export default function ControllerMyReports({ userEmail, onEditRejected }: Contr
     } finally {
       setLoading(false)
     }
-  }, [email])
+  }, [email, appliedFilters.dateFrom, appliedFilters.dateTo])
 
-  /** Chargement initial au montage. */
+  /** Chargement initial au montage + refetch quand la plage appliquée change. */
   useEffect(() => {
     refresh()
   }, [refresh])
