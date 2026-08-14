@@ -217,16 +217,36 @@ body {
   border: 1px solid var(--rdcpo-border);
   border-radius: var(--rdcpo-radius-sm);
   background: var(--rdcpo-surface-alt);
+  /* Permet au bouton "Changer" de passer sur une nouvelle ligne quand la
+     colonne est étroite (formulaire d'édition en grid 2 colonnes, modales
+     compactes...) — évite que le bouton soit coupé à droite. */
+  flex-wrap: wrap;
+}
+
+/* Le bloc infos (nom + email) : prend l'espace disponible mais peut
+   rétrécir jusqu'à 0 pour ne pas bloquer le wrap. */
+.user-picker-selected > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .user-picker-selected strong {
   color: var(--rdcpo-text-strong);
   font-size: 13px;
+  /* Long DisplayName → tronqué avec … plutôt que d'écraser le layout. */
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-picker-email {
   font-size: 11px;
   color: var(--rdcpo-text-muted);
+  /* Long email → même stratégie de troncature contrôlée. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-picker-hint {

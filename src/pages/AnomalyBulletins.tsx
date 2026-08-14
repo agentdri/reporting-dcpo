@@ -50,6 +50,7 @@ import { formatMontantCompact } from '../lib/formatters'
 import { DOMAINE_ACTIVITE_OPTIONS, TYPE_SANCTION_OPTIONS } from '../lib/referentiels'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
+import { UserPicker } from '../components/UserPicker'
 import { ExportButtons } from '../components/ExportButtons'
 import { formatDateForExport } from '../lib/exporters'
 import { getAllChunkedByMonth } from '../lib/sharePointPaging'
@@ -94,13 +95,21 @@ export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {
    */
   const [editing, setEditing] = useState<ConsolidatedBulletin | null>(null)
   /**
-   * Permission d'édition rétroactive (Resolu / Clos) — RÉSERVÉE au rôle
-   * Directeur. Comparaison case-insensitive et accent-insensitive pour
-   * absorber les variantes de saisie SP (`Directeur`, `directeur`, etc.).
+   * Permission d'édition rétroactive (Resolu / Clos) — ouverte aux rôles
+   * MANAGERS : Directeur ET Chef_Departement. Un contrôleur n'a jamais
+   * accès à cette édition (l'anomalie est déjà clôturée, il ne peut plus
+   * la modifier).
+   *
+   * Comparaison case-insensitive et accent-insensitive pour absorber les
+   * variantes de saisie SP (`Directeur`, `directeur`, `Chef_Departement`,
+   * `chef_departement`, etc.).
    */
-  const canDirectorEdit = (userRole ?? '')
-    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
-    .trim().toLowerCase() === 'directeur'
+  const canManagerEdit = (() => {
+    const normalized = (userRole ?? '')
+      .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+      .trim().toLowerCase()
+    return normalized === 'directeur' || normalized === 'chef_departement'
+  })()
 
   /**
    * Récupère depuis SharePoint UNIQUEMENT les anomalies Resolu/Clos.
@@ -427,7 +436,7 @@ export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {
           bulletin={selected}
           onClose={() => setSelected(null)}
           onPrint={printBulletin}
-          canEdit={canDirectorEdit}
+          canEdit={canManagerEdit}
           onEdit={() => setEditing(selected)}
         />
       )}
@@ -435,6 +444,8 @@ export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {
       {editing && (
         <BulletinEditModal
           bulletin={editing}
+          agences={agences}
+          reseaux={reseaux}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null)
@@ -721,6 +732,8 @@ export function BulletinModal({ bulletin, onClose, onPrint, canEdit, onEdit }: B
 
 interface BulletinEditModalProps {
   bulletin: ConsolidatedBulletin
+  agences: DCPO_LISTE_AGENCESRead[]
+  reseaux: DCPO_LISTE_RESEAUXRead[]
   onClose: () => void
   /** Callback déclenché après une sauvegarde réussie (le parent refresh). */
   onSaved: () => void | Promise<void>
@@ -733,17 +746,62 @@ function toDateInput(value?: string | null): string {
   return m ? m[1] : ''
 }
 
-function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProps) {
+/** Format Person SP standard (Claims). */
+function toClaims(email: string): string {
+  return `i:0#.f|membership|${email.toLowerCase()}`
+}
+
+const CLASSIFICATION_OPTIONS_EDIT = ['Operationnel', 'Fraude', 'Commercial']
+const CRITICITE_OPTIONS_EDIT = ['Faible', 'Moyenne', 'Haute', 'Critique']
+
+function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: BulletinEditModalProps) {
   const ticket = bulletin.ticket
-  const [statut, setStatut] = useState(ticket.field_10 ?? 'Resolu')
-  const [description, setDescription] = useState(ticket.field_4 ?? '')
-  const [actionsMenees, setActionsMenees] = useState(ticket.actionsMenees ?? '')
-  const [typeSanction, setTypeSanction] = useState(ticket.typeSanction ?? '')
+
+  // Étendu type pour accéder aux champs custom (causes, observations) qui
+  // ne sont pas dans le modèle SP généré (cf. ExtendedTicket dans
+  // anomalyBulletin.ts). Cast local, non exporté.
+  const extTicket = ticket as DCPO_LISTE_ANORMALIERead & {
+    causeImmediate?: string
+    causeRacine?: string
+    observationsBulletin?: string
+    natureRisque?: string
+  }
+
+  // ─── Section Identification ────────────────────────────────────────────
+  const [title, setTitle] = useState(ticket.Title ?? '')
+  const [auteurName, setAuteurName] = useState(ticket.auteur_anormalie?.DisplayName ?? '')
+  const [auteurEmail, setAuteurEmail] = useState(ticket.auteur_anormalie?.Email ?? '')
+  const [affecteName, setAffecteName] = useState(ticket.personneAffecter?.DisplayName ?? '')
+  const [affecteEmail, setAffecteEmail] = useState(ticket.personneAffecter?.Email ?? '')
+
+  // ─── Section Localisation ──────────────────────────────────────────────
+  const [agence, setAgence] = useState(ticket.field_6 ?? '')
+  const [reseau, setReseau] = useState(ticket.field_7 ?? '')
+  const [domaineActivite, setDomaineActivite] = useState(ticket.domaineActivite ?? '')
+
+  // ─── Section Caractérisation ──────────────────────────────────────────
+  const [classification, setClassification] = useState(ticket.field_5 ?? '')
+  const [criticite, setCriticite] = useState(ticket.criticiteAnomalie ?? '')
+  const [natureRisque, setNatureRisque] = useState(extTicket.natureRisque ?? '')
   const [montant, setMontant] = useState(
     ticket.field_8 !== undefined && ticket.field_8 !== null ? String(ticket.field_8) : '',
   )
+  const [typeSanction, setTypeSanction] = useState(ticket.typeSanction ?? '')
+
+  // ─── Section Dates & statut ───────────────────────────────────────────
+  const [statut, setStatut] = useState(ticket.field_10 ?? 'Resolu')
+  const [dateSurvenance, setDateSurvenance] = useState(toDateInput(ticket.field_0))
+  const [dateOuverture, setDateOuverture] = useState(toDateInput(ticket.dateOuvertureTicket))
   const [dateRegul, setDateRegul] = useState(toDateInput(ticket.field_9))
   const [dateCloture, setDateCloture] = useState(toDateInput(ticket.date_cloture_ticket))
+
+  // ─── Section Description & causes ─────────────────────────────────────
+  const [description, setDescription] = useState(ticket.field_4 ?? '')
+  const [causeImmediate, setCauseImmediate] = useState(extTicket.causeImmediate ?? '')
+  const [causeRacine, setCauseRacine] = useState(extTicket.causeRacine ?? '')
+  const [actionsMenees, setActionsMenees] = useState(ticket.actionsMenees ?? '')
+  const [observations, setObservations] = useState(extTicket.observationsBulletin ?? '')
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -768,23 +826,60 @@ function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProp
       if (montant.trim() !== '' && (montantNum === undefined || Number.isNaN(montantNum))) {
         throw new Error('Le montant doit être un nombre valide.')
       }
-      const payload: Partial<DCPO_LISTE_ANORMALIERead> = {
-        field_10: statut,
-        field_4: description,
-        actionsMenees,
+
+      // Payload complet : on écrit TOUS les champs (même ceux inchangés).
+      // C'est cohérent avec le pattern OData PATCH — un champ absent reste
+      // à sa valeur SP, un champ présent est mis à jour.
+      const payload: Record<string, unknown> = {
+        Title: title,
+        // Identification (Person) : encodage Claims. Un email vide efface
+        // le champ Person côté SP (comportement souhaité si un manager
+        // veut retirer une affectation).
+        auteur_anormalie: auteurEmail
+          ? {
+              '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+              Claims: toClaims(auteurEmail),
+            }
+          : null,
+        personneAffecter: affecteEmail
+          ? {
+              '@odata.type': '#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser',
+              Claims: toClaims(affecteEmail),
+            }
+          : null,
+        // Localisation
+        field_6: agence,
+        field_7: reseau,
+        domaineActivite,
+        // Caractérisation
+        field_5: classification,
+        criticiteAnomalie: criticite,
+        natureRisque,
         typeSanction,
-        // Dates : on stocke à minuit UTC pour rester cohérent avec le reste
-        // de l'app (cf. formulaire de clôture dans Anomalies.tsx).
+        // Statut & dates (T00:00:00Z pour cohérence UTC calendaire)
+        field_10: statut,
+        field_0: dateSurvenance ? `${dateSurvenance}T00:00:00Z` : '',
+        dateOuvertureTicket: dateOuverture ? `${dateOuverture}T00:00:00Z` : '',
         field_9: dateRegul ? `${dateRegul}T00:00:00Z` : '',
         date_cloture_ticket: dateCloture ? `${dateCloture}T00:00:00Z` : '',
+        // Description & causes
+        field_4: description,
+        causeImmediate,
+        causeRacine,
+        actionsMenees,
+        observationsBulletin: observations,
       }
       if (montantNum !== undefined) {
         payload.field_8 = montantNum
+      } else if (montant.trim() === '') {
+        // Effacement explicite du montant si le user vide le champ
+        payload.field_8 = null
       }
+
       await DCPO_LISTE_ANORMALIEService.update(String(ticket.ID), payload as never)
       await onSaved()
     } catch (err) {
-      console.error('Erreur sauvegarde édition Directeur', err)
+      console.error('Erreur sauvegarde édition manager', err)
       setError(err instanceof Error ? err.message : 'Échec de la sauvegarde.')
     } finally {
       setSaving(false)
@@ -799,7 +894,7 @@ function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProp
         role="dialog"
         aria-modal="true"
         aria-labelledby="bulletin-edit-title"
-        style={{ maxWidth: 720 }}
+        style={{ maxWidth: 900 }}
       >
         <header className="bulletin-modal-header">
           <div className="bulletin-modal-title-block">
@@ -823,6 +918,167 @@ function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProp
             </div>
           )}
 
+          {/* ─── Identification ───────────────────────────────────────── */}
+          <section className="bulletin-section">
+            <h3>Identification</h3>
+            <div className="form-field">
+              <label htmlFor="edit-title">Titre</label>
+              <input
+                id="edit-title"
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            {/* Chaque UserPicker sur toute la largeur : le composant affiche
+                nom + email + bouton "Changer" en flex — dans un grid à 2
+                colonnes, cette combinaison dépasse et le bouton se retrouve
+                coupé. Full width évite tout débordement quel que soit le
+                nom / email affiché. */}
+            <div className="form-field">
+              <label>Personne affectée</label>
+              <UserPicker
+                selectedName={affecteName}
+                selectedEmail={affecteEmail}
+                onSelect={(name, email) => { setAffecteName(name); setAffecteEmail(email) }}
+                onClear={() => { setAffecteName(''); setAffecteEmail('') }}
+                disabled={saving}
+              />
+            </div>
+            <div className="form-field">
+              <label>Auteur</label>
+              <UserPicker
+                selectedName={auteurName}
+                selectedEmail={auteurEmail}
+                onSelect={(name, email) => { setAuteurName(name); setAuteurEmail(email) }}
+                onClear={() => { setAuteurName(''); setAuteurEmail('') }}
+                disabled={saving}
+              />
+            </div>
+          </section>
+
+          {/* ─── Localisation ───────────────────────────────────────── */}
+          <section className="bulletin-section">
+            <h3>Localisation</h3>
+            <div className="form-grid">
+              <div className="form-field">
+                <label htmlFor="edit-agence">Agence</label>
+                <select
+                  id="edit-agence"
+                  value={agence}
+                  onChange={e => setAgence(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Aucune —</option>
+                  {agences.map(a => (
+                    <option key={a.ID} value={String(a.ID)}>{a.Title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-reseau">Réseau</label>
+                <select
+                  id="edit-reseau"
+                  value={reseau}
+                  onChange={e => setReseau(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Aucun —</option>
+                  {reseaux.map(r => (
+                    <option key={r.ID} value={String(r.ID)}>{r.field_1 ?? r.Title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-domaine">Domaine d'activité</label>
+                <select
+                  id="edit-domaine"
+                  value={domaineActivite}
+                  onChange={e => setDomaineActivite(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Aucun —</option>
+                  {DOMAINE_ACTIVITE_OPTIONS.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </section>
+
+          {/* ─── Caractérisation ───────────────────────────────────────── */}
+          <section className="bulletin-section">
+            <h3>Caractérisation</h3>
+            <div className="form-grid">
+              <div className="form-field">
+                <label htmlFor="edit-classif">Classification</label>
+                <select
+                  id="edit-classif"
+                  value={classification}
+                  onChange={e => setClassification(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Aucune —</option>
+                  {CLASSIFICATION_OPTIONS_EDIT.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-crit">Criticité</label>
+                <select
+                  id="edit-crit"
+                  value={criticite}
+                  onChange={e => setCriticite(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Aucune —</option>
+                  {CRITICITE_OPTIONS_EDIT.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-nature">Type de risque</label>
+                <input
+                  id="edit-nature"
+                  type="text"
+                  value={natureRisque}
+                  onChange={e => setNatureRisque(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-montant">Montant</label>
+                <input
+                  id="edit-montant"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={montant}
+                  onChange={e => setMontant(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-type-sanction">Mode de traitement</label>
+                <select
+                  id="edit-type-sanction"
+                  value={typeSanction}
+                  onChange={e => setTypeSanction(e.target.value)}
+                  disabled={saving}
+                >
+                  <option value="">— Aucun —</option>
+                  {TYPE_SANCTION_OPTIONS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </section>
+
+          {/* ─── Statut & dates ───────────────────────────────────────── */}
           <section className="bulletin-section">
             <h3>Statut &amp; dates</h3>
             <div className="form-grid">
@@ -837,6 +1093,26 @@ function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProp
                   <option value="Resolu">Resolu</option>
                   <option value="Clos">Clos</option>
                 </select>
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-date-surv">Date de survenance</label>
+                <input
+                  id="edit-date-surv"
+                  type="date"
+                  value={dateSurvenance}
+                  onChange={e => setDateSurvenance(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-date-ouv">Date d'ouverture du ticket</label>
+                <input
+                  id="edit-date-ouv"
+                  type="date"
+                  value={dateOuverture}
+                  onChange={e => setDateOuverture(e.target.value)}
+                  disabled={saving}
+                />
               </div>
               <div className="form-field">
                 <label htmlFor="edit-date-regul">Date de régularisation</label>
@@ -858,53 +1134,47 @@ function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProp
                   disabled={saving}
                 />
               </div>
-              <div className="form-field">
-                <label htmlFor="edit-montant">Montant</label>
-                <input
-                  id="edit-montant"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={montant}
-                  onChange={e => setMontant(e.target.value)}
-                  disabled={saving}
-                />
-              </div>
             </div>
           </section>
 
+          {/* ─── Description & causes ───────────────────────────────────── */}
           <section className="bulletin-section">
-            <h3>Caractérisation de la clôture</h3>
-            <div className="form-field">
-              <label htmlFor="edit-type-sanction">Mode de traitement</label>
-              <select
-                id="edit-type-sanction"
-                value={typeSanction}
-                onChange={e => setTypeSanction(e.target.value)}
-                disabled={saving}
-              >
-                <option value="">— Aucun —</option>
-                {TYPE_SANCTION_OPTIONS.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-          </section>
-
-          <section className="bulletin-section">
-            <h3>Description &amp; actions</h3>
+            <h3>Description &amp; causes</h3>
             <div className="form-field">
               <label htmlFor="edit-description">Description consolidée</label>
               <textarea
                 id="edit-description"
-                rows={6}
+                rows={5}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 disabled={saving}
               />
               <small className="field-hint">
-                Sections concaténées (Cause immédiate, Cause racine, Actions menées, Observations).
+                Champ field_4 (peut contenir plusieurs sections concaténées : cause immédiate,
+                cause racine, actions menées, observations).
               </small>
+            </div>
+            <div className="form-grid">
+              <div className="form-field">
+                <label htmlFor="edit-cause-imm">Cause immédiate</label>
+                <textarea
+                  id="edit-cause-imm"
+                  rows={3}
+                  value={causeImmediate}
+                  onChange={e => setCauseImmediate(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div className="form-field">
+                <label htmlFor="edit-cause-rac">Cause racine</label>
+                <textarea
+                  id="edit-cause-rac"
+                  rows={3}
+                  value={causeRacine}
+                  onChange={e => setCauseRacine(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
             </div>
             <div className="form-field">
               <label htmlFor="edit-actions">Actions menées</label>
@@ -913,6 +1183,16 @@ function BulletinEditModal({ bulletin, onClose, onSaved }: BulletinEditModalProp
                 rows={3}
                 value={actionsMenees}
                 onChange={e => setActionsMenees(e.target.value)}
+                disabled={saving}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="edit-obs">Observations</label>
+              <textarea
+                id="edit-obs"
+                rows={3}
+                value={observations}
+                onChange={e => setObservations(e.target.value)}
                 disabled={saving}
               />
             </div>
