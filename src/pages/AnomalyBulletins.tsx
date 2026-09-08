@@ -751,21 +751,64 @@ function toClaims(email: string): string {
   return `i:0#.f|membership|${email.toLowerCase()}`
 }
 
+/**
+ * Échappe les caractères HTML spéciaux avant insertion dans le champ riche
+ * field_4 (évite l'injection XSS via un texte saisi par le Directeur).
+ */
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * Reconstruit le champ SharePoint `field_4` (seule colonne HTML réellement
+ * persistée pour la description) à partir des sections éditées.
+ *
+ * Pourquoi : `causeImmediate`, `causeRacine`, `observationsBulletin` et
+ * `natureRisque` NE SONT PAS des colonnes réelles de la liste SharePoint
+ * DCPO_LISTE_ANORMALIE (cf. .power/schemas/sharepointonline/dcpo_liste_anormalie.Schema.json
+ * — absentes du schéma). Les écrire dans le payload d'update fait échouer
+ * silencieusement (ou entièrement) la sauvegarde, et de toute façon la
+ * lecture (buildConsolidatedBulletin) les re-dérive en priorité depuis
+ * field_4 via parseDescriptionSections. On encode donc ici les sections
+ * dans le MÊME format texte que celui attendu au parsing pour qu'elles
+ * survivent à un aller-retour complet.
+ */
+function buildBulletinFieldHtml(
+  description: string,
+  causeImmediate: string,
+  causeRacine: string,
+  observations: string,
+  natureRisque: string,
+): string {
+  const blocks: string[] = []
+  if (description.trim()) {
+    blocks.push(`<p>${escapeHtml(description).replace(/\n/g, '<br/>')}</p>`)
+  }
+  if (causeImmediate.trim()) {
+    blocks.push(`<p><strong>Cause immédiate :</strong> ${escapeHtml(causeImmediate)}</p>`)
+  }
+  if (causeRacine.trim()) {
+    blocks.push(`<p><strong>Cause racine :</strong> ${escapeHtml(causeRacine)}</p>`)
+  }
+  if (observations.trim()) {
+    blocks.push(`<p><strong>Observations :</strong> ${escapeHtml(observations)}</p>`)
+  }
+  if (natureRisque.trim()) {
+    blocks.push(`<p><strong>Type de risque :</strong> ${escapeHtml(natureRisque)}</p>`)
+  }
+  return blocks.join('')
+}
+
 const CLASSIFICATION_OPTIONS_EDIT = ['Operationnel', 'Fraude', 'Commercial']
 const CRITICITE_OPTIONS_EDIT = ['Faible', 'Moyenne', 'Haute', 'Critique']
 
 function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: BulletinEditModalProps) {
   const ticket = bulletin.ticket
-
-  // Étendu type pour accéder aux champs custom (causes, observations) qui
-  // ne sont pas dans le modèle SP généré (cf. ExtendedTicket dans
-  // anomalyBulletin.ts). Cast local, non exporté.
-  const extTicket = ticket as DCPO_LISTE_ANORMALIERead & {
-    causeImmediate?: string
-    causeRacine?: string
-    observationsBulletin?: string
-    natureRisque?: string
-  }
 
   // ─── Section Identification ────────────────────────────────────────────
   const [title, setTitle] = useState(ticket.Title ?? '')
@@ -782,7 +825,7 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
   // ─── Section Caractérisation ──────────────────────────────────────────
   const [classification, setClassification] = useState(ticket.field_5 ?? '')
   const [criticite, setCriticite] = useState(ticket.criticiteAnomalie ?? '')
-  const [natureRisque, setNatureRisque] = useState(extTicket.natureRisque ?? '')
+  const [natureRisque, setNatureRisque] = useState(bulletin.natureRisque ?? '')
   const [montant, setMontant] = useState(
     ticket.field_8 !== undefined && ticket.field_8 !== null ? String(ticket.field_8) : '',
   )
@@ -796,11 +839,17 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
   const [dateCloture, setDateCloture] = useState(toDateInput(ticket.date_cloture_ticket))
 
   // ─── Section Description & causes ─────────────────────────────────────
-  const [description, setDescription] = useState(ticket.field_4 ?? '')
-  const [causeImmediate, setCauseImmediate] = useState(extTicket.causeImmediate ?? '')
-  const [causeRacine, setCauseRacine] = useState(extTicket.causeRacine ?? '')
+  //
+  // Pré-remplissage depuis le BULLETIN CONSOLIDÉ (pas depuis extTicket) :
+  // causeImmediate/causeRacine/observations/natureRisque ne sont pas des
+  // colonnes SharePoint réelles (cf. buildBulletinFieldHtml ci-dessus) —
+  // `bulletin.*` est la valeur correctement dérivée par parsing de field_4,
+  // donc la seule source fiable pour ne pas repartir de champs vides.
+  const [description, setDescription] = useState(bulletin.description ?? '')
+  const [causeImmediate, setCauseImmediate] = useState(bulletin.causeImmediate ?? '')
+  const [causeRacine, setCauseRacine] = useState(bulletin.causeRacine ?? '')
   const [actionsMenees, setActionsMenees] = useState(ticket.actionsMenees ?? '')
-  const [observations, setObservations] = useState(extTicket.observationsBulletin ?? '')
+  const [observations, setObservations] = useState(bulletin.observations ?? '')
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -819,6 +868,13 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
       setError('Identifiant de ticket introuvable.')
       return
     }
+    // Règle métier : la date de clôture ne peut pas être antérieure à la
+    // date d'ouverture du ticket (les deux sont éditables ici, donc on
+    // compare les valeurs COURANTES du formulaire, pas celles d'origine).
+    if (dateOuverture && dateCloture && dateCloture < dateOuverture) {
+      setError("La date de clôture ne peut pas être antérieure à la date d'ouverture du ticket.")
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -830,6 +886,16 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
       // Payload complet : on écrit TOUS les champs (même ceux inchangés).
       // C'est cohérent avec le pattern OData PATCH — un champ absent reste
       // à sa valeur SP, un champ présent est mis à jour.
+      //
+      // IMPORTANT : `causeImmediate`, `causeRacine`, `observationsBulletin`
+      // et `natureRisque` NE SONT PAS des colonnes de la liste SharePoint
+      // (absentes de .power/schemas/.../dcpo_liste_anormalie.Schema.json).
+      // Les envoyer faisait échouer la sauvegarde (silencieusement ou en
+      // totalité selon le connecteur) — c'était la cause de la non-
+      // persistance des modifications sur une anomalie clôturée. Ces
+      // valeurs sont désormais encodées comme sections dans field_4 (seule
+      // colonne HTML réellement persistée), via buildBulletinFieldHtml —
+      // symétrique au parsing fait à la lecture (parseDescriptionSections).
       const payload: Record<string, unknown> = {
         Title: title,
         // Identification (Person) : encodage Claims. Un email vide efface
@@ -854,7 +920,6 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
         // Caractérisation
         field_5: classification,
         criticiteAnomalie: criticite,
-        natureRisque,
         typeSanction,
         // Statut & dates (T00:00:00Z pour cohérence UTC calendaire)
         field_10: statut,
@@ -862,12 +927,9 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
         dateOuvertureTicket: dateOuverture ? `${dateOuverture}T00:00:00Z` : '',
         field_9: dateRegul ? `${dateRegul}T00:00:00Z` : '',
         date_cloture_ticket: dateCloture ? `${dateCloture}T00:00:00Z` : '',
-        // Description & causes
-        field_4: description,
-        causeImmediate,
-        causeRacine,
+        // Description & causes — tout concentré dans field_4 (cf. note ci-dessus)
+        field_4: buildBulletinFieldHtml(description, causeImmediate, causeRacine, observations, natureRisque),
         actionsMenees,
-        observationsBulletin: observations,
       }
       if (montantNum !== undefined) {
         payload.field_8 = montantNum
@@ -876,7 +938,11 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
         payload.field_8 = null
       }
 
-      await DCPO_LISTE_ANORMALIEService.update(String(ticket.ID), payload as never)
+      const result = await DCPO_LISTE_ANORMALIEService.update(String(ticket.ID), payload as never)
+      if (!result.success) {
+        setError('Échec de la sauvegarde : SharePoint a rejeté la mise à jour.')
+        return
+      }
       await onSaved()
     } catch (err) {
       console.error('Erreur sauvegarde édition manager', err)
@@ -1130,6 +1196,7 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
                   id="edit-date-cloture"
                   type="date"
                   value={dateCloture}
+                  min={dateOuverture || undefined}
                   onChange={e => setDateCloture(e.target.value)}
                   disabled={saving}
                 />
@@ -1150,8 +1217,9 @@ function BulletinEditModal({ bulletin, agences, reseaux, onClose, onSaved }: Bul
                 disabled={saving}
               />
               <small className="field-hint">
-                Champ field_4 (peut contenir plusieurs sections concaténées : cause immédiate,
-                cause racine, actions menées, observations).
+                Texte libre affiché en tête du bulletin. Les sections ci-dessous (cause immédiate,
+                cause racine, observations, type de risque) sont ajoutées automatiquement à la
+                suite lors de l'enregistrement.
               </small>
             </div>
             <div className="form-grid">

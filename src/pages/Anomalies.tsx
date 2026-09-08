@@ -1080,12 +1080,23 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
       setStatusError('Veuillez choisir un statut.')
       return
     }
+    const closesTicket = statusValue === 'Resolu' || statusValue === 'Clos'
+    // Règle métier : la date de clôture ne peut pas être antérieure à la
+    // date d'ouverture du ticket (cf. même règle dans saveResolution).
+    if (closesTicket) {
+      const openingDateOnly = statusItem.dateOuvertureTicket
+        ? statusItem.dateOuvertureTicket.split('T')[0]
+        : ''
+      if (openingDateOnly && statusDateCloture && statusDateCloture < openingDateOnly) {
+        setStatusError("La date de clôture ne peut pas être antérieure à la date d'ouverture du ticket.")
+        return
+      }
+    }
     setStatusSaving(true)
     setStatusError(null)
     try {
       const payload: Record<string, unknown> = { field_10: statusValue }
       const today = new Date().toISOString().split('T')[0]
-      const closesTicket = statusValue === 'Resolu' || statusValue === 'Clos'
       if (closesTicket) {
         const regulDate = statusDateRegul || today
         payload.field_9 = `${regulDate}T00:00:00Z`
@@ -1218,6 +1229,17 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
     if (!resolutionItem) return
     if (!resolutionForm.actionsMenees.trim()) {
       setResolutionError('Les actions menées sont obligatoires pour clôturer une résolution.')
+      return
+    }
+    // Règle métier : la date de clôture ne peut pas être antérieure à la
+    // date d'ouverture du ticket (dateOuvertureTicket, horodatée à la
+    // création — cf. handleSubmit). Comparaison en string 'YYYY-MM-DD' :
+    // le format ISO trie lexicographiquement comme chronologiquement.
+    const openingDateOnly = resolutionItem.dateOuvertureTicket
+      ? resolutionItem.dateOuvertureTicket.split('T')[0]
+      : ''
+    if (openingDateOnly && resolutionForm.dateCloture && resolutionForm.dateCloture < openingDateOnly) {
+      setResolutionError("La date de clôture ne peut pas être antérieure à la date d'ouverture du ticket.")
       return
     }
     setResolutionSaving(true)
@@ -2899,6 +2921,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                     id="resolution-dateCloture"
                     type="date"
                     value={resolutionForm.dateCloture}
+                    min={resolutionItem.dateOuvertureTicket ? resolutionItem.dateOuvertureTicket.split('T')[0] : undefined}
                     max={new Date().toISOString().split('T')[0]}
                     onChange={e => updateResolutionForm('dateCloture', e.target.value)}
                   />
@@ -3083,6 +3106,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
                   <input
                     type="date"
                     value={statusDateCloture}
+                    min={statusItem?.dateOuvertureTicket ? statusItem.dateOuvertureTicket.split('T')[0] : undefined}
                     max={new Date().toISOString().split('T')[0]}
                     onChange={e => setStatusDateCloture(e.target.value)}
                   />

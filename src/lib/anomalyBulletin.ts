@@ -507,6 +507,7 @@ const SECTION_LABELS = [
   'Action menée',
   'Observations',
   'Observation',
+  'Type de risque',
 ] as const
 
 /**
@@ -638,7 +639,10 @@ export function buildConsolidatedBulletin(
     ''
   const actions = splitActions(actionsRaw)
   const domaine = pickFirstString(ext.domaineAnomalie, ticket.domaineActivite, ext.field_13)
-  const natureRisque = pickFirstString(ext.natureRisque, ext.field_14)
+  const natureRisque =
+    pickFirstString(ext.natureRisque, ext.field_14) ||
+    parsed['Type de risque'] ||
+    ''
   // typeSanction : renseigné à la clôture par le contrôleur (cf. modale
   // de résolution dans Anomalies.tsx). Vide en cours de vie de l'anomalie.
   const typeSanction = ticket.typeSanction ?? ''
