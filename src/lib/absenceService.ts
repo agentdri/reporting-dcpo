@@ -36,6 +36,7 @@ import type {
   DCPO_LISTE_ABSENCESWrite,
 } from '../generated/models/DCPO_LISTE_ABSENCESModel'
 import { getAllPages } from './sharePointPaging'
+import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -68,6 +69,11 @@ export interface Absence {
   declareParName?: string
   declareParEmail?: string
   createdAt?: string
+  /**
+   * Pièces jointes décodées depuis le champ urlPieceJointe (multi-URLs
+   * séparées par " | "). Reconstruit à la lecture pour l'affichage UI.
+   */
+  attachments?: { name: string; url: string }[]
 }
 
 /** Payload de création (declarePar est renseigné automatiquement par saveAbsence). */
@@ -101,6 +107,12 @@ function toDateOnly(value?: string | null): string {
 
 /** Mappe un item SP brut en Absence métier. */
 function fromItem(item: DCPO_LISTE_ABSENCESRead): Absence {
+  // Pièces jointes : parsing du champ urlPieceJointe (multi-URLs " | ")
+  const attachmentUrls = parseUrlList(item.urlPieceJointe)
+  const attachments = attachmentUrls.map(url => ({
+    name: getFileNameFromUrl(url),
+    url,
+  }))
   return {
     id: String(item.ID ?? ''),
     controleurEmail: item.controleur?.Email ?? '',
@@ -112,6 +124,7 @@ function fromItem(item: DCPO_LISTE_ABSENCESRead): Absence {
     declareParName: item.declarePar?.DisplayName ?? undefined,
     declareParEmail: item.declarePar?.Email ?? undefined,
     createdAt: item.Created ?? undefined,
+    attachments,
   }
 }
 
@@ -202,6 +215,39 @@ export async function updateAbsence(
   } catch (err) {
     console.error('updateAbsence error', err)
     return null
+  }
+}
+
+/**
+ * Ajoute (concatène) une ou plusieurs URLs de PJ au champ `urlPieceJointe`
+ * de l'absence, sans écraser les existantes.
+ *
+ * Même mécanique que appendPlanControleAttachmentUrls : lecture, concat via
+ * appendUrl (dédoublonne + gère le format multi-URL), réécriture.
+ */
+export async function appendAbsenceAttachmentUrls(absenceId: string, newUrls: string[]): Promise<void> {
+  const cleanUrls = newUrls.filter(u => !!u && u.trim().length > 0)
+  if (cleanUrls.length === 0) return
+
+  let existing = ''
+  try {
+    const res = await DCPO_LISTE_ABSENCESService.get(absenceId)
+    existing = res.data?.urlPieceJointe ?? ''
+  } catch (err) {
+    console.error('appendAbsenceAttachmentUrls: échec lecture item', err)
+  }
+
+  const concatenated = cleanUrls.reduce(
+    (acc, url) => appendUrl(acc, url),
+    existing,
+  )
+
+  try {
+    await DCPO_LISTE_ABSENCESService.update(absenceId, {
+      urlPieceJointe: concatenated,
+    } as Partial<Omit<DCPO_LISTE_ABSENCESWrite, 'ID'>>)
+  } catch (err) {
+    console.error('appendAbsenceAttachmentUrls: échec update item', err)
   }
 }
 

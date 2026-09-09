@@ -52,6 +52,7 @@ export interface DCPO_LISTE_ABSENCESBase {
   motif?: string;
   commentaire?: string;
   "declarePar#Claims"?: string;
+  urlPieceJointe?: string;
   OData__ColorTag?: string;
   ComplianceAssetId?: string;
   Modified?: string;

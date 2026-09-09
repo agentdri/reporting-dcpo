@@ -27,6 +27,7 @@
     "filterRestrictions": {
       "filterable": true,
       "nonFilterableProperties": [
+        "urlPieceJointe",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -352,6 +353,14 @@
             "thumbnailProperty": "Picture"
           }
         },
+        "urlPieceJointe": {
+          "title": "urlPieceJointe",
+          "description": "le champ pièce jointe pour les preuves des absences",
+          "type": "string",
+          "format": "uri",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc"
+        },
         "OData__ColorTag": {
           "title": "Balise de couleur",
           "type": "string",
@@ -634,7 +643,7 @@
           "x-ms-sort": "none"
         },
         "{IsFolder}": {
-          "title": "EstUnDossier",
+          "title": "Is folder",
           "description": "True si l’élément est un dossier, false dans le cas contraire.",
           "type": "boolean",
           "x-ms-permission": "read-only",
@@ -897,6 +906,7 @@
           "motif",
           "commentaire",
           "declarePar",
+          "urlPieceJointe",
           "{Attachments}"
         ],
         "propertiesCompactDisplayOrder": [
@@ -906,7 +916,8 @@
           "dateFin",
           "motif",
           "commentaire",
-          "declarePar"
+          "declarePar",
+          "urlPieceJointe"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
@@ -915,7 +926,8 @@
           "dateFin",
           "motif",
           "commentaire",
-          "declarePar"
+          "declarePar",
+          "urlPieceJointe"
         ]
       }
     }

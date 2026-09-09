@@ -23,9 +23,15 @@ import {
   createAbsence,
   updateAbsence,
   deleteAbsence,
+  appendAbsenceAttachmentUrls,
   ABSENCE_MOTIFS,
   type Absence,
 } from '../lib/absenceService'
+import {
+  uploadAbsenceAttachment,
+  getAttachmentIcon,
+  getAttachmentIconType,
+} from '../lib/ticketAttachments'
 import { UserPicker } from '../components/UserPicker'
 import { Pagination } from '../components/Pagination'
 import { usePagination } from '../components/usePagination'
@@ -108,6 +114,10 @@ export default function AbsenceManagement({
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  /** Pièce jointe sélectionnée (justificatif d'absence), uploadée après create/update. */
+  const [attachment, setAttachment] = useState<File | null>(null)
+  /** Pièces jointes déjà enregistrées, affichées en édition (cf. openEdit). */
+  const [existingAttachments, setExistingAttachments] = useState<{ name: string; url: string }[]>([])
 
   // Confirmation de suppression
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -185,6 +195,8 @@ export default function AbsenceManagement({
     setEditingId(null)
     setForm(EMPTY_FORM)
     setFormError(null)
+    setAttachment(null)
+    setExistingAttachments([])
     setShowForm(true)
   }
 
@@ -199,6 +211,8 @@ export default function AbsenceManagement({
       commentaire: abs.commentaire ?? '',
     })
     setFormError(null)
+    setAttachment(null)
+    setExistingAttachments(abs.attachments ?? [])
     setShowForm(true)
   }
 
@@ -208,6 +222,8 @@ export default function AbsenceManagement({
     setEditingId(null)
     setForm(EMPTY_FORM)
     setFormError(null)
+    setAttachment(null)
+    setExistingAttachments([])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -237,6 +253,7 @@ export default function AbsenceManagement({
     setSaving(true)
     setFormError(null)
     try {
+      let savedId: string | null = editingId
       if (editingId) {
         const updated = await updateAbsence(editingId, {
           controleurEmail: form.controleurEmail,
@@ -261,7 +278,27 @@ export default function AbsenceManagement({
           declareParName: userName ?? '',
         })
         if (!created) throw new Error('create failed')
+        savedId = created.id
       }
+
+      // Upload optionnel via workflow Power Automate + persistance de l'URL
+      // dans le champ urlPieceJointe. Si l'upload échoue, l'absence reste
+      // enregistrée (pas de rollback) — on garde la modale ouverte avec l'erreur.
+      if (attachment && savedId) {
+        try {
+          const uploadedUrl = await uploadAbsenceAttachment(savedId, attachment, 'Visite')
+          if (uploadedUrl) {
+            await appendAbsenceAttachmentUrls(savedId, [uploadedUrl])
+          }
+        } catch (uploadErr) {
+          const detail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          console.error('Échec upload pièce jointe absence', uploadErr)
+          setFormError(`L'absence a été enregistrée mais la pièce jointe a échoué : ${detail}`)
+          await refresh()
+          return  // garde la modale ouverte
+        }
+      }
+
       await refresh()
       closeForm()
     } catch (err) {
@@ -393,6 +430,7 @@ export default function AbsenceManagement({
                 <th>Motif</th>
                 <th>Commentaire</th>
                 <th>Déclarée par</th>
+                <th style={{ textAlign: 'center' }}>PJ</th>
                 <th style={{ width: 160, textAlign: 'center' }}>Actions</th>
               </tr>
             </thead>
@@ -421,6 +459,19 @@ export default function AbsenceManagement({
                   </td>
                   <td style={{ fontSize: 12, color: '#475569' }}>
                     {abs.declareParName ?? '—'}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    {abs.attachments && abs.attachments.length > 0 ? (
+                      <a
+                        href={abs.attachments[0].url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={abs.attachments.map(a => a.name).join(', ')}
+                      >
+                        {getAttachmentIcon(getAttachmentIconType(abs.attachments[0].name))}
+                        {abs.attachments.length > 1 ? ` +${abs.attachments.length - 1}` : ''}
+                      </a>
+                    ) : '—'}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <button
@@ -536,6 +587,33 @@ export default function AbsenceManagement({
                   disabled={saving}
                   placeholder="Précisions optionnelles (n° dossier RH, ordre de mission...)"
                 />
+              </div>
+
+              <div className="form-field" style={{ marginBottom: 16 }}>
+                <label htmlFor="abs-attachment">Pièce jointe (optionnel)</label>
+                <input
+                  id="abs-attachment"
+                  type="file"
+                  onChange={e => setAttachment(e.target.files?.[0] ?? null)}
+                  disabled={saving}
+                />
+                {attachment && (
+                  <span className="selected-email">📎 {attachment.name}</span>
+                )}
+                <small className="field-hint">
+                  Justificatif d'absence (certificat médical, ordre de mission...). Uploadé via
+                  Power Automate et attaché à l'absence après enregistrement.
+                </small>
+                {existingAttachments.length > 0 && (
+                  <ul className="detail-attachments-list" style={{ marginTop: 8 }}>
+                    {existingAttachments.map((att, i) => (
+                      <li key={i} className="detail-attachment-item">
+                        {getAttachmentIcon(getAttachmentIconType(att.name))}{' '}
+                        <a href={att.url} target="_blank" rel="noreferrer">{att.name}</a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

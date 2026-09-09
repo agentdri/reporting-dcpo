@@ -128,6 +128,13 @@ export const EVALUATION_ATTACHMENT_API_URL =
 export const PAC_EVALUATION_ATTACHMENT_API_URL =
   'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/3bfe06475a9c4e0c99306ea3ba62cad1/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=1u00IQtrIXJ8CKgxFHYbwf6dLjrlrA1xswB9a7w0tI8'
 
+/**
+ * Endpoint Power Automate dédié aux pièces jointes de la liste
+ * DCPO_LISTE_ABSENCES. Workflow indépendant des autres.
+ */
+export const ABSENCE_ATTACHMENT_API_URL =
+  'https://default2bd82a682c7d4c43b0809b064410f6.cf.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/22/workflows/bdc14ad3ddf445d2a7c86342d379311f/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=EXSUeRBE2d6Uhr_RKl2biSR8gMPIRyt0IlC2FZK_vcg'
+
 
 /* ──────────────────────────────────────────────────────────────────────────
  * SECTION 3 — UTILITAIRES BAS-NIVEAU
@@ -686,6 +693,37 @@ export async function uploadEvaluationAttachment(
  * @param choise - Catégorie métier (défaut 'Visite')
  * @returns URL absolue de la pièce jointe (ou undefined si réponse vide)
  */
+/**
+ * Upload une pièce jointe à un item de la liste DCPO_LISTE_ABSENCES.
+ * Workflow Power Automate dédié (ABSENCE_ATTACHMENT_API_URL). Même mécanique
+ * que les autres uploadXxxAttachment : encodage base64, POST JSON, retour
+ * de l'URL absolue du fichier attaché.
+ *
+ * @param itemId - ID SharePoint de l'absence cible
+ * @param file - File issu d'un <input type="file">
+ * @param choise - Catégorie métier (défaut 'Visite')
+ * @returns URL absolue de la pièce jointe (ou undefined si réponse vide)
+ */
+export async function uploadAbsenceAttachment(
+  itemId: string,
+  file: File,
+  choise: string = 'Visite',
+): Promise<string | undefined> {
+  const fileContent = await fileToBase64(file)
+  const response = await postWorkflowWithRetry(ABSENCE_ATTACHMENT_API_URL, {
+    fileName: file.name,
+    fileContent,
+    Choise: choise,
+    idItem: itemId,
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Echec upload piece jointe absence (${response.status}): ${errorText}`)
+  }
+  const data: UploadResponse = await response.json()
+  return data.attachmentUrl
+}
+
 export async function uploadPacEvaluationAttachment(
   itemId: string,
   file: File,

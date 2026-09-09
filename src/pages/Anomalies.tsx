@@ -1739,7 +1739,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
             pdfTitle="Liste des anomalies en cours"
             getHeaders={() => [
               'Numéro', 'Titre', 'Statut', 'Criticité', 'Classification',
-              'Agence', 'Réseau', 'Domaine activité', 'Date déclaration',
+              'Agence', 'Réseau', 'Domaine activité', 'Cause', 'Date déclaration',
               'Date ouverture', 'Date régularisation', 'Date clôture',
               'Déclarant', 'Auteur', 'Personne affectée', 'Montant',
             ]}
@@ -1752,6 +1752,7 @@ export default function Anomalies({ userName, userEmail, userRole }: AnomaliesPr
               findAgenceLabel(agences, it.field_6),
               findReseauLabel(reseaux, it.field_7),
               it.domaineActivite ?? '',
+              it.field_4 ? stripHtml(it.field_4) : '',
               formatDateForExport(it.field_0),
               formatDateForExport(it.dateOuvertureTicket),
               formatDateForExport(it.field_9),
