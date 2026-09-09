@@ -28,6 +28,7 @@ import type {
   DCPO_LISTE_DIRECTIONWrite,
 } from '../generated/models/DCPO_LISTE_DIRECTIONModel'
 import { getAllPages } from './sharePointPaging'
+import { repairMojibakeDeep } from './textEncoding'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -67,6 +68,8 @@ export interface UpdateDirectionInput {
 
 /** Construit une Direction depuis un item SharePoint. */
 function fromItem(item: DCPO_LISTE_DIRECTIONRead): Direction {
+  // Réparation des accents mal encodés (cf. textEncoding.ts)
+  item = repairMojibakeDeep(item)
   return {
     id: String(item.ID),
     title: item.Title ?? '',
@@ -101,7 +104,7 @@ export async function getDirection(id: string): Promise<Direction | undefined> {
   try {
     const res = await DCPO_LISTE_DIRECTIONService.get(id)
     if (!res.data) return undefined
-    return fromItem(res.data)
+    return fromItem(repairMojibakeDeep(res.data))
   } catch (err) {
     console.error('getDirection error', err)
     return undefined

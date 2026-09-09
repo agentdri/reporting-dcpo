@@ -252,7 +252,7 @@ export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {
               'Numéro', 'Titre', 'Statut', 'Criticité', 'Classification',
               'Agence', 'Réseau', 'Date déclaration', 'Date clôture',
               'Délai (jours)', 'Déclarant', 'Auteur', 'Personne affectée',
-              'Montant', 'Description',
+              'Montant', 'Description', 'Cause immédiate', 'Cause racine',
             ]}
             getRows={() => filtered.map(b => [
               b.numero,
@@ -270,6 +270,8 @@ export default function AnomalyBulletins({ userRole }: AnomalyBulletinsProps = {
               b.affecteName,
               b.montant ?? '',
               b.description,
+              b.causeImmediate,
+              b.causeRacine,
             ])}
             disabled={loading}
           />

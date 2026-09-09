@@ -46,6 +46,7 @@
 
 import type { IGetAllOptions } from '../generated/models/CommonModels'
 import type { IOperationResult } from '@pa-client/power-code-sdk'
+import { repairMojibakeDeep } from './textEncoding'
 
 /**
  * Interface minimale d'un service SharePoint généré : on n'a besoin que
@@ -123,7 +124,10 @@ export async function getAllPages<T>(
       console.warn('getAllPages: appel échoué, arrêt de la pagination', result.error)
       break
     }
-    const batch = result.data ?? []
+    // Réparation des accents mal encodés (cf. textEncoding.ts) — appliquée
+    // ici, point de passage unique de quasi toutes les listes de l'app,
+    // pour éviter de corriger chaque page individuellement.
+    const batch = repairMojibakeDeep(result.data ?? [])
 
     // Ajout dédoublonné : on ne push que les items dont l'ID SP n'a pas
     // encore été vu. Compte les VRAIS nouveaux items pour détecter le cas

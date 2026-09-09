@@ -39,6 +39,7 @@ import type {
   DCPO_EVALUATION_PLAN_CONTROLEWrite,
 } from '../generated/models/DCPO_EVALUATION_PLAN_CONTROLEModel'
 import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
+import { repairMojibakeDeep } from './textEncoding'
 import { getAllPages } from './sharePointPaging'
 
 
@@ -155,6 +156,9 @@ function toClaims(email: string): string {
 
 /** Construit un ControleEntry depuis un item SharePoint. */
 function fromItem(item: DCPO_LISTE_PLAN_CONTROLERead): ControleEntry {
+  // Réparation des accents mal encodés (cf. textEncoding.ts) — couvre aussi
+  // les retours de create/update qui ne passent pas par getAllPages.
+  item = repairMojibakeDeep(item)
   // Normalisation défensive de la fréquence / statut : si la valeur SP n'est
   // pas dans la liste connue, on retombe sur une valeur par défaut sûre.
   const freq = item.field_2 as ControleFrequence
@@ -207,7 +211,7 @@ export async function getControle(id: string): Promise<ControleEntry | undefined
   try {
     const res = await DCPO_LISTE_PLAN_CONTROLEService.get(id)
     if (!res.data) return undefined
-    return fromItem(res.data)
+    return fromItem(repairMojibakeDeep(res.data))
   } catch (err) {
     console.error('getControle error', err)
     return undefined
@@ -410,6 +414,8 @@ export interface CreateEvaluationInput {
 
 /** Mapping item SP → ControleEvaluation. */
 function fromEvaluationItem(item: DCPO_EVALUATION_PLAN_CONTROLERead): ControleEvaluation {
+  // Réparation des accents mal encodés (cf. textEncoding.ts)
+  item = repairMojibakeDeep(item)
   // Pièces jointes : parsing du champ urlPieceJointe (multi-URLs " | ")
   const attachmentUrls = parseUrlList(item.urlPieceJointe)
   const attachments = attachmentUrls.map(url => ({

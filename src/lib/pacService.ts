@@ -42,6 +42,7 @@ import type {
   DCPO_LISTE_PLAN_ACTION_CORRECTIFWrite,
 } from '../generated/models/DCPO_LISTE_PLAN_ACTION_CORRECTIFModel'
 import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
+import { repairMojibakeDeep } from './textEncoding'
 import { getAllPages } from './sharePointPaging'
 
 
@@ -134,6 +135,8 @@ function toDateOnly(raw: string | undefined): string {
 
 /** Construit un Pac depuis un item SharePoint. */
 function fromItem(item: DCPO_LISTE_PLAN_ACTION_CORRECTIFRead): Pac {
+  // Réparation des accents mal encodés (cf. textEncoding.ts)
+  item = repairMojibakeDeep(item)
   const statut = item.field_11 as PacStatus
   // Pièces jointes : le champ urlPiecesJointes (multi-URLs concaténées par
   // " | ") est parsé puis transformé en { name, url }[] pour l'affichage UI.
@@ -189,7 +192,7 @@ export async function getPAC(id: string): Promise<Pac | undefined> {
   try {
     const res = await DCPO_LISTE_PLAN_ACTION_CORRECTIFService.get(id)
     if (!res.data) return undefined
-    return fromItem(res.data)
+    return fromItem(repairMojibakeDeep(res.data))
   } catch (err) {
     console.error('getPAC error', err)
     return undefined
@@ -435,6 +438,8 @@ export interface CreatePacEvaluationInput {
 
 /** Mapping item SP → PacEvaluation. */
 function fromPacEvaluationItem(item: DCPO_EVALUATION_PLAN_ACTION_CORRECTIFRead): PacEvaluation {
+  // Réparation des accents mal encodés (cf. textEncoding.ts)
+  item = repairMojibakeDeep(item)
   const urls = parseUrlList(item.urlPieceJointe)
   return {
     id: String(item.ID),

@@ -37,6 +37,7 @@ import type {
 } from '../generated/models/DCPO_LISTE_ABSENCESModel'
 import { getAllPages } from './sharePointPaging'
 import { appendUrl, parseUrlList, getFileNameFromUrl } from './ticketAttachments'
+import { repairMojibakeDeep } from './textEncoding'
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -107,6 +108,9 @@ function toDateOnly(value?: string | null): string {
 
 /** Mappe un item SP brut en Absence métier. */
 function fromItem(item: DCPO_LISTE_ABSENCESRead): Absence {
+  // Réparation des accents mal encodés (cf. textEncoding.ts) — couvre aussi
+  // les retours de create/update qui ne passent pas par getAllPages.
+  item = repairMojibakeDeep(item)
   // Pièces jointes : parsing du champ urlPieceJointe (multi-URLs " | ")
   const attachmentUrls = parseUrlList(item.urlPieceJointe)
   const attachments = attachmentUrls.map(url => ({

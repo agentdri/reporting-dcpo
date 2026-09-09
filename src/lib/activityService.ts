@@ -44,6 +44,7 @@
 
 import { DCPO_ACTIVICTE_CONTROLLERService } from '../generated/services/DCPO_ACTIVICTE_CONTROLLERService'
 import { getAllPages } from './sharePointPaging'
+import { repairMojibakeDeep } from './textEncoding'
 import type {
   DCPO_ACTIVICTE_CONTROLLERRead,
   DCPO_ACTIVICTE_CONTROLLERWrite,
@@ -496,6 +497,8 @@ function parseLinesHeuristic(raw: string): ActivityLine[] {
 
 /** Construit un ActivityReport complet à partir d'un item SharePoint. */
 function reportFromItem(item: DCPO_ACTIVICTE_CONTROLLERRead): ActivityReport {
+  // Réparation des accents mal encodés (cf. textEncoding.ts)
+  item = repairMojibakeDeep(item)
   const lines = parseLines(item.actionDeLaJournee)
   const totals = computeTotals(lines)
   const dateStr = item.Date ? item.Date.split('T')[0] : ''
@@ -786,7 +789,7 @@ export async function getReport(id: string): Promise<ActivityReport | undefined>
   try {
     const result = await DCPO_ACTIVICTE_CONTROLLERService.get(id)
     if (!result.data) return undefined
-    return reportFromItem(result.data)
+    return reportFromItem(repairMojibakeDeep(result.data))
   } catch (err) {
     console.error('getReport error', err)
     return undefined
