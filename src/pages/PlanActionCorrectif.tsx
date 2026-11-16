@@ -100,6 +100,44 @@ interface PlanActionCorrectifProps {
 /** Rôles ayant le droit de créer / éditer un PAC. */
 const MANAGER_ROLES = ['Chef_Departement', 'Directeur']
 
+/**
+ * Limite du champ SP `observations` sur DCPO_EVALUATION_PLAN_ACTION_CORRECTIF.
+ *
+ * Ce champ est configuré côté SharePoint en "Ligne de texte unique"
+ * (`maxLength: 255`, pas de retour à la ligne — cf.
+ * .power/schemas/sharepointonline/dcpo_evaluation_plan_action_correctif.Schema.json).
+ * Au-delà, ou avec un retour à la ligne, SharePoint rejette l'écriture avec
+ * une erreur peu explicite ("Valeur de texte non valide").
+ *
+ * Fix définitif : demander à un administrateur SharePoint de changer le
+ * type de la colonne `observations` en "Plusieurs lignes de texte" — une
+ * fois fait, cette validation cliente devient inutile et peut être retirée.
+ * En attendant, on valide AVANT l'appel réseau pour donner un message clair
+ * plutôt que le JSON brut renvoyé par SharePoint.
+ */
+const PAC_EVAL_OBSERVATIONS_LIMIT = 255
+
+/**
+ * Valide le texte des observations d'évaluation PAC contre les contraintes
+ * du champ SP (cf. PAC_EVAL_OBSERVATIONS_LIMIT). Retourne un message
+ * d'erreur explicite si invalide, `null` si OK.
+ */
+function validatePacEvalObservations(text: string): string | null {
+  if (/\r|\n/.test(text)) {
+    return 'Les retours à la ligne ne sont pas autorisés dans ce champ SharePoint ' +
+      '(colonne "observations" configurée en "Ligne de texte unique"). ' +
+      'Saisissez le texte sur une seule ligne, ou demandez à un administrateur ' +
+      'de changer le type de colonne en "Plusieurs lignes de texte".'
+  }
+  if (text.length > PAC_EVAL_OBSERVATIONS_LIMIT) {
+    return `Les observations dépassent la limite de ${PAC_EVAL_OBSERVATIONS_LIMIT} caractères ` +
+      'imposée par SharePoint (colonne "observations" en "Ligne de texte unique"). ' +
+      'Réduisez le texte, ou demandez à un administrateur de changer le type de ' +
+      'colonne en "Plusieurs lignes de texte" pour lever cette limite.'
+  }
+  return null
+}
+
 /** État vide pour la barre de filtres (réutilisé au reset). */
 const EMPTY_FILTERS = {
   statut: '' as '' | PacStatus,
@@ -365,8 +403,14 @@ export default function PlanActionCorrectif({ userName, userEmail, userRole }: P
       setEvalError("Ce PAC n'est plus évaluable (statut Exécutée ou Non Exécutée).")
       return
     }
-    if (!evalObservations.trim()) {
+    const trimmedObservations = evalObservations.trim()
+    if (!trimmedObservations) {
       setEvalError('Les observations sont obligatoires.')
+      return
+    }
+    const observationsError = validatePacEvalObservations(trimmedObservations)
+    if (observationsError) {
+      setEvalError(observationsError)
       return
     }
 
@@ -375,7 +419,7 @@ export default function PlanActionCorrectif({ userName, userEmail, userRole }: P
       // 1. Créer l'évaluation côté SP — on récupère son ID pour l'étape 2.
       const created = await createPacEvaluation({
         pacId: evalTarget.id,
-        observations: evalObservations.trim(),
+        observations: trimmedObservations,
       })
 
       // 2. Si une pièce jointe est sélectionnée : upload via Power Automate,
@@ -412,7 +456,19 @@ export default function PlanActionCorrectif({ userName, userEmail, userRole }: P
       setEvalAttachment(null)
     } catch (err) {
       console.error('submitEvaluation PAC error', err)
-      setEvalError(err instanceof Error ? err.message : "Échec de l'enregistrement de l'évaluation.")
+      const rawMessage = err instanceof Error ? err.message : "Échec de l'enregistrement de l'évaluation."
+      // Traduit le message brut SharePoint ("Valeur de texte non valide...")
+      // en explication actionnable si la pré-validation ci-dessus n'a pas
+      // intercepté le cas (ex : limite exacte au caractère près, variante
+      // d'erreur SP). Cf. PAC_EVAL_OBSERVATIONS_LIMIT.
+      setEvalError(
+        /valeur de texte non valide/i.test(rawMessage)
+          ? validatePacEvalObservations(trimmedObservations) ??
+            `Le champ "Observations" est trop long ou contient des caractères non acceptés par ` +
+            `SharePoint (colonne "Ligne de texte unique", max ${PAC_EVAL_OBSERVATIONS_LIMIT} caractères). ` +
+            'Réduisez le texte, ou demandez à un administrateur de changer le type de colonne.'
+          : rawMessage,
+      )
     } finally {
       setEvalSaving(false)
     }
@@ -1058,6 +1114,18 @@ export default function PlanActionCorrectif({ userName, userEmail, userRole }: P
                   placeholder="Avancement, blocages, jalons franchis..."
                   disabled={evalSaving}
                 />
+                {/* Rappel de la contrainte SharePoint (colonne "Ligne de texte
+                    unique", cf. PAC_EVAL_OBSERVATIONS_LIMIT) — évite de
+                    découvrir la limite seulement à l'échec de l'enregistrement. */}
+                <small
+                  className="field-hint"
+                  style={evalObservations.length > PAC_EVAL_OBSERVATIONS_LIMIT || /\r|\n/.test(evalObservations)
+                    ? { color: 'var(--rdcpo-red)' }
+                    : undefined}
+                >
+                  {evalObservations.length} / {PAC_EVAL_OBSERVATIONS_LIMIT} caractères, sans retour à la ligne
+                  (limite SharePoint sur ce champ)
+                </small>
               </div>
 
               {/* Pièce jointe optionnelle : uploadée après création de
