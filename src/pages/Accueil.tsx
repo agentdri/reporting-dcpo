@@ -36,7 +36,7 @@ import {
 } from 'recharts'
 import { DCPO_LISTE_ANORMALIEService } from '../generated/services/DCPO_LISTE_ANORMALIEService'
 import type { DCPO_LISTE_ANORMALIERead } from '../generated/models/DCPO_LISTE_ANORMALIEModel'
-import { getAllPages } from '../lib/sharePointPaging'
+import { getAllPages, getAllChunkedByMonth } from '../lib/sharePointPaging'
 import { formatMontantCompact } from '../lib/formatters'
 import { useFadeUp, useStagger } from '../lib/useGsap'
 import './Accueil.css'
@@ -80,6 +80,7 @@ function greeting(): string {
 
 export default function Accueil({ userName, onNavigate }: AccueilProps) {
   const [items, setItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
+  const [summaryItems, setSummaryItems] = useState<DCPO_LISTE_ANORMALIERead[]>([])
   const [loading, setLoading] = useState(true)
 
   // ─── Chargement de TOUTES les anomalies (tous statuts) ─────────────────
@@ -87,11 +88,35 @@ export default function Accueil({ userName, onNavigate }: AccueilProps) {
     let alive = true
     ;(async () => {
       try {
-        const rows = await getAllPages<DCPO_LISTE_ANORMALIERead>(
-          DCPO_LISTE_ANORMALIEService,
-          { orderBy: ['Created desc'] },
-        )
-        if (alive) setItems(rows)
+        const currentYear = new Date().getFullYear()
+        const today = new Date().toISOString().slice(0, 10)
+        const [rows, ongoingRows, resolvedRows] = await Promise.all([
+          getAllPages<DCPO_LISTE_ANORMALIERead>(DCPO_LISTE_ANORMALIEService, {
+            orderBy: ['Created desc'],
+          }),
+          getAllChunkedByMonth<DCPO_LISTE_ANORMALIERead>(DCPO_LISTE_ANORMALIEService, {
+            from: '2000-01-01',
+            to: today,
+            dateColumn: 'Created',
+            extraFilter: "field_10 eq 'Ouvert' or field_10 eq 'En cours'",
+            orderBy: ['Created desc'],
+          }),
+          getAllChunkedByMonth<DCPO_LISTE_ANORMALIERead>(DCPO_LISTE_ANORMALIEService, {
+            from: `${currentYear}-01-01`,
+            to: `${currentYear}-12-31`,
+            dateColumn: 'Created',
+            extraFilter: "field_10 eq 'Resolu' or field_10 eq 'Clos'",
+            orderBy: ['Created desc'],
+          }),
+        ])
+        if (alive) {
+          setItems(rows)
+          const byId = new Map<number, DCPO_LISTE_ANORMALIERead>()
+          for (const item of [...ongoingRows, ...resolvedRows]) {
+            if (item.ID !== undefined) byId.set(item.ID, item)
+          }
+          setSummaryItems([...byId.values()])
+        }
       } catch (err) {
         console.error('Accueil : échec du chargement des anomalies', err)
       } finally {
@@ -105,16 +130,20 @@ export default function Accueil({ userName, onNavigate }: AccueilProps) {
 
   // ─── Indicateurs principaux (cartes) ───────────────────────────────────
   const stats = useMemo(() => {
-    const countBy = (s: string) => items.filter(i => i.field_10 === s).length
+    const countBy = (status: string) => summaryItems.filter(item => item.field_10 === status).length
+    const ouvert = countBy('Ouvert')
+    const enCours = countBy('En cours')
+    const resolu = countBy('Resolu')
+    const clos = countBy('Clos')
     return {
-      total: items.length,
-      ouvert: countBy('Ouvert'),
-      enCours: countBy('En cours'),
-      resolu: countBy('Resolu'),
-      clos: countBy('Clos'),
-      montant: items.reduce((sum, i) => sum + (i.field_8 ?? 0), 0),
+      total: ouvert + enCours + resolu + clos,
+      ouvert,
+      enCours,
+      resolu,
+      clos,
+      montant: summaryItems.reduce((sum, item) => sum + (item.field_8 ?? 0), 0),
     }
-  }, [items])
+  }, [summaryItems])
 
   // ─── Donut : répartition par statut ────────────────────────────────────
   const statusData = useMemo(
